@@ -1,0 +1,137 @@
+{
+  "docId": "ppt_cover_layouts",
+  "docType": "ppt",
+  "schemaVersion": "1.0.0",
+  "title": "经营复盘汇报（封页与布局示例）",
+  "locale": "zh-CN",
+  "themeId": "theme.business.light",
+  "dataSources": [
+    {
+      "id": "ds_review",
+      "type": "static",
+      "staticData": [
+        { "month": "Jan", "channel": "APP", "gmv": 120, "profit": 32 },
+        { "month": "Jan", "channel": "Web", "gmv": 82, "profit": 19 },
+        { "month": "Feb", "channel": "APP", "gmv": 132, "profit": 36 },
+        { "month": "Feb", "channel": "Web", "gmv": 90, "profit": 22 },
+        { "month": "Mar", "channel": "APP", "gmv": 146, "profit": 41 },
+        { "month": "Mar", "channel": "Web", "gmv": 98, "profit": 24 }
+      ]
+    }
+  ],
+  "queries": [
+    {
+      "queryId": "q_review",
+      "sourceId": "ds_review",
+      "kind": "static"
+    }
+  ],
+  "root": {
+    "id": "root",
+    "kind": "container",
+    "props": {
+      "size": "16:9",
+      "defaultBg": "#ffffff",
+      "nativeChartEnabled": true
+    },
+    "children": [
+      {
+        "id": "slide_cover",
+        "kind": "slide",
+        "props": { "title": "封面" },
+        "layout": { "mode": "absolute", "x": 0, "y": 0, "w": 960, "h": 540 },
+        "children": [
+          {
+            "id": "cover_title",
+            "kind": "text",
+            "layout": { "mode": "absolute", "x": 80, "y": 130, "w": 800, "h": 90, "z": 2 },
+            "props": { "text": "经营复盘汇报", "format": "plain" },
+            "style": { "fontSize": 44, "bold": true }
+          },
+          {
+            "id": "cover_subtitle",
+            "kind": "text",
+            "layout": { "mode": "absolute", "x": 80, "y": 225, "w": 800, "h": 60, "z": 2 },
+            "props": { "text": "Q1 Growth Review · Board Version", "format": "plain" },
+            "style": { "fontSize": 22, "bold": false }
+          },
+          {
+            "id": "cover_note",
+            "kind": "text",
+            "layout": { "mode": "absolute", "x": 80, "y": 360, "w": 800, "h": 60, "z": 2 },
+            "props": { "text": "日期：2026-03-02  |  汇报人：运营分析组", "format": "plain" },
+            "style": { "fontSize": 16 }
+          }
+        ]
+      },
+      {
+        "id": "slide_lr",
+        "kind": "slide",
+        "props": { "title": "图表 + 总结（左右布局）" },
+        "layout": { "mode": "absolute", "x": 0, "y": 0, "w": 960, "h": 540 },
+        "children": [
+          {
+            "id": "lr_chart",
+            "kind": "chart",
+            "layout": { "mode": "absolute", "x": 36, "y": 92, "w": 430, "h": 260, "z": 1 },
+            "data": { "sourceId": "ds_review", "queryId": "q_review" },
+            "props": {
+              "chartType": "line",
+              "titleText": "渠道 GMV 趋势",
+              "bindings": [
+                { "role": "x", "field": "month" },
+                { "role": "y", "field": "gmv", "agg": "sum" },
+                { "role": "series", "field": "channel" }
+              ],
+              "legendShow": true
+            }
+          },
+          {
+            "id": "lr_summary",
+            "kind": "text",
+            "layout": { "mode": "absolute", "x": 492, "y": 92, "w": 430, "h": 260, "z": 1 },
+            "props": {
+              "text": "结论：\n1) Q1 收入连续增长，3 月达到峰值。\n2) APP 渠道增长更稳健，贡献占比持续提升。\n3) 下一阶段建议重点优化 Web 转化链路。",
+              "format": "plain"
+            },
+            "style": { "bg": "#f8fbff", "pad": 12, "borderW": 1, "borderC": "#dbeafe", "radius": 8 }
+          }
+        ]
+      },
+      {
+        "id": "slide_tb",
+        "kind": "slide",
+        "props": { "title": "图表 + 总结（上下布局）" },
+        "layout": { "mode": "absolute", "x": 0, "y": 0, "w": 960, "h": 540 },
+        "children": [
+          {
+            "id": "tb_chart",
+            "kind": "chart",
+            "layout": { "mode": "absolute", "x": 80, "y": 92, "w": 800, "h": 220, "z": 1 },
+            "data": { "sourceId": "ds_review", "queryId": "q_review" },
+            "props": {
+              "chartType": "bar",
+              "titleText": "季度利润对比",
+              "bindings": [
+                { "role": "x", "field": "month" },
+                { "role": "y", "field": "profit", "agg": "sum" },
+                { "role": "series", "field": "channel" }
+              ],
+              "legendShow": true
+            }
+          },
+          {
+            "id": "tb_summary",
+            "kind": "text",
+            "layout": { "mode": "absolute", "x": 80, "y": 330, "w": 800, "h": 160, "z": 1 },
+            "props": {
+              "text": "总结：\n- 利润结构较健康，APP 渠道利润贡献高于 Web。\n- 2 月与 3 月增长趋势明确，适合持续加大高 ROI 投放。\n- 建议补充按区域拆分，以支持下一轮预算决策。",
+              "format": "plain"
+            },
+            "style": { "bg": "#f8fbff", "pad": 12, "borderW": 1, "borderC": "#dbeafe", "radius": 8 }
+          }
+        ]
+      }
+    ]
+  }
+}

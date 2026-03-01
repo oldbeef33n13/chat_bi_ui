@@ -1,0 +1,126 @@
+{
+  "docId": "report_weekly_ops",
+  "docType": "report",
+  "schemaVersion": "1.0.0",
+  "title": "网络周报（标准）",
+  "locale": "zh-CN",
+  "themeId": "theme.tech.light",
+  "dataSources": [
+    {
+      "id": "ds_alarm",
+      "type": "static",
+      "staticData": [
+        { "day": "Mon", "alarm_count": 34, "packet_loss": 0.23, "region": "East" },
+        { "day": "Tue", "alarm_count": 23, "packet_loss": 0.18, "region": "East" },
+        { "day": "Wed", "alarm_count": 27, "packet_loss": 0.22, "region": "West" },
+        { "day": "Thu", "alarm_count": 18, "packet_loss": 0.15, "region": "North" },
+        { "day": "Fri", "alarm_count": 30, "packet_loss": 0.29, "region": "South" }
+      ]
+    }
+  ],
+  "queries": [
+    {
+      "queryId": "q_alarm_trend",
+      "sourceId": "ds_alarm",
+      "kind": "static"
+    }
+  ],
+  "root": {
+    "id": "root",
+    "kind": "container",
+    "layout": { "mode": "flow" },
+    "props": {
+      "reportTitle": "网络周报（标准）",
+      "tocShow": true,
+      "coverEnabled": true,
+      "coverTitle": "网络周报（标准）",
+      "coverSubtitle": "Network Weekly Operations Report",
+      "coverNote": "适用于周会复盘",
+      "summaryEnabled": true,
+      "summaryTitle": "本周执行摘要",
+      "summaryText": "告警总量下降，异常处置效率提升，需持续跟踪南区拥塞窗口。",
+      "headerShow": true,
+      "headerText": "网络周报 · 标准样例",
+      "footerShow": true,
+      "footerText": "Visual Document OS",
+      "showPageNumber": true,
+      "pageSize": "A4",
+      "nativeChartEnabled": true,
+      "nativeChartWidthEmu": 6000000,
+      "nativeChartHeightEmu": 3200000
+    },
+    "children": [
+      {
+        "id": "section_overview",
+        "kind": "section",
+        "props": { "title": "1. 本周总览" },
+        "children": [
+          {
+            "id": "text_overview",
+            "kind": "text",
+            "props": { "text": "本周核心指标整体改善，告警总量下降，骨干链路稳定性提升。", "format": "plain" }
+          },
+          {
+            "id": "chart_alarm_trend",
+            "kind": "chart",
+            "data": { "sourceId": "ds_alarm", "queryId": "q_alarm_trend" },
+            "props": {
+              "chartType": "line",
+              "titleText": "告警趋势",
+              "bindings": [
+                { "role": "x", "field": "day" },
+                { "role": "y", "field": "alarm_count", "agg": "sum", "unit": "count" }
+              ],
+              "legendShow": true,
+              "xAxisTitle": "日期",
+              "yAxisTitle": "告警数",
+              "optionPatch": {
+                "title": { "text": "告警趋势（Patch覆盖标题）" },
+                "legend": { "right": 0 },
+                "xAxis": { "name": "Day" },
+                "yAxis": [{ "name": "Alarm Count" }]
+              }
+            }
+          }
+        ]
+      },
+      {
+        "id": "section_disposal",
+        "kind": "section",
+        "props": { "title": "2. 异常处置" },
+        "children": [
+          {
+            "id": "text_disposal",
+            "kind": "text",
+            "props": { "text": "周三西区出现抖动峰值，已完成链路扩容并验证。", "format": "plain" }
+          },
+          {
+            "id": "chart_loss",
+            "kind": "chart",
+            "data": { "sourceId": "ds_alarm", "queryId": "q_alarm_trend" },
+            "props": {
+              "chartType": "bar",
+              "titleText": "丢包率变化",
+              "bindings": [
+                { "role": "x", "field": "day" },
+                { "role": "y", "field": "packet_loss", "agg": "avg", "unit": "pct" }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "id": "section_action",
+        "kind": "section",
+        "props": { "title": "3. 下周动作" },
+        "children": [
+          {
+            "id": "text_action",
+            "kind": "text",
+            "props": { "text": "重点关注南区拥塞窗口，建立分钟级异常回溯机制。", "format": "plain" }
+          }
+        ]
+      }
+    ]
+  }
+}

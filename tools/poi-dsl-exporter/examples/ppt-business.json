@@ -1,0 +1,85 @@
+{
+  "docId": "ppt_business",
+  "docType": "ppt",
+  "schemaVersion": "1.0.0",
+  "title": "经营汇报（季度）",
+  "locale": "zh-CN",
+  "themeId": "theme.business.light",
+  "dataSources": [
+    {
+      "id": "ds_growth",
+      "type": "static",
+      "staticData": [
+        { "month": "Jan", "channel": "APP", "gmv": 120 },
+        { "month": "Jan", "channel": "Web", "gmv": 82 },
+        { "month": "Feb", "channel": "APP", "gmv": 132 },
+        { "month": "Feb", "channel": "Web", "gmv": 90 },
+        { "month": "Mar", "channel": "APP", "gmv": 146 },
+        { "month": "Mar", "channel": "Web", "gmv": 98 }
+      ]
+    }
+  ],
+  "queries": [
+    {
+      "queryId": "q_growth",
+      "sourceId": "ds_growth",
+      "kind": "static"
+    }
+  ],
+  "root": {
+    "id": "root",
+    "kind": "container",
+    "props": {
+      "size": "16:9",
+      "defaultBg": "#ffffff",
+      "nativeChartEnabled": true
+    },
+    "children": [
+      {
+        "id": "slide_growth",
+        "kind": "slide",
+        "props": { "title": "季度经营增长" },
+        "layout": { "mode": "absolute", "x": 0, "y": 0, "w": 960, "h": 540 },
+        "children": [
+          {
+            "id": "txt_growth_title",
+            "kind": "text",
+            "layout": { "mode": "absolute", "x": 36, "y": 24, "w": 360, "h": 48, "z": 2 },
+            "props": { "text": "季度经营增长", "format": "plain" },
+            "style": { "fontSize": 28, "bold": true }
+          },
+          {
+            "id": "chart_gmv_line",
+            "kind": "chart",
+            "layout": { "mode": "absolute", "x": 36, "y": 92, "w": 430, "h": 260, "z": 1 },
+            "data": { "sourceId": "ds_growth", "queryId": "q_growth" },
+            "props": {
+              "chartType": "line",
+              "titleText": "GMV 趋势",
+              "bindings": [
+                { "role": "x", "field": "month" },
+                { "role": "y", "field": "gmv", "agg": "sum" },
+                { "role": "series", "field": "channel" }
+              ],
+              "legendShow": true
+            }
+          },
+          {
+            "id": "chart_channel_pie",
+            "kind": "chart",
+            "layout": { "mode": "absolute", "x": 492, "y": 92, "w": 430, "h": 260, "z": 1 },
+            "data": { "sourceId": "ds_growth", "queryId": "q_growth" },
+            "props": {
+              "chartType": "pie",
+              "titleText": "渠道占比",
+              "bindings": [
+                { "role": "category", "field": "channel" },
+                { "role": "value", "field": "gmv", "agg": "sum" }
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

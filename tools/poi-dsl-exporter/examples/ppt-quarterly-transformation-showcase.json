@@ -1,0 +1,385 @@
+{
+  "docId": "ppt_quarterly_transformation_showcase",
+  "docType": "ppt",
+  "schemaVersion": "1.0.0",
+  "title": "数字化转型季度复盘（管理层汇报）",
+  "locale": "zh-CN",
+  "themeId": "theme.business.light",
+  "dataSources": [
+    {
+      "id": "ds_finance",
+      "type": "static",
+      "staticData": [
+        { "month": "Jan", "channel": "直销", "revenue_m": 1820, "profit_m": 540, "orders_k": 84 },
+        { "month": "Jan", "channel": "线上", "revenue_m": 1460, "profit_m": 430, "orders_k": 102 },
+        { "month": "Feb", "channel": "直销", "revenue_m": 1905, "profit_m": 578, "orders_k": 88 },
+        { "month": "Feb", "channel": "线上", "revenue_m": 1530, "profit_m": 455, "orders_k": 108 },
+        { "month": "Mar", "channel": "直销", "revenue_m": 2010, "profit_m": 624, "orders_k": 92 },
+        { "month": "Mar", "channel": "线上", "revenue_m": 1660, "profit_m": 492, "orders_k": 114 }
+      ]
+    },
+    {
+      "id": "ds_quality",
+      "type": "static",
+      "staticData": [
+        { "week": "W1", "sla_pct": 99.95, "p95_ms": 83, "err_qps": 62 },
+        { "week": "W2", "sla_pct": 99.96, "p95_ms": 80, "err_qps": 55 },
+        { "week": "W3", "sla_pct": 99.97, "p95_ms": 77, "err_qps": 49 },
+        { "week": "W4", "sla_pct": 99.98, "p95_ms": 74, "err_qps": 41 }
+      ]
+    },
+    {
+      "id": "ds_program",
+      "type": "static",
+      "staticData": [
+        { "program": "链路治理2.0", "progress": 92, "risk": 36 },
+        { "program": "告警降噪", "progress": 84, "risk": 42 },
+        { "program": "发布门禁", "progress": 76, "risk": 48 },
+        { "program": "成本优化", "progress": 68, "risk": 39 },
+        { "program": "客户旅程改造", "progress": 57, "risk": 53 }
+      ]
+    }
+  ],
+  "queries": [
+    { "queryId": "q_finance", "sourceId": "ds_finance", "kind": "static" },
+    { "queryId": "q_quality", "sourceId": "ds_quality", "kind": "static" },
+    { "queryId": "q_program", "sourceId": "ds_program", "kind": "static" }
+  ],
+  "root": {
+    "id": "root",
+    "kind": "container",
+    "props": {
+      "size": "16:9",
+      "defaultBg": "#ffffff",
+      "nativeChartEnabled": true
+    },
+    "children": [
+      {
+        "id": "slide_cover",
+        "kind": "slide",
+        "props": { "title": "封面" },
+        "layout": { "mode": "absolute", "x": 0, "y": 0, "w": 960, "h": 540 },
+        "children": [
+          {
+            "id": "cover_title",
+            "kind": "text",
+            "layout": { "mode": "absolute", "x": 66, "y": 150, "w": 840, "h": 84, "z": 2 },
+            "props": { "text": "数字化转型季度复盘", "format": "plain" },
+            "style": { "fontSize": 44, "bold": true }
+          },
+          {
+            "id": "cover_sub",
+            "kind": "text",
+            "layout": { "mode": "absolute", "x": 66, "y": 240, "w": 840, "h": 56, "z": 2 },
+            "props": { "text": "Q1 Management Review · Internal", "format": "plain" },
+            "style": { "fontSize": 20 }
+          },
+          {
+            "id": "cover_note",
+            "kind": "text",
+            "layout": { "mode": "absolute", "x": 66, "y": 372, "w": 840, "h": 52, "z": 2 },
+            "props": { "text": "汇报团队：经营 + 平台联合办公室", "format": "plain" },
+            "style": { "fontSize": 16 }
+          }
+        ]
+      },
+      {
+        "id": "slide_agenda",
+        "kind": "slide",
+        "props": { "title": "议程" },
+        "layout": { "mode": "absolute", "x": 0, "y": 0, "w": 960, "h": 540 },
+        "children": [
+          {
+            "id": "agenda_text",
+            "kind": "text",
+            "layout": { "mode": "absolute", "x": 90, "y": 92, "w": 780, "h": 340, "z": 1 },
+            "props": {
+              "text": "1) 经营目标达成与结构变化\n2) 平台稳定性与客户体验\n3) 转型项目推进与风险\n4) 下季度决策请求",
+              "format": "plain"
+            },
+            "style": { "bg": "#f8fbff", "pad": 16, "borderW": 1, "borderC": "#dbeafe", "radius": 10, "fontSize": 24 }
+          }
+        ]
+      },
+      {
+        "id": "slide_summary",
+        "kind": "slide",
+        "props": { "title": "管理层摘要" },
+        "layout": { "mode": "absolute", "x": 0, "y": 0, "w": 960, "h": 540 },
+        "children": [
+          {
+            "id": "summary_text",
+            "kind": "text",
+            "layout": { "mode": "absolute", "x": 70, "y": 92, "w": 820, "h": 360, "z": 1 },
+            "props": {
+              "text": "核心结论：\n- 收入、利润、订单规模三项核心指标连续三月上行。\n- 平台 SLA 稳定在 99.95% 以上，错误QPS持续下降。\n- 转型项目推进整体受控，但客户旅程改造风险需重点跟进。\n\n建议：\n- 下季度继续加大链路治理与发布门禁投入。\n- 针对 SMB 客户建立体验修复专项，降低流失风险。",
+              "format": "plain"
+            },
+            "style": { "bg": "#f8fbff", "pad": 16, "borderW": 1, "borderC": "#dbeafe", "radius": 10 }
+          }
+        ]
+      },
+      {
+        "id": "slide_growth_lr",
+        "kind": "slide",
+        "props": { "title": "经营增长（图表 + 总结左右布局）" },
+        "layout": { "mode": "absolute", "x": 0, "y": 0, "w": 960, "h": 540 },
+        "children": [
+          {
+            "id": "growth_chart",
+            "kind": "chart",
+            "layout": { "mode": "absolute", "x": 36, "y": 92, "w": 430, "h": 265, "z": 1 },
+            "data": { "sourceId": "ds_finance", "queryId": "q_finance" },
+            "props": {
+              "chartType": "line",
+              "titleText": "收入趋势（分渠道）",
+              "bindings": [
+                { "role": "x", "field": "month" },
+                { "role": "y", "field": "revenue_m", "agg": "sum" },
+                { "role": "series", "field": "channel" }
+              ],
+              "legendShow": true
+            }
+          },
+          {
+            "id": "growth_summary",
+            "kind": "text",
+            "layout": { "mode": "absolute", "x": 492, "y": 92, "w": 430, "h": 265, "z": 1 },
+            "props": {
+              "text": "经营洞察：\n1) 直销与线上双轮驱动，线上订单规模增速更快。\n2) 渠道结构优化拉动利润率改善。\n3) 可继续扩大高ROI渠道预算占比。",
+              "format": "plain"
+            },
+            "style": { "bg": "#f8fbff", "pad": 12, "borderW": 1, "borderC": "#dbeafe", "radius": 8 }
+          }
+        ]
+      },
+      {
+        "id": "slide_growth_tb",
+        "kind": "slide",
+        "props": { "title": "利润与订单（图表 + 总结上下布局）" },
+        "layout": { "mode": "absolute", "x": 0, "y": 0, "w": 960, "h": 540 },
+        "children": [
+          {
+            "id": "profit_chart",
+            "kind": "chart",
+            "layout": { "mode": "absolute", "x": 80, "y": 92, "w": 800, "h": 220, "z": 1 },
+            "data": { "sourceId": "ds_finance", "queryId": "q_finance" },
+            "props": {
+              "chartType": "bar",
+              "titleText": "利润趋势（分渠道）",
+              "bindings": [
+                { "role": "x", "field": "month" },
+                { "role": "y", "field": "profit_m", "agg": "sum" },
+                { "role": "series", "field": "channel" }
+              ],
+              "legendShow": true
+            }
+          },
+          {
+            "id": "profit_summary",
+            "kind": "text",
+            "layout": { "mode": "absolute", "x": 80, "y": 330, "w": 800, "h": 150, "z": 1 },
+            "props": {
+              "text": "结论：\n- 两条渠道利润贡献均改善，线上效率提升最明显。\n- 订单规模上行与利润改善保持一致，增长质量较高。",
+              "format": "plain"
+            },
+            "style": { "bg": "#f8fbff", "pad": 12, "borderW": 1, "borderC": "#dbeafe", "radius": 8 }
+          }
+        ]
+      },
+      {
+        "id": "slide_quality",
+        "kind": "slide",
+        "props": { "title": "稳定性与体验" },
+        "layout": { "mode": "absolute", "x": 0, "y": 0, "w": 960, "h": 540 },
+        "children": [
+          {
+            "id": "quality_chart",
+            "kind": "chart",
+            "layout": { "mode": "absolute", "x": 36, "y": 92, "w": 430, "h": 265, "z": 1 },
+            "data": { "sourceId": "ds_quality", "queryId": "q_quality" },
+            "props": {
+              "chartType": "combo",
+              "titleText": "SLA 与错误QPS",
+              "bindings": [
+                { "role": "x", "field": "week" },
+                { "role": "y", "field": "sla_pct", "agg": "avg" },
+                { "role": "y2", "field": "err_qps", "agg": "avg" }
+              ],
+              "legendShow": true
+            }
+          },
+          {
+            "id": "quality_latency",
+            "kind": "chart",
+            "layout": { "mode": "absolute", "x": 492, "y": 92, "w": 430, "h": 265, "z": 1 },
+            "data": { "sourceId": "ds_quality", "queryId": "q_quality" },
+            "props": {
+              "chartType": "line",
+              "titleText": "P95 时延（ms）",
+              "bindings": [
+                { "role": "x", "field": "week" },
+                { "role": "y", "field": "p95_ms", "agg": "avg" }
+              ]
+            }
+          },
+          {
+            "id": "quality_text",
+            "kind": "text",
+            "layout": { "mode": "absolute", "x": 80, "y": 375, "w": 800, "h": 115, "z": 1 },
+            "props": {
+              "text": "稳定性结果：异常波动频次下降，关键链路体验改善。下一步重点压降低峰抖动与尾时延。",
+              "format": "plain"
+            },
+            "style": { "bg": "#f8fbff", "pad": 12, "borderW": 1, "borderC": "#dbeafe", "radius": 8 }
+          }
+        ]
+      },
+      {
+        "id": "slide_program",
+        "kind": "slide",
+        "props": { "title": "转型项目推进与风险" },
+        "layout": { "mode": "absolute", "x": 0, "y": 0, "w": 960, "h": 540 },
+        "children": [
+          {
+            "id": "program_progress",
+            "kind": "chart",
+            "layout": { "mode": "absolute", "x": 36, "y": 92, "w": 430, "h": 265, "z": 1 },
+            "data": { "sourceId": "ds_program", "queryId": "q_program" },
+            "props": {
+              "chartType": "funnel",
+              "titleText": "项目推进度",
+              "bindings": [
+                { "role": "category", "field": "program" },
+                { "role": "value", "field": "progress", "agg": "avg" }
+              ]
+            }
+          },
+          {
+            "id": "program_risk",
+            "kind": "chart",
+            "layout": { "mode": "absolute", "x": 492, "y": 92, "w": 430, "h": 265, "z": 1 },
+            "data": { "sourceId": "ds_program", "queryId": "q_program" },
+            "props": {
+              "chartType": "bar",
+              "titleText": "风险评分",
+              "bindings": [
+                { "role": "x", "field": "program" },
+                { "role": "y", "field": "risk", "agg": "avg" }
+              ]
+            }
+          },
+          {
+            "id": "program_text",
+            "kind": "text",
+            "layout": { "mode": "absolute", "x": 80, "y": 375, "w": 800, "h": 115, "z": 1 },
+            "props": {
+              "text": "重点事项：客户旅程改造风险偏高，需建立跨团队里程碑与验收机制，防止项目拖期。",
+              "format": "plain"
+            },
+            "style": { "bg": "#f8fbff", "pad": 12, "borderW": 1, "borderC": "#dbeafe", "radius": 8 }
+          }
+        ]
+      },
+      {
+        "id": "slide_multi_types",
+        "kind": "slide",
+        "props": { "title": "多图表类型视角" },
+        "layout": { "mode": "absolute", "x": 0, "y": 0, "w": 960, "h": 540 },
+        "children": [
+          {
+            "id": "multi_scatter",
+            "kind": "chart",
+            "layout": { "mode": "absolute", "x": 20, "y": 92, "w": 300, "h": 190, "z": 1 },
+            "data": { "sourceId": "ds_quality", "queryId": "q_quality" },
+            "props": {
+              "chartType": "scatter",
+              "titleText": "时延 vs 错误QPS",
+              "bindings": [
+                { "role": "x", "field": "p95_ms", "agg": "avg" },
+                { "role": "y", "field": "err_qps", "agg": "avg" }
+              ]
+            }
+          },
+          {
+            "id": "multi_radar",
+            "kind": "chart",
+            "layout": { "mode": "absolute", "x": 330, "y": 92, "w": 300, "h": 190, "z": 1 },
+            "data": { "sourceId": "ds_program", "queryId": "q_program" },
+            "props": {
+              "chartType": "radar",
+              "titleText": "项目风险雷达",
+              "bindings": [
+                { "role": "x", "field": "program" },
+                { "role": "y", "field": "risk", "agg": "avg" }
+              ]
+            }
+          },
+          {
+            "id": "multi_treemap",
+            "kind": "chart",
+            "layout": { "mode": "absolute", "x": 640, "y": 92, "w": 300, "h": 190, "z": 1 },
+            "data": { "sourceId": "ds_program", "queryId": "q_program" },
+            "props": {
+              "chartType": "treemap",
+              "titleText": "项目推进结构树图",
+              "bindings": [
+                { "role": "category", "field": "program" },
+                { "role": "value", "field": "progress", "agg": "avg" }
+              ]
+            }
+          },
+          {
+            "id": "multi_gauge",
+            "kind": "chart",
+            "layout": { "mode": "absolute", "x": 20, "y": 302, "w": 300, "h": 190, "z": 1 },
+            "data": { "sourceId": "ds_quality", "queryId": "q_quality" },
+            "props": {
+              "chartType": "gauge",
+              "titleText": "SLA 指针",
+              "bindings": [
+                { "role": "value", "field": "sla_pct", "agg": "avg" }
+              ]
+            }
+          },
+          {
+            "id": "multi_custom",
+            "kind": "chart",
+            "layout": { "mode": "absolute", "x": 330, "y": 302, "w": 610, "h": 190, "z": 1 },
+            "data": { "sourceId": "ds_program", "queryId": "q_program" },
+            "props": {
+              "chartType": "custom",
+              "titleText": "自定义渲染（项目风险）",
+              "bindings": [
+                { "role": "x", "field": "program" },
+                { "role": "y", "field": "risk", "agg": "avg" }
+              ],
+              "optionPatch": {
+                "series": [{ "type": "bar" }],
+                "title": { "text": "custom(optionPatch->bar)" }
+              }
+            }
+          }
+        ]
+      },
+      {
+        "id": "slide_close",
+        "kind": "slide",
+        "props": { "title": "决策请求" },
+        "layout": { "mode": "absolute", "x": 0, "y": 0, "w": 960, "h": 540 },
+        "children": [
+          {
+            "id": "close_text",
+            "kind": "text",
+            "layout": { "mode": "absolute", "x": 80, "y": 120, "w": 800, "h": 285, "z": 1 },
+            "props": {
+              "text": "决策请求：\n1) 批准下季度链路治理与发布门禁专项预算。\n2) 确认“重复故障压降”作为集团级质量目标。\n3) 同意对 SMB 客群启动体验修复与续费提升专项。",
+              "format": "plain"
+            },
+            "style": { "bg": "#f8fbff", "pad": 16, "borderW": 1, "borderC": "#dbeafe", "radius": 10, "fontSize": 23 }
+          }
+        ]
+      }
+    ]
+  }
+}

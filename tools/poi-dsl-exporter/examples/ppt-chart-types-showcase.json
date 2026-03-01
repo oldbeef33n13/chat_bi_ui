@@ -1,0 +1,81 @@
+{
+  "docId": "ppt_chart_types_showcase",
+  "docType": "ppt",
+  "schemaVersion": "1.0.0",
+  "title": "Chart Types Showcase (PPT)",
+  "locale": "zh-CN",
+  "themeId": "theme.tech.light",
+  "dataSources": [
+    {
+      "id": "ds_showcase",
+      "type": "static",
+      "staticData": [
+        { "day": "Mon", "date": "2026-02-24", "cat": "A", "v1": 12, "v2": 7, "open": 90, "close": 95, "low": 88, "high": 99, "source": "A", "target": "B", "value": 12, "node": "N1", "linkSource": "N1", "linkTarget": "N2", "linkValue": 12 },
+        { "day": "Tue", "date": "2026-02-25", "cat": "B", "v1": 20, "v2": 9, "open": 96, "close": 94, "low": 92, "high": 100, "source": "B", "target": "C", "value": 20, "node": "N2", "linkSource": "N2", "linkTarget": "N3", "linkValue": 20 },
+        { "day": "Wed", "date": "2026-02-26", "cat": "C", "v1": 15, "v2": 11, "open": 94, "close": 103, "low": 93, "high": 106, "source": "A", "target": "C", "value": 15, "node": "N3", "linkSource": "N1", "linkTarget": "N3", "linkValue": 15 },
+        { "day": "Thu", "date": "2026-02-27", "cat": "A", "v1": 28, "v2": 10, "open": 103, "close": 101, "low": 98, "high": 108, "source": "C", "target": "D", "value": 28, "node": "N4", "linkSource": "N3", "linkTarget": "N4", "linkValue": 28 },
+        { "day": "Fri", "date": "2026-02-28", "cat": "B", "v1": 23, "v2": 8, "open": 101, "close": 109, "low": 100, "high": 112, "source": "B", "target": "D", "value": 23, "node": "N5", "linkSource": "N2", "linkTarget": "N4", "linkValue": 23 }
+      ]
+    }
+  ],
+  "queries": [
+    {
+      "queryId": "q_showcase",
+      "sourceId": "ds_showcase",
+      "kind": "static"
+    }
+  ],
+  "root": {
+    "id": "root",
+    "kind": "container",
+    "props": {
+      "size": "16:9",
+      "defaultBg": "#ffffff",
+      "nativeChartEnabled": true
+    },
+    "children": [
+      {
+        "id": "slide_1",
+        "kind": "slide",
+        "props": { "title": "基础图表类型" },
+        "layout": { "mode": "absolute", "x": 0, "y": 0, "w": 960, "h": 540 },
+        "children": [
+          { "id": "s1_line", "kind": "chart", "layout": { "mode": "absolute", "x": 20, "y": 70, "w": 300, "h": 190 }, "data": { "sourceId": "ds_showcase", "queryId": "q_showcase" }, "props": { "chartType": "line", "titleText": "line", "bindings": [{ "role": "x", "field": "day" }, { "role": "y", "field": "v1" }] } },
+          { "id": "s1_bar", "kind": "chart", "layout": { "mode": "absolute", "x": 330, "y": 70, "w": 300, "h": 190 }, "data": { "sourceId": "ds_showcase", "queryId": "q_showcase" }, "props": { "chartType": "bar", "titleText": "bar", "bindings": [{ "role": "x", "field": "day" }, { "role": "y", "field": "v2" }] } },
+          { "id": "s1_pie", "kind": "chart", "layout": { "mode": "absolute", "x": 640, "y": 70, "w": 300, "h": 190 }, "data": { "sourceId": "ds_showcase", "queryId": "q_showcase" }, "props": { "chartType": "pie", "titleText": "pie", "bindings": [{ "role": "category", "field": "cat" }, { "role": "value", "field": "v1" }] } },
+          { "id": "s1_scatter", "kind": "chart", "layout": { "mode": "absolute", "x": 20, "y": 280, "w": 300, "h": 190 }, "data": { "sourceId": "ds_showcase", "queryId": "q_showcase" }, "props": { "chartType": "scatter", "titleText": "scatter", "bindings": [{ "role": "x", "field": "day" }, { "role": "y", "field": "v1" }] } },
+          { "id": "s1_radar", "kind": "chart", "layout": { "mode": "absolute", "x": 330, "y": 280, "w": 300, "h": 190 }, "data": { "sourceId": "ds_showcase", "queryId": "q_showcase" }, "props": { "chartType": "radar", "titleText": "radar", "bindings": [{ "role": "x", "field": "cat" }, { "role": "y", "field": "v1" }] } },
+          { "id": "s1_heatmap", "kind": "chart", "layout": { "mode": "absolute", "x": 640, "y": 280, "w": 300, "h": 190 }, "data": { "sourceId": "ds_showcase", "queryId": "q_showcase" }, "props": { "chartType": "heatmap", "titleText": "heatmap", "bindings": [{ "role": "x", "field": "day" }, { "role": "y", "field": "v1" }] } }
+        ]
+      },
+      {
+        "id": "slide_2",
+        "kind": "slide",
+        "props": { "title": "关系/层次图表类型" },
+        "layout": { "mode": "absolute", "x": 0, "y": 0, "w": 960, "h": 540 },
+        "children": [
+          { "id": "s2_kline", "kind": "chart", "layout": { "mode": "absolute", "x": 20, "y": 70, "w": 300, "h": 190 }, "data": { "sourceId": "ds_showcase", "queryId": "q_showcase" }, "props": { "chartType": "kline", "titleText": "kline", "bindings": [{ "role": "x", "field": "day" }, { "role": "y", "field": "close" }] } },
+          { "id": "s2_boxplot", "kind": "chart", "layout": { "mode": "absolute", "x": 330, "y": 70, "w": 300, "h": 190 }, "data": { "sourceId": "ds_showcase", "queryId": "q_showcase" }, "props": { "chartType": "boxplot", "titleText": "boxplot", "bindings": [{ "role": "x", "field": "cat" }, { "role": "y", "field": "v2" }] } },
+          { "id": "s2_sankey", "kind": "chart", "layout": { "mode": "absolute", "x": 640, "y": 70, "w": 300, "h": 190 }, "data": { "sourceId": "ds_showcase", "queryId": "q_showcase" }, "props": { "chartType": "sankey", "titleText": "sankey", "bindings": [{ "role": "linkSource", "field": "source" }, { "role": "linkTarget", "field": "target" }, { "role": "linkValue", "field": "value" }] } },
+          { "id": "s2_graph", "kind": "chart", "layout": { "mode": "absolute", "x": 20, "y": 280, "w": 300, "h": 190 }, "data": { "sourceId": "ds_showcase", "queryId": "q_showcase" }, "props": { "chartType": "graph", "titleText": "graph", "bindings": [{ "role": "node", "field": "node" }, { "role": "value", "field": "value" }] } },
+          { "id": "s2_treemap", "kind": "chart", "layout": { "mode": "absolute", "x": 330, "y": 280, "w": 300, "h": 190 }, "data": { "sourceId": "ds_showcase", "queryId": "q_showcase" }, "props": { "chartType": "treemap", "titleText": "treemap", "bindings": [{ "role": "category", "field": "cat" }, { "role": "value", "field": "value" }] } },
+          { "id": "s2_sunburst", "kind": "chart", "layout": { "mode": "absolute", "x": 640, "y": 280, "w": 300, "h": 190 }, "data": { "sourceId": "ds_showcase", "queryId": "q_showcase" }, "props": { "chartType": "sunburst", "titleText": "sunburst", "bindings": [{ "role": "category", "field": "cat" }, { "role": "value", "field": "value" }] } }
+        ]
+      },
+      {
+        "id": "slide_3",
+        "kind": "slide",
+        "props": { "title": "高级/自定义类型" },
+        "layout": { "mode": "absolute", "x": 0, "y": 0, "w": 960, "h": 540 },
+        "children": [
+          { "id": "s3_parallel", "kind": "chart", "layout": { "mode": "absolute", "x": 20, "y": 70, "w": 300, "h": 190 }, "data": { "sourceId": "ds_showcase", "queryId": "q_showcase" }, "props": { "chartType": "parallel", "titleText": "parallel", "bindings": [{ "role": "x", "field": "day" }, { "role": "y", "field": "v1" }] } },
+          { "id": "s3_funnel", "kind": "chart", "layout": { "mode": "absolute", "x": 330, "y": 70, "w": 300, "h": 190 }, "data": { "sourceId": "ds_showcase", "queryId": "q_showcase" }, "props": { "chartType": "funnel", "titleText": "funnel", "bindings": [{ "role": "category", "field": "cat" }, { "role": "value", "field": "value" }] } },
+          { "id": "s3_gauge", "kind": "chart", "layout": { "mode": "absolute", "x": 640, "y": 70, "w": 300, "h": 190 }, "data": { "sourceId": "ds_showcase", "queryId": "q_showcase" }, "props": { "chartType": "gauge", "titleText": "gauge", "bindings": [{ "role": "value", "field": "v1" }] } },
+          { "id": "s3_calendar", "kind": "chart", "layout": { "mode": "absolute", "x": 20, "y": 280, "w": 300, "h": 190 }, "data": { "sourceId": "ds_showcase", "queryId": "q_showcase" }, "props": { "chartType": "calendar", "titleText": "calendar", "bindings": [{ "role": "x", "field": "date" }, { "role": "y", "field": "v1" }] } },
+          { "id": "s3_custom", "kind": "chart", "layout": { "mode": "absolute", "x": 330, "y": 280, "w": 300, "h": 190 }, "data": { "sourceId": "ds_showcase", "queryId": "q_showcase" }, "props": { "chartType": "custom", "titleText": "custom", "bindings": [{ "role": "x", "field": "day" }, { "role": "y", "field": "v2" }], "optionPatch": { "series": [{ "type": "bar" }], "title": { "text": "custom(optionPatch->bar)" } } } },
+          { "id": "s3_text", "kind": "text", "layout": { "mode": "absolute", "x": 640, "y": 280, "w": 300, "h": 190 }, "props": { "text": "该页用于验证复杂图降级策略、锚点定位与 optionPatch 映射。", "format": "plain" }, "style": { "bg": "#f8fbff", "pad": 10, "borderW": 1, "borderC": "#dbeafe", "radius": 8 } }
+        ]
+      }
+    ]
+  }
+}

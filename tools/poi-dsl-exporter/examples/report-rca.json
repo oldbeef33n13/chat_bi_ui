@@ -1,0 +1,115 @@
+{
+  "docId": "report_rca",
+  "docType": "report",
+  "schemaVersion": "1.0.0",
+  "title": "故障复盘报告",
+  "locale": "zh-CN",
+  "themeId": "theme.business.light",
+  "dataSources": [
+    {
+      "id": "ds_incident",
+      "type": "static",
+      "staticData": [
+        { "minute": "10:00", "err_qps": 45, "stage": "detect" },
+        { "minute": "10:05", "err_qps": 90, "stage": "impact" },
+        { "minute": "10:10", "err_qps": 130, "stage": "impact" },
+        { "minute": "10:15", "err_qps": 82, "stage": "mitigate" },
+        { "minute": "10:20", "err_qps": 36, "stage": "recover" }
+      ]
+    }
+  ],
+  "queries": [
+    {
+      "queryId": "q_incident",
+      "sourceId": "ds_incident",
+      "kind": "static"
+    }
+  ],
+  "root": {
+    "id": "root",
+    "kind": "container",
+    "layout": { "mode": "flow" },
+    "props": {
+      "reportTitle": "故障复盘报告",
+      "tocShow": true,
+      "coverEnabled": true,
+      "coverTitle": "故障复盘报告",
+      "coverSubtitle": "RCA Report",
+      "coverNote": "事件编号：INC-2026-0218",
+      "summaryEnabled": true,
+      "summaryTitle": "RCA 摘要",
+      "summaryText": "故障由灰度路由规则冲突触发，已完成回滚与规则校验加固。",
+      "headerShow": true,
+      "headerText": "故障复盘 · 内部资料",
+      "footerShow": true,
+      "footerText": "Visual Document OS",
+      "showPageNumber": true,
+      "pageSize": "A4",
+      "nativeChartEnabled": true
+    },
+    "children": [
+      {
+        "id": "sec_bg",
+        "kind": "section",
+        "props": { "title": "1. 事件背景" },
+        "children": [
+          {
+            "id": "txt_bg",
+            "kind": "text",
+            "props": {
+              "text": "2026-02-18 10:00 起核心接口错误率快速上升，影响华北用户。",
+              "format": "plain"
+            }
+          }
+        ]
+      },
+      {
+        "id": "sec_timeline",
+        "kind": "section",
+        "props": { "title": "2. 影响与处置时间线" },
+        "children": [
+          {
+            "id": "chart_err_qps",
+            "kind": "chart",
+            "data": { "sourceId": "ds_incident", "queryId": "q_incident" },
+            "props": {
+              "chartType": "line",
+              "titleText": "错误QPS变化",
+              "bindings": [
+                { "role": "x", "field": "minute" },
+                { "role": "y", "field": "err_qps", "agg": "sum", "unit": "count" }
+              ],
+              "optionPatch": {
+                "legend": { "show": false },
+                "series": [{ "type": "line", "smooth": true }]
+              }
+            }
+          },
+          {
+            "id": "txt_timeline",
+            "kind": "text",
+            "props": {
+              "text": "10:12 启动限流，10:18 完成回滚，10:22 服务恢复。",
+              "format": "plain"
+            }
+          }
+        ]
+      },
+      {
+        "id": "sec_rca",
+        "kind": "section",
+        "props": { "title": "3. 根因与改进" },
+        "children": [
+          {
+            "id": "txt_rca",
+            "kind": "text",
+            "props": {
+              "text": "根因是灰度路由规则冲突导致流量放大；已增加发布前规则一致性检查。",
+              "format": "plain"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,82 @@
+{
+  "docId": "ppt_incident",
+  "docType": "ppt",
+  "schemaVersion": "1.0.0",
+  "title": "故障通报（管理版）",
+  "locale": "zh-CN",
+  "themeId": "theme.tech.light",
+  "dataSources": [
+    {
+      "id": "ds_incident",
+      "type": "static",
+      "staticData": [
+        { "minute": "10:00", "err_qps": 45 },
+        { "minute": "10:05", "err_qps": 90 },
+        { "minute": "10:10", "err_qps": 130 },
+        { "minute": "10:15", "err_qps": 82 },
+        { "minute": "10:20", "err_qps": 36 }
+      ]
+    }
+  ],
+  "queries": [
+    {
+      "queryId": "q_incident",
+      "sourceId": "ds_incident",
+      "kind": "static"
+    }
+  ],
+  "root": {
+    "id": "root",
+    "kind": "container",
+    "props": {
+      "size": "16:9",
+      "defaultBg": "#ffffff",
+      "nativeChartEnabled": true
+    },
+    "children": [
+      {
+        "id": "slide_incident",
+        "kind": "slide",
+        "props": { "title": "故障通报" },
+        "layout": { "mode": "absolute", "x": 0, "y": 0, "w": 960, "h": 540 },
+        "children": [
+          {
+            "id": "txt_incident_title",
+            "kind": "text",
+            "layout": { "mode": "absolute", "x": 36, "y": 26, "w": 360, "h": 48, "z": 2 },
+            "props": { "text": "华北区域故障通报", "format": "plain" },
+            "style": { "fontSize": 28, "bold": true }
+          },
+          {
+            "id": "chart_incident_qps",
+            "kind": "chart",
+            "layout": { "mode": "absolute", "x": 36, "y": 96, "w": 430, "h": 250, "z": 1 },
+            "data": { "sourceId": "ds_incident", "queryId": "q_incident" },
+            "props": {
+              "chartType": "line",
+              "titleText": "错误QPS",
+              "bindings": [
+                { "role": "x", "field": "minute" },
+                { "role": "y", "field": "err_qps", "agg": "sum", "unit": "count" }
+              ],
+              "optionPatch": {
+                "legend": { "show": false },
+                "series": [{ "type": "line", "smooth": true }]
+              }
+            }
+          },
+          {
+            "id": "txt_incident_detail",
+            "kind": "text",
+            "layout": { "mode": "absolute", "x": 500, "y": 96, "w": 420, "h": 250, "z": 1 },
+            "props": {
+              "text": "影响：支付成功率下降\\n处置：10:12 限流 + 10:18 回滚\\n状态：已恢复",
+              "format": "plain"
+            },
+            "style": { "bg": "#f8fbff", "pad": 12, "borderW": 1, "borderC": "#dbeafe", "radius": 8 }
+          }
+        ]
+      }
+    ]
+  }
+}

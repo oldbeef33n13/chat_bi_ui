@@ -1,0 +1,330 @@
+{
+  "docId": "ppt_quarterly_board_review",
+  "docType": "ppt",
+  "schemaVersion": "1.0.0",
+  "title": "季度经营与网络稳定性复盘（董事会版）",
+  "locale": "zh-CN",
+  "themeId": "theme.business.light",
+  "dataSources": [
+    {
+      "id": "ds_board",
+      "type": "static",
+      "staticData": [
+        { "month": "Jan", "channel": "APP", "gmv": 120, "profit": 32, "orders_k": 86, "retention_pct": 72.2 },
+        { "month": "Jan", "channel": "Web", "gmv": 82, "profit": 19, "orders_k": 53, "retention_pct": 68.4 },
+        { "month": "Feb", "channel": "APP", "gmv": 132, "profit": 36, "orders_k": 91, "retention_pct": 73.1 },
+        { "month": "Feb", "channel": "Web", "gmv": 90, "profit": 22, "orders_k": 57, "retention_pct": 69.0 },
+        { "month": "Mar", "channel": "APP", "gmv": 146, "profit": 41, "orders_k": 97, "retention_pct": 74.2 },
+        { "month": "Mar", "channel": "Web", "gmv": 98, "profit": 24, "orders_k": 61, "retention_pct": 69.7 }
+      ]
+    },
+    {
+      "id": "ds_quality",
+      "type": "static",
+      "staticData": [
+        { "week": "W1", "sla_pct": 99.95, "latency_ms": 22, "err_qps": 56 },
+        { "week": "W2", "sla_pct": 99.96, "latency_ms": 21, "err_qps": 49 },
+        { "week": "W3", "sla_pct": 99.97, "latency_ms": 20, "err_qps": 43 },
+        { "week": "W4", "sla_pct": 99.98, "latency_ms": 19, "err_qps": 38 }
+      ]
+    },
+    {
+      "id": "ds_risk",
+      "type": "static",
+      "staticData": [
+        { "risk": "跨区流量波动", "score": 78 },
+        { "risk": "告警噪声积压", "score": 66 },
+        { "risk": "变更窗口冲突", "score": 63 },
+        { "risk": "容量冗余不足", "score": 58 }
+      ]
+    },
+    {
+      "id": "ds_risk_flow",
+      "type": "static",
+      "staticData": [
+        { "source": "跨区流量波动", "target": "时延抖动", "value": 22 },
+        { "source": "告警噪声积压", "target": "处置延迟", "value": 18 },
+        { "source": "变更窗口冲突", "target": "连接中断", "value": 15 },
+        { "source": "容量冗余不足", "target": "访问慢", "value": 12 }
+      ]
+    }
+  ],
+  "queries": [
+    { "queryId": "q_board", "sourceId": "ds_board", "kind": "static" },
+    { "queryId": "q_quality", "sourceId": "ds_quality", "kind": "static" },
+    { "queryId": "q_risk", "sourceId": "ds_risk", "kind": "static" },
+    { "queryId": "q_risk_flow", "sourceId": "ds_risk_flow", "kind": "static" }
+  ],
+  "root": {
+    "id": "root",
+    "kind": "container",
+    "props": {
+      "size": "16:9",
+      "defaultBg": "#ffffff",
+      "nativeChartEnabled": true
+    },
+    "children": [
+      {
+        "id": "slide_cover",
+        "kind": "slide",
+        "props": { "title": "封面" },
+        "layout": { "mode": "absolute", "x": 0, "y": 0, "w": 960, "h": 540 },
+        "children": [
+          {
+            "id": "cover_title",
+            "kind": "text",
+            "layout": { "mode": "absolute", "x": 70, "y": 145, "w": 820, "h": 90, "z": 2 },
+            "props": { "text": "季度经营与网络稳定性复盘", "format": "plain" },
+            "style": { "fontSize": 42, "bold": true }
+          },
+          {
+            "id": "cover_sub",
+            "kind": "text",
+            "layout": { "mode": "absolute", "x": 70, "y": 240, "w": 820, "h": 60, "z": 2 },
+            "props": { "text": "Q1 Board Review · Internal", "format": "plain" },
+            "style": { "fontSize": 20 }
+          },
+          {
+            "id": "cover_note",
+            "kind": "text",
+            "layout": { "mode": "absolute", "x": 70, "y": 370, "w": 820, "h": 55, "z": 2 },
+            "props": { "text": "汇报人：运营与平台联合团队  |  日期：2026-03-02", "format": "plain" },
+            "style": { "fontSize": 16 }
+          }
+        ]
+      },
+      {
+        "id": "slide_agenda",
+        "kind": "slide",
+        "props": { "title": "议程" },
+        "layout": { "mode": "absolute", "x": 0, "y": 0, "w": 960, "h": 540 },
+        "children": [
+          {
+            "id": "agenda_text",
+            "kind": "text",
+            "layout": { "mode": "absolute", "x": 90, "y": 90, "w": 780, "h": 350, "z": 1 },
+            "props": {
+              "text": "1) 核心经营结果与趋势\n2) 网络稳定性与客户体验\n3) 关键风险与治理进展\n4) 下季度投入与里程碑",
+              "format": "plain"
+            },
+            "style": { "bg": "#f8fbff", "pad": 16, "borderW": 1, "borderC": "#dbeafe", "radius": 10, "fontSize": 24, "bold": false }
+          }
+        ]
+      },
+      {
+        "id": "slide_summary",
+        "kind": "slide",
+        "props": { "title": "管理层摘要" },
+        "layout": { "mode": "absolute", "x": 0, "y": 0, "w": 960, "h": 540 },
+        "children": [
+          {
+            "id": "summary_text",
+            "kind": "text",
+            "layout": { "mode": "absolute", "x": 70, "y": 92, "w": 820, "h": 360, "z": 1 },
+            "props": {
+              "text": "结论：\n- Q1 收入与利润双增长，APP 渠道持续拉动整体增长。\n- SLA 稳定在 99.95% 以上，错误QPS连续下降。\n- 风险主要集中在跨区流量与告警噪声，已进入专项治理阶段。\n\n建议：\n- 将预算优先配置到高ROI渠道与链路治理。\n- 强化发布前校验与回滚演练，降低变更风险。",
+              "format": "plain"
+            },
+            "style": { "bg": "#f8fbff", "pad": 16, "borderW": 1, "borderC": "#dbeafe", "radius": 10 }
+          }
+        ]
+      },
+      {
+        "id": "slide_growth",
+        "kind": "slide",
+        "props": { "title": "经营增长（图表 + 总结左右布局）" },
+        "layout": { "mode": "absolute", "x": 0, "y": 0, "w": 960, "h": 540 },
+        "children": [
+          {
+            "id": "growth_chart",
+            "kind": "chart",
+            "layout": { "mode": "absolute", "x": 36, "y": 92, "w": 430, "h": 265, "z": 1 },
+            "data": { "sourceId": "ds_board", "queryId": "q_board" },
+            "props": {
+              "chartType": "line",
+              "titleText": "GMV 趋势（分渠道）",
+              "bindings": [
+                { "role": "x", "field": "month" },
+                { "role": "y", "field": "gmv", "agg": "sum" },
+                { "role": "series", "field": "channel" }
+              ],
+              "legendShow": true
+            }
+          },
+          {
+            "id": "growth_summary",
+            "kind": "text",
+            "layout": { "mode": "absolute", "x": 492, "y": 92, "w": 430, "h": 265, "z": 1 },
+            "props": {
+              "text": "经营洞察：\n1) APP 渠道增长斜率高于 Web。\n2) 订单规模与留存同步改善。\n3) 当前增长具备可持续性，建议加速高价值用户运营。",
+              "format": "plain"
+            },
+            "style": { "bg": "#f8fbff", "pad": 12, "borderW": 1, "borderC": "#dbeafe", "radius": 8 }
+          }
+        ]
+      },
+      {
+        "id": "slide_quality",
+        "kind": "slide",
+        "props": { "title": "稳定性（图表 + 总结上下布局）" },
+        "layout": { "mode": "absolute", "x": 0, "y": 0, "w": 960, "h": 540 },
+        "children": [
+          {
+            "id": "quality_chart",
+            "kind": "chart",
+            "layout": { "mode": "absolute", "x": 80, "y": 92, "w": 800, "h": 220, "z": 1 },
+            "data": { "sourceId": "ds_quality", "queryId": "q_quality" },
+            "props": {
+              "chartType": "combo",
+              "titleText": "SLA 与错误QPS周趋势",
+              "bindings": [
+                { "role": "x", "field": "week" },
+                { "role": "y", "field": "sla_pct", "agg": "avg" },
+                { "role": "y2", "field": "err_qps", "agg": "avg" }
+              ],
+              "legendShow": true
+            }
+          },
+          {
+            "id": "quality_summary",
+            "kind": "text",
+            "layout": { "mode": "absolute", "x": 80, "y": 330, "w": 800, "h": 155, "z": 1 },
+            "props": {
+              "text": "稳定性结论：\n- SLA 在 99.95%~99.98% 区间内稳定。\n- 错误QPS下降 32%，故障处置效率明显提升。\n- 下阶段聚焦低峰时段链路抖动与跨区流量均衡。",
+              "format": "plain"
+            },
+            "style": { "bg": "#f8fbff", "pad": 12, "borderW": 1, "borderC": "#dbeafe", "radius": 8 }
+          }
+        ]
+      },
+      {
+        "id": "slide_risk",
+        "kind": "slide",
+        "props": { "title": "风险与行动计划" },
+        "layout": { "mode": "absolute", "x": 0, "y": 0, "w": 960, "h": 540 },
+        "children": [
+          {
+            "id": "risk_chart",
+            "kind": "chart",
+            "layout": { "mode": "absolute", "x": 36, "y": 92, "w": 430, "h": 265, "z": 1 },
+            "data": { "sourceId": "ds_risk", "queryId": "q_risk" },
+            "props": {
+              "chartType": "bar",
+              "titleText": "风险暴露评分",
+              "bindings": [
+                { "role": "x", "field": "risk" },
+                { "role": "y", "field": "score", "agg": "avg" }
+              ]
+            }
+          },
+          {
+            "id": "risk_text",
+            "kind": "text",
+            "layout": { "mode": "absolute", "x": 492, "y": 92, "w": 430, "h": 320, "z": 1 },
+            "props": {
+              "text": "行动计划：\n- 跨区流量：完成策略重算与灰度演练。\n- 告警治理：压缩噪声告警 30%，优化值班效率。\n- 变更风险：建立发布前一致性校验门禁。\n\n目标：下季度将关键风险评分整体下调 10~15 分。",
+              "format": "plain"
+            },
+            "style": { "bg": "#f8fbff", "pad": 12, "borderW": 1, "borderC": "#dbeafe", "radius": 8 }
+          }
+        ]
+      },
+      {
+        "id": "slide_multi_types",
+        "kind": "slide",
+        "props": { "title": "多图表类型视角" },
+        "layout": { "mode": "absolute", "x": 0, "y": 0, "w": 960, "h": 540 },
+        "children": [
+          {
+            "id": "multi_scatter",
+            "kind": "chart",
+            "layout": { "mode": "absolute", "x": 20, "y": 92, "w": 300, "h": 190, "z": 1 },
+            "data": { "sourceId": "ds_quality", "queryId": "q_quality" },
+            "props": {
+              "chartType": "scatter",
+              "titleText": "时延 vs 错误QPS",
+              "bindings": [
+                { "role": "x", "field": "latency_ms", "agg": "avg" },
+                { "role": "y", "field": "err_qps", "agg": "avg" }
+              ]
+            }
+          },
+          {
+            "id": "multi_radar",
+            "kind": "chart",
+            "layout": { "mode": "absolute", "x": 330, "y": 92, "w": 300, "h": 190, "z": 1 },
+            "data": { "sourceId": "ds_risk", "queryId": "q_risk" },
+            "props": {
+              "chartType": "radar",
+              "titleText": "风险雷达",
+              "bindings": [
+                { "role": "x", "field": "risk" },
+                { "role": "y", "field": "score", "agg": "avg" }
+              ]
+            }
+          },
+          {
+            "id": "multi_treemap",
+            "kind": "chart",
+            "layout": { "mode": "absolute", "x": 640, "y": 92, "w": 300, "h": 190, "z": 1 },
+            "data": { "sourceId": "ds_risk", "queryId": "q_risk" },
+            "props": {
+              "chartType": "treemap",
+              "titleText": "风险树图",
+              "bindings": [
+                { "role": "category", "field": "risk" },
+                { "role": "value", "field": "score", "agg": "avg" }
+              ]
+            }
+          },
+          {
+            "id": "multi_gauge",
+            "kind": "chart",
+            "layout": { "mode": "absolute", "x": 20, "y": 302, "w": 300, "h": 190, "z": 1 },
+            "data": { "sourceId": "ds_quality", "queryId": "q_quality" },
+            "props": {
+              "chartType": "gauge",
+              "titleText": "SLA 指针",
+              "bindings": [
+                { "role": "value", "field": "sla_pct", "agg": "avg" }
+              ]
+            }
+          },
+          {
+            "id": "multi_sankey",
+            "kind": "chart",
+            "layout": { "mode": "absolute", "x": 330, "y": 302, "w": 610, "h": 190, "z": 1 },
+            "data": { "sourceId": "ds_risk_flow", "queryId": "q_risk_flow" },
+            "props": {
+              "chartType": "sankey",
+              "titleText": "风险到客户影响路径",
+              "bindings": [
+                { "role": "linkSource", "field": "source" },
+                { "role": "linkTarget", "field": "target" },
+                { "role": "linkValue", "field": "value", "agg": "sum" }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "id": "slide_close",
+        "kind": "slide",
+        "props": { "title": "结语与决策请求" },
+        "layout": { "mode": "absolute", "x": 0, "y": 0, "w": 960, "h": 540 },
+        "children": [
+          {
+            "id": "close_text",
+            "kind": "text",
+            "layout": { "mode": "absolute", "x": 80, "y": 120, "w": 800, "h": 280, "z": 1 },
+            "props": {
+              "text": "决策请求：\n1) 批准链路治理与告警收敛专项预算。\n2) 同意建立跨团队发布风险联审机制。\n3) 确认下季度里程碑与周度追踪节奏。\n\n谢谢。",
+              "format": "plain"
+            },
+            "style": { "bg": "#f8fbff", "pad": 16, "borderW": 1, "borderC": "#dbeafe", "radius": 10, "fontSize": 22 }
+          }
+        ]
+      }
+    ]
+  }
+}

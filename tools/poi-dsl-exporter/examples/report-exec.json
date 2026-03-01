@@ -1,0 +1,94 @@
+{
+  "docId": "report_exec",
+  "docType": "report",
+  "schemaVersion": "1.0.0",
+  "title": "经营分析简报",
+  "locale": "zh-CN",
+  "themeId": "theme.business.light",
+  "dataSources": [
+    {
+      "id": "ds_biz",
+      "type": "static",
+      "staticData": [
+        { "week": "W1", "channel": "APP", "revenue": 132 },
+        { "week": "W1", "channel": "Web", "revenue": 98 },
+        { "week": "W2", "channel": "APP", "revenue": 140 },
+        { "week": "W2", "channel": "Web", "revenue": 106 },
+        { "week": "W3", "channel": "APP", "revenue": 156 },
+        { "week": "W3", "channel": "Web", "revenue": 112 }
+      ]
+    }
+  ],
+  "queries": [
+    {
+      "queryId": "q_biz",
+      "sourceId": "ds_biz",
+      "kind": "static"
+    }
+  ],
+  "root": {
+    "id": "root",
+    "kind": "container",
+    "layout": { "mode": "flow" },
+    "props": {
+      "reportTitle": "经营分析简报",
+      "tocShow": true,
+      "coverEnabled": true,
+      "coverTitle": "经营分析简报",
+      "coverSubtitle": "Executive Business Brief",
+      "coverNote": "季度管理层版本",
+      "summaryEnabled": true,
+      "summaryTitle": "经营摘要",
+      "summaryText": "近三周收入稳定提升，APP 渠道贡献持续扩大。",
+      "headerShow": true,
+      "headerText": "经营简报 · 管理层",
+      "footerShow": true,
+      "footerText": "Visual Document OS",
+      "showPageNumber": true,
+      "pageSize": "A4",
+      "nativeChartEnabled": true
+    },
+    "children": [
+      {
+        "id": "sec_conclusion",
+        "kind": "section",
+        "props": { "title": "核心结论" },
+        "children": [
+          {
+            "id": "txt_conclusion",
+            "kind": "text",
+            "props": {
+              "text": "近三周收入稳定上升，APP 渠道贡献持续扩大。",
+              "format": "plain"
+            }
+          }
+        ]
+      },
+      {
+        "id": "sec_metrics",
+        "kind": "section",
+        "props": { "title": "关键指标" },
+        "children": [
+          {
+            "id": "chart_weekly_revenue",
+            "kind": "chart",
+            "data": { "sourceId": "ds_biz", "queryId": "q_biz" },
+            "props": {
+              "chartType": "line",
+              "titleText": "周收入趋势",
+              "bindings": [
+                { "role": "x", "field": "week" },
+                { "role": "y", "field": "revenue", "agg": "sum" },
+                { "role": "series", "field": "channel" }
+              ],
+              "legendShow": true,
+              "optionPatch": {
+                "series": [{ "type": "line", "smooth": true }]
+              }
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

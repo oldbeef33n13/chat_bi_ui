@@ -1,0 +1,427 @@
+{
+  "docId": "report_quarterly_transformation_showcase",
+  "docType": "report",
+  "schemaVersion": "1.0.0",
+  "title": "数字化转型季度经营与稳定性综合报告（2026Q1）",
+  "locale": "zh-CN",
+  "themeId": "theme.business.light",
+  "dataSources": [
+    {
+      "id": "ds_finance_month",
+      "type": "static",
+      "staticData": [
+        { "month": "Jan", "revenue_m": 5180, "cost_m": 3610, "profit_m": 1570, "nrr_pct": 109.6 },
+        { "month": "Feb", "revenue_m": 5450, "cost_m": 3725, "profit_m": 1725, "nrr_pct": 110.8 },
+        { "month": "Mar", "revenue_m": 5795, "cost_m": 3880, "profit_m": 1915, "nrr_pct": 112.3 }
+      ]
+    },
+    {
+      "id": "ds_channel_eff",
+      "type": "static",
+      "staticData": [
+        { "month": "Jan", "channel": "直销", "leads": 1180, "conv_rate": 0.226, "cpa": 1.28 },
+        { "month": "Jan", "channel": "渠道", "leads": 840, "conv_rate": 0.192, "cpa": 1.05 },
+        { "month": "Jan", "channel": "线上", "leads": 1320, "conv_rate": 0.174, "cpa": 0.88 },
+        { "month": "Feb", "channel": "直销", "leads": 1240, "conv_rate": 0.231, "cpa": 1.24 },
+        { "month": "Feb", "channel": "渠道", "leads": 865, "conv_rate": 0.198, "cpa": 1.01 },
+        { "month": "Feb", "channel": "线上", "leads": 1385, "conv_rate": 0.181, "cpa": 0.86 },
+        { "month": "Mar", "channel": "直销", "leads": 1310, "conv_rate": 0.238, "cpa": 1.19 },
+        { "month": "Mar", "channel": "渠道", "leads": 902, "conv_rate": 0.204, "cpa": 0.98 },
+        { "month": "Mar", "channel": "线上", "leads": 1450, "conv_rate": 0.188, "cpa": 0.84 }
+      ]
+    },
+    {
+      "id": "ds_platform_sla",
+      "type": "static",
+      "staticData": [
+        { "week": "W1", "sla_pct": 99.95, "p95_ms": 82, "err_qps": 61 },
+        { "week": "W2", "sla_pct": 99.96, "p95_ms": 79, "err_qps": 55 },
+        { "week": "W3", "sla_pct": 99.97, "p95_ms": 76, "err_qps": 48 },
+        { "week": "W4", "sla_pct": 99.98, "p95_ms": 74, "err_qps": 42 },
+        { "week": "W5", "sla_pct": 99.97, "p95_ms": 75, "err_qps": 45 },
+        { "week": "W6", "sla_pct": 99.98, "p95_ms": 73, "err_qps": 39 }
+      ]
+    },
+    {
+      "id": "ds_incident_rca",
+      "type": "static",
+      "staticData": [
+        { "domain": "接入网关", "incidents": 8, "mttr_min": 47, "repeat_pct": 22 },
+        { "domain": "交易链路", "incidents": 6, "mttr_min": 39, "repeat_pct": 17 },
+        { "domain": "计费链路", "incidents": 4, "mttr_min": 33, "repeat_pct": 11 },
+        { "domain": "观测告警", "incidents": 10, "mttr_min": 28, "repeat_pct": 26 }
+      ]
+    },
+    {
+      "id": "ds_customer_health",
+      "type": "static",
+      "staticData": [
+        { "segment": "战略KA", "arr_m": 1420, "churn_pct": 1.2, "ticket_rate": 0.41 },
+        { "segment": "成长型", "arr_m": 980, "churn_pct": 2.6, "ticket_rate": 0.63 },
+        { "segment": "SMB", "arr_m": 710, "churn_pct": 4.3, "ticket_rate": 0.88 }
+      ]
+    },
+    {
+      "id": "ds_program",
+      "type": "static",
+      "staticData": [
+        { "program": "链路治理2.0", "progress": 92, "risk_score": 36, "owner": "平台" },
+        { "program": "告警降噪", "progress": 84, "risk_score": 42, "owner": "SRE" },
+        { "program": "发布门禁", "progress": 76, "risk_score": 48, "owner": "工程效能" },
+        { "program": "成本优化", "progress": 68, "risk_score": 39, "owner": "FinOps" },
+        { "program": "客户旅程改造", "progress": 57, "risk_score": 53, "owner": "业务" }
+      ]
+    }
+  ],
+  "queries": [
+    { "queryId": "q_finance_month", "sourceId": "ds_finance_month", "kind": "static" },
+    { "queryId": "q_channel_eff", "sourceId": "ds_channel_eff", "kind": "static" },
+    { "queryId": "q_platform_sla", "sourceId": "ds_platform_sla", "kind": "static" },
+    { "queryId": "q_incident_rca", "sourceId": "ds_incident_rca", "kind": "static" },
+    { "queryId": "q_customer_health", "sourceId": "ds_customer_health", "kind": "static" },
+    { "queryId": "q_program", "sourceId": "ds_program", "kind": "static" }
+  ],
+  "root": {
+    "id": "root",
+    "kind": "container",
+    "layout": { "mode": "flow" },
+    "props": {
+      "reportTitle": "数字化转型季度经营与稳定性综合报告（2026Q1）",
+      "tocShow": true,
+      "coverEnabled": true,
+      "coverTitle": "数字化转型季度经营与稳定性综合报告",
+      "coverSubtitle": "Quarterly Transformation Business & Reliability Review",
+      "coverNote": "汇报对象：经营委员会 / 技术委员会  |  数据截止：2026-03-31",
+      "summaryEnabled": true,
+      "summaryTitle": "执行摘要",
+      "summaryText": "Q1 收入、利润与留存均保持上行；平台可用性连续 6 周保持 99.95% 以上。建议下季度继续加码链路治理与发布门禁，优先压降重复故障。",
+      "headerShow": true,
+      "headerText": "季度综合报告 · 管理层版",
+      "footerShow": true,
+      "footerText": "Visual Document OS · Confidential",
+      "showPageNumber": true,
+      "pageSize": "A4",
+      "nativeChartEnabled": true
+    },
+    "children": [
+      {
+        "id": "sec_exec",
+        "kind": "section",
+        "props": { "title": "1. 管理层结论" },
+        "children": [
+          {
+            "id": "txt_exec_1",
+            "kind": "text",
+            "props": {
+              "text": "Q1 经营实现高质量增长：收入由 5180 万增至 5795 万，利润由 1570 万增至 1915 万；NRR 从 109.6% 提升至 112.3%。平台稳定性提升与发布治理协同，是利润率改善的重要驱动。",
+              "format": "plain"
+            }
+          },
+          {
+            "id": "chart_exec_combo",
+            "kind": "chart",
+            "data": { "sourceId": "ds_finance_month", "queryId": "q_finance_month" },
+            "props": {
+              "chartType": "combo",
+              "titleText": "收入与利润趋势（月）",
+              "bindings": [
+                { "role": "x", "field": "month" },
+                { "role": "y", "field": "revenue_m", "agg": "sum" },
+                { "role": "y2", "field": "profit_m", "agg": "sum" }
+              ],
+              "legendShow": true
+            }
+          },
+          {
+            "id": "chart_exec_nrr",
+            "kind": "chart",
+            "data": { "sourceId": "ds_finance_month", "queryId": "q_finance_month" },
+            "props": {
+              "chartType": "line",
+              "titleText": "净收入留存 NRR（月）",
+              "bindings": [
+                { "role": "x", "field": "month" },
+                { "role": "y", "field": "nrr_pct", "agg": "avg" }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "id": "sec_growth",
+        "kind": "section",
+        "props": { "title": "2. 增长与渠道效率" },
+        "children": [
+          {
+            "id": "txt_growth_1",
+            "kind": "text",
+            "props": {
+              "text": "直销与渠道转化率持续改善，线上渠道保持最佳获客成本（CPA）。建议 Q2 在保持线上效率的同时，提升直销中腰部线索的转化效率。",
+              "format": "plain"
+            }
+          },
+          {
+            "id": "chart_growth_leads",
+            "kind": "chart",
+            "data": { "sourceId": "ds_channel_eff", "queryId": "q_channel_eff" },
+            "props": {
+              "chartType": "line",
+              "titleText": "线索规模趋势（分渠道）",
+              "bindings": [
+                { "role": "x", "field": "month" },
+                { "role": "y", "field": "leads", "agg": "sum" },
+                { "role": "series", "field": "channel" }
+              ],
+              "legendShow": true
+            }
+          },
+          {
+            "id": "chart_growth_cpa",
+            "kind": "chart",
+            "data": { "sourceId": "ds_channel_eff", "queryId": "q_channel_eff" },
+            "props": {
+              "chartType": "bar",
+              "titleText": "获客成本（CPA）对比",
+              "bindings": [
+                { "role": "x", "field": "channel" },
+                { "role": "y", "field": "cpa", "agg": "avg" }
+              ]
+            }
+          },
+          {
+            "id": "chart_growth_scatter",
+            "kind": "chart",
+            "data": { "sourceId": "ds_channel_eff", "queryId": "q_channel_eff" },
+            "props": {
+              "chartType": "scatter",
+              "titleText": "渠道转化率与CPA关系",
+              "bindings": [
+                { "role": "x", "field": "conv_rate", "agg": "avg" },
+                { "role": "y", "field": "cpa", "agg": "avg" }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "id": "sec_reliability",
+        "kind": "section",
+        "props": { "title": "3. 平台稳定性与体验" },
+        "children": [
+          {
+            "id": "txt_rel_1",
+            "kind": "text",
+            "props": {
+              "text": "核心稳定性指标连续改善：SLA 保持高位，错误QPS下降，P95 时延持续优化。发布门禁上线后，异常变更对业务面的冲击显著减少。",
+              "format": "plain"
+            }
+          },
+          {
+            "id": "chart_rel_combo",
+            "kind": "chart",
+            "data": { "sourceId": "ds_platform_sla", "queryId": "q_platform_sla" },
+            "props": {
+              "chartType": "combo",
+              "titleText": "SLA 与错误QPS（周）",
+              "bindings": [
+                { "role": "x", "field": "week" },
+                { "role": "y", "field": "sla_pct", "agg": "avg" },
+                { "role": "y2", "field": "err_qps", "agg": "avg" }
+              ],
+              "legendShow": true
+            }
+          },
+          {
+            "id": "chart_rel_p95",
+            "kind": "chart",
+            "data": { "sourceId": "ds_platform_sla", "queryId": "q_platform_sla" },
+            "props": {
+              "chartType": "line",
+              "titleText": "P95 时延（ms）",
+              "bindings": [
+                { "role": "x", "field": "week" },
+                { "role": "y", "field": "p95_ms", "agg": "avg" }
+              ]
+            }
+          },
+          {
+            "id": "chart_rel_gauge",
+            "kind": "chart",
+            "data": { "sourceId": "ds_platform_sla", "queryId": "q_platform_sla" },
+            "props": {
+              "chartType": "gauge",
+              "titleText": "SLA 达成率指针",
+              "bindings": [
+                { "role": "value", "field": "sla_pct", "agg": "avg" }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "id": "sec_incident",
+        "kind": "section",
+        "props": { "title": "4. 故障与根因治理" },
+        "children": [
+          {
+            "id": "txt_inc_1",
+            "kind": "text",
+            "props": {
+              "text": "故障主要集中在接入网关与观测告警域。重复故障比例在观测域偏高，提示需要进一步收敛规则质量并强化根因定位能力。",
+              "format": "plain"
+            }
+          },
+          {
+            "id": "chart_inc_count",
+            "kind": "chart",
+            "data": { "sourceId": "ds_incident_rca", "queryId": "q_incident_rca" },
+            "props": {
+              "chartType": "bar",
+              "titleText": "故障数量（按域）",
+              "bindings": [
+                { "role": "x", "field": "domain" },
+                { "role": "y", "field": "incidents", "agg": "sum" }
+              ]
+            }
+          },
+          {
+            "id": "chart_inc_mttr",
+            "kind": "chart",
+            "data": { "sourceId": "ds_incident_rca", "queryId": "q_incident_rca" },
+            "props": {
+              "chartType": "line",
+              "titleText": "MTTR（按域）",
+              "bindings": [
+                { "role": "x", "field": "domain" },
+                { "role": "y", "field": "mttr_min", "agg": "avg" }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "id": "sec_customer",
+        "kind": "section",
+        "props": { "title": "5. 客户健康与续费风险" },
+        "children": [
+          {
+            "id": "txt_customer_1",
+            "kind": "text",
+            "props": {
+              "text": "战略KA 客户 ARR 稳定、流失率最低；SMB 客户服务工单率与流失率偏高，建议通过分层服务策略与自助化能力降低支持成本并改善体验。",
+              "format": "plain"
+            }
+          },
+          {
+            "id": "chart_cus_arr",
+            "kind": "chart",
+            "data": { "sourceId": "ds_customer_health", "queryId": "q_customer_health" },
+            "props": {
+              "chartType": "bar",
+              "titleText": "ARR 结构（按客户分层）",
+              "bindings": [
+                { "role": "x", "field": "segment" },
+                { "role": "y", "field": "arr_m", "agg": "sum" }
+              ]
+            }
+          },
+          {
+            "id": "chart_cus_churn",
+            "kind": "chart",
+            "data": { "sourceId": "ds_customer_health", "queryId": "q_customer_health" },
+            "props": {
+              "chartType": "line",
+              "titleText": "流失率（按客户分层）",
+              "bindings": [
+                { "role": "x", "field": "segment" },
+                { "role": "y", "field": "churn_pct", "agg": "avg" }
+              ]
+            }
+          },
+          {
+            "id": "chart_cus_treemap",
+            "kind": "chart",
+            "data": { "sourceId": "ds_customer_health", "queryId": "q_customer_health" },
+            "props": {
+              "chartType": "treemap",
+              "titleText": "ARR 分层结构树图",
+              "bindings": [
+                { "role": "category", "field": "segment" },
+                { "role": "value", "field": "arr_m", "agg": "sum" }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "id": "sec_program",
+        "kind": "section",
+        "props": { "title": "6. 转型项目推进与风险" },
+        "children": [
+          {
+            "id": "txt_prog_1",
+            "kind": "text",
+            "props": {
+              "text": "核心转型项目推进整体可控，但客户旅程改造风险偏高，应优先补齐跨团队依赖管理和里程碑验收机制。",
+              "format": "plain"
+            }
+          },
+          {
+            "id": "chart_prog_funnel",
+            "kind": "chart",
+            "data": { "sourceId": "ds_program", "queryId": "q_program" },
+            "props": {
+              "chartType": "funnel",
+              "titleText": "项目推进度",
+              "bindings": [
+                { "role": "category", "field": "program" },
+                { "role": "value", "field": "progress", "agg": "avg" }
+              ]
+            }
+          },
+          {
+            "id": "chart_prog_risk",
+            "kind": "chart",
+            "data": { "sourceId": "ds_program", "queryId": "q_program" },
+            "props": {
+              "chartType": "bar",
+              "titleText": "项目风险评分",
+              "bindings": [
+                { "role": "x", "field": "program" },
+                { "role": "y", "field": "risk_score", "agg": "avg" }
+              ]
+            }
+          },
+          {
+            "id": "chart_prog_radar",
+            "kind": "chart",
+            "data": { "sourceId": "ds_program", "queryId": "q_program" },
+            "props": {
+              "chartType": "radar",
+              "titleText": "项目风险雷达",
+              "bindings": [
+                { "role": "x", "field": "program" },
+                { "role": "y", "field": "risk_score", "agg": "avg" }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "id": "sec_next",
+        "kind": "section",
+        "props": { "title": "7. 下季度重点动作" },
+        "children": [
+          {
+            "id": "txt_next_1",
+            "kind": "text",
+            "props": {
+              "text": "Q2 建议动作：\n1) 将发布门禁覆盖到全部核心服务；\n2) 对接入网关与观测告警域建立“重复故障压降”专项；\n3) 按客户分层推行差异化服务策略，降低 SMB 流失风险；\n4) 建立项目经营看板，按周追踪里程碑与风险收敛。",
+              "format": "plain"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

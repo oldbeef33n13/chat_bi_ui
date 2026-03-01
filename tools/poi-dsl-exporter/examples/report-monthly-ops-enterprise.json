@@ -1,0 +1,465 @@
+{
+  "docId": "report_monthly_ops_enterprise",
+  "docType": "report",
+  "schemaVersion": "1.0.0",
+  "title": "网络与经营月度运营报告（2026-02）",
+  "locale": "zh-CN",
+  "themeId": "theme.business.light",
+  "dataSources": [
+    {
+      "id": "ds_finance_week",
+      "type": "static",
+      "staticData": [
+        { "week": "W1", "revenue_m": 1820, "gross_margin_pct": 31.2, "active_users_k": 420, "renewal_pct": 87.1 },
+        { "week": "W2", "revenue_m": 1885, "gross_margin_pct": 31.9, "active_users_k": 427, "renewal_pct": 87.8 },
+        { "week": "W3", "revenue_m": 1948, "gross_margin_pct": 32.5, "active_users_k": 435, "renewal_pct": 88.3 },
+        { "week": "W4", "revenue_m": 2012, "gross_margin_pct": 33.1, "active_users_k": 442, "renewal_pct": 88.9 }
+      ]
+    },
+    {
+      "id": "ds_network_day",
+      "type": "static",
+      "staticData": [
+        { "day": "02-01", "availability_pct": 99.95, "latency_ms": 21, "packet_loss_pct": 0.23, "err_qps": 52 },
+        { "day": "02-02", "availability_pct": 99.96, "latency_ms": 20, "packet_loss_pct": 0.21, "err_qps": 49 },
+        { "day": "02-03", "availability_pct": 99.97, "latency_ms": 19, "packet_loss_pct": 0.19, "err_qps": 44 },
+        { "day": "02-04", "availability_pct": 99.96, "latency_ms": 22, "packet_loss_pct": 0.24, "err_qps": 58 },
+        { "day": "02-05", "availability_pct": 99.98, "latency_ms": 18, "packet_loss_pct": 0.17, "err_qps": 40 },
+        { "day": "02-06", "availability_pct": 99.97, "latency_ms": 19, "packet_loss_pct": 0.18, "err_qps": 43 },
+        { "day": "02-07", "availability_pct": 99.98, "latency_ms": 18, "packet_loss_pct": 0.16, "err_qps": 38 }
+      ]
+    },
+    {
+      "id": "ds_region_perf",
+      "type": "static",
+      "staticData": [
+        { "region": "华东", "latency_ms": 18, "availability_pct": 99.97, "nps": 58 },
+        { "region": "华北", "latency_ms": 20, "availability_pct": 99.96, "nps": 55 },
+        { "region": "华南", "latency_ms": 22, "availability_pct": 99.95, "nps": 52 },
+        { "region": "西南", "latency_ms": 24, "availability_pct": 99.94, "nps": 49 }
+      ]
+    },
+    {
+      "id": "ds_incident",
+      "type": "static",
+      "staticData": [
+        { "week": "W1", "severity": "P1", "count": 2, "mttr_min": 43 },
+        { "week": "W1", "severity": "P2", "count": 6, "mttr_min": 52 },
+        { "week": "W2", "severity": "P1", "count": 1, "mttr_min": 37 },
+        { "week": "W2", "severity": "P2", "count": 5, "mttr_min": 48 },
+        { "week": "W3", "severity": "P1", "count": 1, "mttr_min": 34 },
+        { "week": "W3", "severity": "P2", "count": 4, "mttr_min": 45 },
+        { "week": "W4", "severity": "P1", "count": 0, "mttr_min": 0 },
+        { "week": "W4", "severity": "P2", "count": 3, "mttr_min": 39 }
+      ]
+    },
+    {
+      "id": "ds_voice",
+      "type": "static",
+      "staticData": [
+        { "category": "时延抖动", "value": 36 },
+        { "category": "偶发丢包", "value": 24 },
+        { "category": "访问慢", "value": 18 },
+        { "category": "连接中断", "value": 12 },
+        { "category": "其他", "value": 10 }
+      ]
+    },
+    {
+      "id": "ds_plan",
+      "type": "static",
+      "staticData": [
+        { "stage": "链路治理", "progress": 100 },
+        { "stage": "容量扩容", "progress": 88 },
+        { "stage": "告警收敛", "progress": 76 },
+        { "stage": "灰度校验", "progress": 63 },
+        { "stage": "演练闭环", "progress": 52 }
+      ]
+    },
+    {
+      "id": "ds_issue_flow",
+      "type": "static",
+      "staticData": [
+        { "source": "跨区流量波动", "target": "时延抖动", "value": 22 },
+        { "source": "告警噪声积压", "target": "处置延迟", "value": 18 },
+        { "source": "发布窗口冲突", "target": "连接中断", "value": 15 },
+        { "source": "容量冗余不足", "target": "访问慢", "value": 12 }
+      ]
+    }
+  ],
+  "queries": [
+    { "queryId": "q_finance_week", "sourceId": "ds_finance_week", "kind": "static" },
+    { "queryId": "q_network_day", "sourceId": "ds_network_day", "kind": "static" },
+    { "queryId": "q_region_perf", "sourceId": "ds_region_perf", "kind": "static" },
+    { "queryId": "q_incident", "sourceId": "ds_incident", "kind": "static" },
+    { "queryId": "q_voice", "sourceId": "ds_voice", "kind": "static" },
+    { "queryId": "q_plan", "sourceId": "ds_plan", "kind": "static" },
+    { "queryId": "q_issue_flow", "sourceId": "ds_issue_flow", "kind": "static" }
+  ],
+  "root": {
+    "id": "root",
+    "kind": "container",
+    "layout": { "mode": "flow" },
+    "props": {
+      "reportTitle": "网络与经营月度运营报告（2026-02）",
+      "tocShow": true,
+      "coverEnabled": true,
+      "coverTitle": "网络与经营月度运营报告",
+      "coverSubtitle": "Monthly Operations & Business Review",
+      "coverNote": "数据截止：2026-02-28  |  适用场景：经营例会/周会复盘",
+      "summaryEnabled": true,
+      "summaryTitle": "执行摘要",
+      "summaryText": "本月收入与毛利率同步提升，网络可用性稳定在 99.95% 以上，P1 故障显著下降。下一阶段需优先推进告警收敛与跨区域容量均衡。",
+      "headerShow": true,
+      "headerText": "月度运营报告 · 管理版",
+      "footerShow": true,
+      "footerText": "Visual Document OS · Internal",
+      "showPageNumber": true,
+      "pageSize": "A4",
+      "nativeChartEnabled": true,
+      "nativeChartWidthEmu": 6400000,
+      "nativeChartHeightEmu": 3300000
+    },
+    "children": [
+      {
+        "id": "sec_exec",
+        "kind": "section",
+        "props": { "title": "1. 管理层摘要" },
+        "children": [
+          {
+            "id": "txt_exec_1",
+            "kind": "text",
+            "props": {
+              "text": "经营侧：收入连续四周环比增长，W4 达到 2012 万；毛利率提升至 33.1%。\n运行侧：核心网络可用性维持高位，错误QPS与丢包率持续下降。\n决策建议：把资源向高增长区域倾斜，同时压缩低效告警并强化发布前校验。",
+              "format": "plain"
+            }
+          },
+          {
+            "id": "chart_exec_combo",
+            "kind": "chart",
+            "data": { "sourceId": "ds_finance_week", "queryId": "q_finance_week" },
+            "props": {
+              "chartType": "combo",
+              "titleText": "收入与毛利率周趋势",
+              "bindings": [
+                { "role": "x", "field": "week" },
+                { "role": "y", "field": "revenue_m", "agg": "sum" },
+                { "role": "y2", "field": "gross_margin_pct", "agg": "avg" }
+              ],
+              "xAxisTitle": "周",
+              "yAxisTitle": "收入(万元)",
+              "legendShow": true,
+              "optionPatch": {
+                "series": [{ "type": "bar" }, { "type": "line" }],
+                "yAxis": [{ "name": "Revenue" }, { "name": "Margin%" }]
+              }
+            }
+          },
+          {
+            "id": "chart_exec_users",
+            "kind": "chart",
+            "data": { "sourceId": "ds_finance_week", "queryId": "q_finance_week" },
+            "props": {
+              "chartType": "line",
+              "titleText": "活跃用户与续费率",
+              "bindings": [
+                { "role": "x", "field": "week" },
+                { "role": "y", "field": "active_users_k", "agg": "sum" },
+                { "role": "y2", "field": "renewal_pct", "agg": "avg" }
+              ],
+              "legendShow": true,
+              "optionPatch": { "series": [{ "type": "line", "smooth": true }] }
+            }
+          }
+        ]
+      },
+      {
+        "id": "sec_sla",
+        "kind": "section",
+        "props": { "title": "2. 网络质量与SLA" },
+        "children": [
+          {
+            "id": "txt_sla_1",
+            "kind": "text",
+            "props": {
+              "text": "本月核心网络可用性均值 99.96%，SLA 达标率 100%。02-04 出现短时时延波动，主要由跨区流量突增触发，已通过路由调优恢复。",
+              "format": "plain"
+            }
+          },
+          {
+            "id": "chart_sla_day",
+            "kind": "chart",
+            "data": { "sourceId": "ds_network_day", "queryId": "q_network_day" },
+            "props": {
+              "chartType": "line",
+              "titleText": "可用性与丢包率（日）",
+              "bindings": [
+                { "role": "x", "field": "day" },
+                { "role": "y", "field": "availability_pct", "agg": "avg" },
+                { "role": "y2", "field": "packet_loss_pct", "agg": "avg" }
+              ],
+              "legendShow": true
+            }
+          },
+          {
+            "id": "chart_latency_region",
+            "kind": "chart",
+            "data": { "sourceId": "ds_region_perf", "queryId": "q_region_perf" },
+            "props": {
+              "chartType": "bar",
+              "titleText": "各区域平均时延",
+              "bindings": [
+                { "role": "x", "field": "region" },
+                { "role": "y", "field": "latency_ms", "agg": "avg", "unit": "ms" }
+              ],
+              "labelShow": true
+            }
+          },
+          {
+            "id": "chart_region_scatter",
+            "kind": "chart",
+            "data": { "sourceId": "ds_region_perf", "queryId": "q_region_perf" },
+            "props": {
+              "chartType": "scatter",
+              "titleText": "区域时延与NPS关系",
+              "bindings": [
+                { "role": "x", "field": "latency_ms", "agg": "avg" },
+                { "role": "y", "field": "nps", "agg": "avg" }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "id": "sec_incident",
+        "kind": "section",
+        "props": { "title": "3. 告警与故障处置效率" },
+        "children": [
+          {
+            "id": "txt_incident_1",
+            "kind": "text",
+            "props": {
+              "text": "P1 故障由 W1 的 2 起下降到 W4 的 0 起；P2 故障连续下降。平均修复时长（MTTR）随周次稳定缩短，说明应急流程与自动化处置策略有效。",
+              "format": "plain"
+            }
+          },
+          {
+            "id": "chart_incident_sev",
+            "kind": "chart",
+            "data": { "sourceId": "ds_incident", "queryId": "q_incident" },
+            "props": {
+              "chartType": "bar",
+              "titleText": "故障数量（按级别）",
+              "bindings": [
+                { "role": "x", "field": "severity" },
+                { "role": "y", "field": "count", "agg": "sum" }
+              ]
+            }
+          },
+          {
+            "id": "chart_mttr_week",
+            "kind": "chart",
+            "data": { "sourceId": "ds_incident", "queryId": "q_incident" },
+            "props": {
+              "chartType": "line",
+              "titleText": "MTTR 周趋势",
+              "bindings": [
+                { "role": "x", "field": "week" },
+                { "role": "y", "field": "mttr_min", "agg": "avg" },
+                { "role": "series", "field": "severity" }
+              ],
+              "legendShow": true
+            }
+          }
+        ]
+      },
+      {
+        "id": "sec_voice",
+        "kind": "section",
+        "props": { "title": "4. 客户体验与业务影响" },
+        "children": [
+          {
+            "id": "txt_voice_1",
+            "kind": "text",
+            "props": {
+              "text": "NPS 在华东/华北维持较高水平，华南与西南仍有改善空间。客户反馈中“时延抖动”和“偶发丢包”占比最高，应作为下月专项优化重点。",
+              "format": "plain"
+            }
+          },
+          {
+            "id": "chart_nps_region",
+            "kind": "chart",
+            "data": { "sourceId": "ds_region_perf", "queryId": "q_region_perf" },
+            "props": {
+              "chartType": "bar",
+              "titleText": "区域 NPS 对比",
+              "bindings": [
+                { "role": "x", "field": "region" },
+                { "role": "y", "field": "nps", "agg": "avg" }
+              ]
+            }
+          },
+          {
+            "id": "chart_voice_pie",
+            "kind": "chart",
+            "data": { "sourceId": "ds_voice", "queryId": "q_voice" },
+            "props": {
+              "chartType": "pie",
+              "titleText": "客户问题类型占比",
+              "bindings": [
+                { "role": "category", "field": "category" },
+                { "role": "value", "field": "value", "agg": "sum" }
+              ],
+              "legendShow": true
+            }
+          },
+          {
+            "id": "chart_voice_treemap",
+            "kind": "chart",
+            "data": { "sourceId": "ds_voice", "queryId": "q_voice" },
+            "props": {
+              "chartType": "treemap",
+              "titleText": "客户问题结构树图",
+              "bindings": [
+                { "role": "category", "field": "category" },
+                { "role": "value", "field": "value", "agg": "sum" }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "id": "sec_plan",
+        "kind": "section",
+        "props": { "title": "5. 风险与下月计划" },
+        "children": [
+          {
+            "id": "txt_plan_1",
+            "kind": "text",
+            "props": {
+              "text": "主要风险：\n1) 高峰时段跨区流量回灌仍存在不确定性；\n2) 低优先级告警冗余导致值班负荷偏高；\n3) 发布窗口叠加业务活动，变更风险上升。",
+              "format": "plain"
+            }
+          },
+          {
+            "id": "chart_plan_funnel",
+            "kind": "chart",
+            "data": { "sourceId": "ds_plan", "queryId": "q_plan" },
+            "props": {
+              "chartType": "funnel",
+              "titleText": "重点治理项推进度",
+              "bindings": [
+                { "role": "category", "field": "stage" },
+                { "role": "value", "field": "progress", "agg": "avg" }
+              ]
+            }
+          },
+          {
+            "id": "chart_sla_gauge",
+            "kind": "chart",
+            "data": { "sourceId": "ds_network_day", "queryId": "q_network_day" },
+            "props": {
+              "chartType": "gauge",
+              "titleText": "SLA 达成率指针",
+              "bindings": [
+                { "role": "value", "field": "availability_pct", "agg": "avg" }
+              ]
+            }
+          },
+          {
+            "id": "chart_flow_sankey",
+            "kind": "chart",
+            "data": { "sourceId": "ds_issue_flow", "queryId": "q_issue_flow" },
+            "props": {
+              "chartType": "sankey",
+              "titleText": "风险到客户影响路径",
+              "bindings": [
+                { "role": "linkSource", "field": "source" },
+                { "role": "linkTarget", "field": "target" },
+                { "role": "linkValue", "field": "value", "agg": "sum" }
+              ]
+            }
+          },
+          {
+            "id": "txt_plan_2",
+            "kind": "text",
+            "props": {
+              "text": "下月动作清单：\n- 完成华南与西南链路策略重算并灰度验证；\n- 将噪声告警压缩 30%，同步改造值班SOP；\n- 建立“发布前一致性检查 + 回滚演练”双保险机制。",
+              "format": "plain"
+            }
+          }
+        ]
+      },
+      {
+        "id": "sec_appendix_types",
+        "kind": "section",
+        "props": { "title": "6. 附录：多图表类型视角" },
+        "children": [
+          {
+            "id": "txt_appendix_1",
+            "kind": "text",
+            "props": {
+              "text": "附录用于展示多图表类型在业务语境下的表达方式，便于方案评审与客户演示。",
+              "format": "plain"
+            }
+          },
+          {
+            "id": "chart_region_radar",
+            "kind": "chart",
+            "data": { "sourceId": "ds_region_perf", "queryId": "q_region_perf" },
+            "props": {
+              "chartType": "radar",
+              "titleText": "区域质量雷达",
+              "bindings": [
+                { "role": "x", "field": "region" },
+                { "role": "y", "field": "availability_pct", "agg": "avg" }
+              ]
+            }
+          },
+          {
+            "id": "chart_region_parallel",
+            "kind": "chart",
+            "data": { "sourceId": "ds_region_perf", "queryId": "q_region_perf" },
+            "props": {
+              "chartType": "parallel",
+              "titleText": "区域多指标并行视图",
+              "bindings": [
+                { "role": "x", "field": "region" },
+                { "role": "y", "field": "latency_ms", "agg": "avg" }
+              ]
+            }
+          },
+          {
+            "id": "chart_day_calendar",
+            "kind": "chart",
+            "data": { "sourceId": "ds_network_day", "queryId": "q_network_day" },
+            "props": {
+              "chartType": "calendar",
+              "titleText": "日历热力（错误QPS）",
+              "bindings": [
+                { "role": "x", "field": "day" },
+                { "role": "y", "field": "err_qps", "agg": "avg" }
+              ]
+            }
+          },
+          {
+            "id": "chart_voice_custom",
+            "kind": "chart",
+            "data": { "sourceId": "ds_voice", "queryId": "q_voice" },
+            "props": {
+              "chartType": "custom",
+              "titleText": "自定义渲染（问题类型）",
+              "bindings": [
+                { "role": "x", "field": "category" },
+                { "role": "y", "field": "value", "agg": "sum" }
+              ],
+              "optionPatch": {
+                "series": [{ "type": "bar" }],
+                "title": { "text": "custom(optionPatch->bar)" }
+              }
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

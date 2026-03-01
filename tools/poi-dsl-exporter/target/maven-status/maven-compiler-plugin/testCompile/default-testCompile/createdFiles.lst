@@ -1,0 +1,9 @@
+com\chatbi\exporter\chart\ChartSpecParserTest.class
+com\chatbi\exporter\core\VDocValidatorTest.class
+com\chatbi\exporter\chart\ChartTypeCatalogTest.class
+com\chatbi\exporter\chart\ChartRowResolverTest.class
+com\chatbi\exporter\chart\ChartOptionPatchAdapterTest.class
+com\chatbi\exporter\chart\ChartDatasetBuilderTest.class
+com\chatbi\exporter\ExporterSmokeTest$1.class
+com\chatbi\exporter\ExporterSmokeTest.class
+com\chatbi\exporter\style\DefaultStyleResolverTest.class
