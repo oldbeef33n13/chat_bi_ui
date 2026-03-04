@@ -1,5 +1,0 @@
-# Created at 2026-03-04T18:23:15.586
-Boot Manifest-JAR contains absolute paths in classpath 'D:\GitHub\chat_bi_ui\tools\poi-dsl-exporter\target\test-classes'
-Hint: <argLine>-Djdk.net.URLClassPath.disableClassPathURLCheck=true</argLine>
-'other' has different root
-
