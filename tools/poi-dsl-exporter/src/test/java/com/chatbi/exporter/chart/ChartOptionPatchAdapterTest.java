@@ -9,7 +9,13 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
+/**
+ * ChartOptionPatchAdapter 单元测试。
+ */
 class ChartOptionPatchAdapterTest {
+    /**
+     * 验证 optionPatch 的标题/图例/坐标轴/series.type 解析优先级。
+     */
     @Test
     void readOptionPatchHints() {
         ChartSpec spec = new ChartSpec(

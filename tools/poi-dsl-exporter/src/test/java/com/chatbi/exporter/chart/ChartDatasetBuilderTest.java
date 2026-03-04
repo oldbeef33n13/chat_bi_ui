@@ -8,7 +8,13 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * ChartDatasetBuilder 单元测试。
+ */
 class ChartDatasetBuilderTest {
+    /**
+     * 验证按 measure 拆分系列的构建逻辑。
+     */
     @Test
     void buildSeriesByMeasure() {
         ChartSpec spec = new ChartSpec(
@@ -37,6 +43,9 @@ class ChartDatasetBuilderTest {
         assertTrue(dataset.isRenderable());
     }
 
+    /**
+     * 验证按 seriesField 透视拆分系列的构建逻辑。
+     */
     @Test
     void buildPivotSeries() {
         ChartSpec spec = new ChartSpec(

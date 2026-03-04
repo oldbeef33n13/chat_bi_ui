@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Command, VNode } from "../../core/doc/types";
 import { buildGapGuides } from "./ppt-gap-guides";
 
+/** 构造绝对定位节点。 */
 const absNode = (id: string, x: number, y: number, w: number, h: number): VNode => ({
   id,
   kind: "text",
@@ -9,7 +10,9 @@ const absNode = (id: string, x: number, y: number, w: number, h: number): VNode 
   props: { text: id }
 });
 
+/** PPT 等距分布辅助线测试。 */
 describe("buildGapGuides", () => {
+  /** 分布后应产出两条间距标注线。 */
   it("builds horizontal gap guides after distribute update", () => {
     const nodes: VNode[] = [absNode("a", 0, 0, 100, 80), absNode("b", 150, 0, 100, 80), absNode("c", 300, 0, 100, 80)];
     const commands: Command[] = [
@@ -25,6 +28,7 @@ describe("buildGapGuides", () => {
     expect(guides[1]?.label).toBe("120px");
   });
 
+  /** 选中元素少于 3 个时不生成间距辅助线。 */
   it("returns empty guides when selected nodes < 3", () => {
     const nodes: VNode[] = [absNode("a", 0, 0, 100, 80), absNode("b", 220, 0, 100, 80)];
     const guides = buildGapGuides(nodes, ["a", "b"], [], "hdistribute");

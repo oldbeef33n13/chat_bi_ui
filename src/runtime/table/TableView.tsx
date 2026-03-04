@@ -8,6 +8,7 @@ interface TableViewProps {
   height?: string | number;
 }
 
+/** 表格渲染组件：消费 TableRenderModel，负责 DOM 表格输出。 */
 export function TableView({ spec, rows, height = "100%" }: TableViewProps): JSX.Element {
   const model = buildTableRenderModel(spec, rows);
   const wrapperStyle: CSSProperties = {
@@ -76,4 +77,3 @@ export function TableView({ spec, rows, height = "100%" }: TableViewProps): JSX.
     </div>
   );
 }
-

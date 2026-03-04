@@ -1,12 +1,14 @@
 import type { VStyle } from "../../core/doc/types";
 import { findTheme } from "../../runtime/theme/themes";
 
+/** 单个样式字段来源追踪记录。 */
 export interface StyleTraceEntry {
   key: keyof VStyle;
   value: unknown;
   source: "doc-theme" | "node-token" | "node-override";
 }
 
+/** 将主题 token 映射为节点样式可消费的基础字段。 */
 const mapThemeToStyle = (themeId?: string): Partial<VStyle> => {
   const theme = findTheme(themeId);
   return {
@@ -17,6 +19,10 @@ const mapThemeToStyle = (themeId?: string): Partial<VStyle> => {
   };
 };
 
+/**
+ * 解析样式继承链：doc-theme -> node-token -> node-override。
+ * 返回最终样式 + 每个字段来源，便于 UI 可视化调试。
+ */
 export const resolveStyleTrace = (
   docThemeId: string | undefined,
   style: VStyle | undefined

@@ -53,6 +53,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
+/**
+ * PPT DSL -> PPTX 导出器。
+ * <p>
+ * 负责按幻灯片节点树输出可编辑 PPTX：
+ * - 文本块
+ * - 图表块（优先原生 POI 图表）
+ * - 表格块（含多级表头与合并）
+ * </p>
+ */
 public class DeckPptxExporter implements DocumentExporter {
     private final StyleResolver styleResolver;
     private final ChartSpecParser chartSpecParser;
@@ -62,10 +71,16 @@ public class DeckPptxExporter implements DocumentExporter {
     private final List<PptxChartFlavorRenderer> chartFlavorRenderers;
     private final RendererRegistry<PptxRenderContext> nodeRenderers;
 
+    /**
+     * 默认构造：使用内置样式解析与图表规格解析。
+     */
     public DeckPptxExporter() {
         this(new DefaultStyleResolver(), new ChartSpecParser());
     }
 
+    /**
+     * 允许注入样式/图表解析器，便于测试与扩展。
+     */
     public DeckPptxExporter(StyleResolver styleResolver, ChartSpecParser chartSpecParser) {
         this.styleResolver = styleResolver;
         this.chartSpecParser = chartSpecParser;
@@ -88,6 +103,9 @@ public class DeckPptxExporter implements DocumentExporter {
                 .register(new TableNodeRenderer());
     }
 
+    /**
+     * 注册图表风味渲染器（按 fallback 前插入）。
+     */
     public DeckPptxExporter registerChartFlavorRenderer(PptxChartFlavorRenderer renderer) {
         PptxChartFlavorRenderer safe = Objects.requireNonNull(renderer, "renderer");
         int fallbackIndex = findFallbackIndex();
@@ -99,6 +117,9 @@ public class DeckPptxExporter implements DocumentExporter {
         return this;
     }
 
+    /**
+     * 查找通用兜底渲染器位置。
+     */
     private int findFallbackIndex() {
         for (int i = 0; i < chartFlavorRenderers.size(); i++) {
             if (chartFlavorRenderers.get(i) instanceof GenericFlavorRenderer) {
@@ -118,10 +139,19 @@ public class DeckPptxExporter implements DocumentExporter {
         return doc != null && "ppt".equalsIgnoreCase(doc.docType);
     }
 
+    /**
+     * 兼容旧调用方式（不传 request）。
+     */
     public void export(VDoc doc, Path output) throws IOException {
         export(doc, output, ExportRequest.defaults());
     }
 
+    /**
+     * PPTX 导出主流程：
+     * 1) 解析主题与画布
+     * 2) 渲染 slide 节点
+     * 3) 写入输出文件
+     */
     @Override
     public void export(VDoc doc, Path output, ExportRequest request) throws IOException {
         if (!supports(doc)) {
@@ -154,6 +184,9 @@ public class DeckPptxExporter implements DocumentExporter {
         }
     }
 
+    /**
+     * 渲染单页幻灯片。
+     */
     private void drawSlide(
             XMLSlideShow slideShow,
             XSLFSlide slide,
@@ -178,6 +211,9 @@ public class DeckPptxExporter implements DocumentExporter {
         }
     }
 
+    /**
+     * 解析幻灯片背景色（slide.props.bg > root.defaultBg > theme.canvas）。
+     */
     private Color resolveSlideBg(VNode slideNode, VDoc doc, ThemeTokens theme) {
         String fallback = toHex(theme.canvas());
         String rootBg = doc.root == null ? fallback : doc.root.propString("defaultBg", fallback);
@@ -189,6 +225,9 @@ public class DeckPptxExporter implements DocumentExporter {
         }
     }
 
+    /**
+     * 输出页眉标题条。
+     */
     private void addSlideHeader(XSLFSlide slide, String title, ThemeTokens theme) {
         XSLFTextBox box = slide.createTextBox();
         box.setAnchor(new Rectangle(24, 12, 860, 40));
@@ -203,6 +242,9 @@ public class DeckPptxExporter implements DocumentExporter {
         run.setFontColor(theme.muted());
     }
 
+    /**
+     * 渲染文本块。
+     */
     private void addTextShape(PptxRenderContext context, VNode textNode) {
         Rectangle rect = resolveRect(textNode, 80, 80, 280, 120);
         XSLFTextBox box = context.slide.createTextBox();
@@ -223,6 +265,11 @@ public class DeckPptxExporter implements DocumentExporter {
         run.setBold(VNode.asBoolean(textNode.styleOrEmpty().get("bold"), false));
     }
 
+    /**
+     * 渲染图表卡片：
+     * - 优先原生图表
+     * - 失败时输出占位卡片
+     */
     private void addChartCard(
             PptxRenderContext context,
             ChartSpec spec,
@@ -251,6 +298,9 @@ public class DeckPptxExporter implements DocumentExporter {
         }
     }
 
+    /**
+     * 渲染表格块（含合并单元格）。
+     */
     private void addTableShape(PptxRenderContext context, VNode tableNode, List<Map<String, Object>> rows) {
         TableModel table = tableSpecParser.parse(tableNode, rows);
         if (table.columnCount() <= 0) {
@@ -280,6 +330,9 @@ public class DeckPptxExporter implements DocumentExporter {
         xslfTable.updateCellAnchor();
     }
 
+    /**
+     * 按列权重分配 PPT 表格列宽。
+     */
     private void applyColumnWidths(XSLFTable table, TableModel model, int totalWidth) {
         double sum = model.columns().stream().mapToDouble(col -> Math.max(1.0, col.width())).sum();
         if (sum <= 0.0) {
@@ -292,6 +345,9 @@ public class DeckPptxExporter implements DocumentExporter {
         }
     }
 
+    /**
+     * 写入表头单元格。
+     */
     private void fillHeaderCells(PptxRenderContext context, XSLFTable table, TableModel model) {
         for (int r = 0; r < model.headerRowCount(); r++) {
             List<TableCell> row = model.headerRows().get(r);
@@ -309,6 +365,9 @@ public class DeckPptxExporter implements DocumentExporter {
         }
     }
 
+    /**
+     * 写入数据区单元格。
+     */
     private void fillBodyCells(PptxRenderContext context, XSLFTable table, TableModel model) {
         for (int r = 0; r < model.bodyRowCount(); r++) {
             List<TableCell> row = model.bodyRows().get(r);
@@ -374,6 +433,9 @@ public class DeckPptxExporter implements DocumentExporter {
         run.setFontColor(theme.text());
     }
 
+    /**
+     * 应用 PPT 原生合并单元格。
+     */
     private void applyTableMerges(XSLFTable table, TableModel model) {
         for (int r = 0; r < model.headerRowCount(); r++) {
             List<TableCell> row = model.headerRows().get(r);
@@ -396,6 +458,9 @@ public class DeckPptxExporter implements DocumentExporter {
         }
     }
 
+    /**
+     * 归一化单元格文本 XML，规避部分 Office 版本打开修复提示。
+     */
     private void normalizeTableCellTextBodies(XSLFTable table) {
         int rowCount = table.getNumberOfRows();
         if (rowCount <= 0) {
@@ -426,6 +491,9 @@ public class DeckPptxExporter implements DocumentExporter {
         }
     }
 
+    /**
+     * 尝试绘制原生图表；异常时静默回退。
+     */
     private boolean renderNativeChartIfNeeded(
             PptxRenderContext context,
             ChartSpec spec,
@@ -448,6 +516,9 @@ public class DeckPptxExporter implements DocumentExporter {
         }
     }
 
+    /**
+     * 兼容不同 POI 版本的 chart 创建 API。
+     */
     private XSLFChart createAnchoredChart(PptxRenderContext context, Rectangle anchor) {
         Rectangle2D emuAnchor = toEmuAnchor(anchor);
         try {
@@ -474,6 +545,9 @@ public class DeckPptxExporter implements DocumentExporter {
         }
     }
 
+    /**
+     * 坐标单位转换：像素 -> EMU。
+     */
     private Rectangle2D toEmuAnchor(Rectangle anchor) {
         return new Rectangle2D.Double(
                 Units.toEMU(anchor.getX()),
@@ -483,6 +557,9 @@ public class DeckPptxExporter implements DocumentExporter {
         );
     }
 
+    /**
+     * 尝试在旧 API 分支上设置图表锚点（best-effort）。
+     */
     private void tryAnchorGraphicFrame(XSLFChart chart, Rectangle2D emuAnchor) {
         try {
             Method getGraphicFrame = XSLFChart.class.getMethod("getGraphicFrame");
@@ -563,6 +640,9 @@ public class DeckPptxExporter implements DocumentExporter {
         run.setBold(bold);
     }
 
+    /**
+     * 解析 chartType 对应风味渲染器。
+     */
     private PptxChartFlavorRenderer resolveFlavor(String chartType) {
         for (PptxChartFlavorRenderer renderer : chartFlavorRenderers) {
             if (renderer.supports(chartType)) {
@@ -572,6 +652,9 @@ public class DeckPptxExporter implements DocumentExporter {
         return chartFlavorRenderers.get(chartFlavorRenderers.size() - 1);
     }
 
+    /**
+     * 未支持节点占位渲染。
+     */
     private void addUnsupportedShape(PptxRenderContext context, VNode node) {
         Rectangle rect = resolveRect(node, 80, 80, 220, 90);
         XSLFAutoShape box = context.slide.createAutoShape();
@@ -588,6 +671,9 @@ public class DeckPptxExporter implements DocumentExporter {
         run.setFontColor(context.theme.muted());
     }
 
+    /**
+     * 无 slide 时输出简版封面页。
+     */
     private void addSimpleTitle(XSLFSlide slide, String title, ThemeTokens theme) {
         XSLFTextBox box = slide.createTextBox();
         box.setAnchor(new Rectangle(80, 120, 760, 120));
@@ -601,6 +687,9 @@ public class DeckPptxExporter implements DocumentExporter {
         run.setFontColor(theme.text());
     }
 
+    /**
+     * 过滤根节点下 kind=slide 的子节点。
+     */
     private List<VNode> resolveSlides(VNode root) {
         if (root == null) {
             return Collections.emptyList();
@@ -610,6 +699,9 @@ public class DeckPptxExporter implements DocumentExporter {
                 .toList();
     }
 
+    /**
+     * 解析页面比例（16:9/4:3）。
+     */
     private Dimension resolvePageSize(Map<String, Object> rootProps) {
         String size = VNode.asString(rootProps.get("size"), "16:9");
         if ("4:3".equalsIgnoreCase(size)) {
@@ -618,6 +710,9 @@ public class DeckPptxExporter implements DocumentExporter {
         return new Dimension(960, 540);
     }
 
+    /**
+     * 从 layout 读取矩形区域并加下限保护。
+     */
     private Rectangle resolveRect(VNode node, int x, int y, int w, int h) {
         int rx = (int) Math.round(node.layoutDouble("x", x));
         int ry = (int) Math.round(node.layoutDouble("y", y));
@@ -645,6 +740,9 @@ public class DeckPptxExporter implements DocumentExporter {
         return "#" + VisualStyle.toHexNoHash(color);
     }
 
+    /**
+     * PPT 渲染上下文。
+     */
     public static final class PptxRenderContext {
         private final XMLSlideShow slideShow;
         private final XSLFSlide slide;
@@ -694,6 +792,9 @@ public class DeckPptxExporter implements DocumentExporter {
         }
     }
 
+    /**
+     * 图表风味渲染上下文（占位卡片模式）。
+     */
     public static final class PptxChartFlavorContext {
         private final XSLFAutoShape card;
         private final ThemeTokens theme;
@@ -716,6 +817,9 @@ public class DeckPptxExporter implements DocumentExporter {
         }
     }
 
+    /**
+     * 节点 kind=text 渲染器。
+     */
     private final class TextNodeRenderer implements NodeRenderer<PptxRenderContext> {
         @Override
         public String kind() {
@@ -728,6 +832,9 @@ public class DeckPptxExporter implements DocumentExporter {
         }
     }
 
+    /**
+     * 节点 kind=chart 渲染器。
+     */
     private final class ChartNodeRenderer implements NodeRenderer<PptxRenderContext> {
         @Override
         public String kind() {
@@ -742,6 +849,9 @@ public class DeckPptxExporter implements DocumentExporter {
         }
     }
 
+    /**
+     * 节点 kind=table 渲染器。
+     */
     private final class TableNodeRenderer implements NodeRenderer<PptxRenderContext> {
         @Override
         public String kind() {
@@ -755,6 +865,9 @@ public class DeckPptxExporter implements DocumentExporter {
         }
     }
 
+    /**
+     * 未支持节点兜底渲染器。
+     */
     private final class UnsupportedNodeRenderer implements NodeRenderer<PptxRenderContext> {
         @Override
         public String kind() {
@@ -767,6 +880,9 @@ public class DeckPptxExporter implements DocumentExporter {
         }
     }
 
+    /**
+     * 图表风味渲染接口（占位卡片策略）。
+     */
     public interface PptxChartFlavorRenderer {
         boolean supports(String chartType);
 

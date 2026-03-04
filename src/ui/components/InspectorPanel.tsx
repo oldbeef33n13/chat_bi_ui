@@ -11,6 +11,10 @@ import type { Persona } from "../types/persona";
 
 type InspectorMode = "quick" | "standard" | "expert";
 
+/**
+ * 属性面板：按 persona/模式分层提供图表与表格编辑能力。
+ * quick = 快捷调参；standard = 业务分析；expert = 原始 JSON 能力。
+ */
 export function InspectorPanel({ persona = "analyst" }: { persona?: Persona }): JSX.Element {
   const store = useEditorStore();
   const doc = useSignalValue(store.doc);
@@ -172,6 +176,7 @@ function ChartInspector({ doc, node, mode, persona }: { doc: VDoc; node: VNode; 
     setAiRecommendLoading(false);
   }, [node.id, props.optionPatch]);
 
+  // 图表属性统一经命令系统更新，保证 undo/redo 和审计一致。
   const updateProps = (partial: Partial<ChartSpec>, summary: string, mergeWindowMs = 0): void => {
     store.executeCommand(
       {
@@ -734,6 +739,7 @@ function TableInspector({ doc, node, mode }: { doc: VDoc; node: VNode; mode: Ins
     );
   };
 
+  // 专家模式 JSON 编辑统一入口，避免每块重复 try/catch。
   const parseAndApply = <T,>(text: string, onSuccess: (value: T) => void, errorPrefix: string): void => {
     try {
       const parsed = JSON.parse(text) as T;

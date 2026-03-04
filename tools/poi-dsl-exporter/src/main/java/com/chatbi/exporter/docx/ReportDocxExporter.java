@@ -51,6 +51,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
+/**
+ * Report -> DOCX 导出器。
+ * 负责把报告 DSL 渲染为可商用的 Word 文档结构：封面、目录、正文、总结、页眉页脚、图表与表格。
+ */
 public class ReportDocxExporter implements DocumentExporter {
     private final StyleResolver styleResolver;
     private final ChartSpecParser chartSpecParser;
@@ -60,10 +64,16 @@ public class ReportDocxExporter implements DocumentExporter {
     private final List<DocxChartFlavorRenderer> chartFlavorRenderers;
     private final RendererRegistry<DocxRenderContext> nodeRenderers;
 
+    /**
+     * 默认构造：使用内置样式解析与图表规格解析。
+     */
     public ReportDocxExporter() {
         this(new DefaultStyleResolver(), new ChartSpecParser());
     }
 
+    /**
+     * 允许注入样式/图表解析器，便于测试与扩展。
+     */
     public ReportDocxExporter(StyleResolver styleResolver, ChartSpecParser chartSpecParser) {
         this.styleResolver = styleResolver;
         this.chartSpecParser = chartSpecParser;
@@ -86,6 +96,9 @@ public class ReportDocxExporter implements DocumentExporter {
                 .register(new TableNodeRenderer());
     }
 
+    /**
+     * 注册图表风味渲染器（按 fallback 之前插入）。
+     */
     public ReportDocxExporter registerChartFlavorRenderer(DocxChartFlavorRenderer renderer) {
         DocxChartFlavorRenderer safe = Objects.requireNonNull(renderer, "renderer");
         int fallbackIndex = findFallbackIndex();
@@ -97,6 +110,9 @@ public class ReportDocxExporter implements DocumentExporter {
         return this;
     }
 
+    /**
+     * 定位通用兜底渲染器下标，保证后续注册可插入在其前面。
+     */
     private int findFallbackIndex() {
         for (int i = 0; i < chartFlavorRenderers.size(); i++) {
             if (chartFlavorRenderers.get(i) instanceof GenericFlavorRenderer) {
@@ -116,10 +132,19 @@ public class ReportDocxExporter implements DocumentExporter {
         return doc != null && "report".equalsIgnoreCase(doc.docType);
     }
 
+    /**
+     * 兼容旧调用方式（不传 request）。
+     */
     public void export(VDoc doc, Path output) throws IOException {
         export(doc, output, ExportRequest.defaults());
     }
 
+    /**
+     * DOCX 导出主流程：
+     * 1) 解析主题与页面参数
+     * 2) 生成封面/目录/正文/总结页
+     * 3) 写入输出文件
+     */
     @Override
     public void export(VDoc doc, Path output, ExportRequest request) throws IOException {
         if (!supports(doc)) {
@@ -159,6 +184,9 @@ public class ReportDocxExporter implements DocumentExporter {
         }
     }
 
+    /**
+     * 配置纸张尺寸与页边距（A4/Letter）。
+     */
     private void configurePage(XWPFDocument document, Map<String, Object> props) {
         String pageSize = str(props.get("pageSize"), "A4");
         CTSectPr sectPr = document.getDocument().getBody().isSetSectPr()
@@ -181,6 +209,9 @@ public class ReportDocxExporter implements DocumentExporter {
         mar.setRight(BigInteger.valueOf((long) VNode.asDouble(props.get("marginRightTwips"), 1080)));
     }
 
+    /**
+     * 配置页眉页脚与页码。
+     */
     private void setupHeaderFooter(XWPFDocument document, Map<String, Object> props, String reportTitle, ThemeTokens theme) {
         boolean headerShow = bool(props.get("headerShow"), true);
         boolean footerShow = bool(props.get("footerShow"), true);
@@ -222,6 +253,9 @@ public class ReportDocxExporter implements DocumentExporter {
         }
     }
 
+    /**
+     * 生成封面页。
+     */
     private void addCoverPage(DocxRenderContext context, Map<String, Object> props, VDoc doc) {
         String reportTitle = str(props.get("reportTitle"), defaultReportTitle(doc));
         String coverTitle = str(props.get("coverTitle"), reportTitle);
@@ -259,6 +293,9 @@ public class ReportDocxExporter implements DocumentExporter {
         pageBreak(context.document);
     }
 
+    /**
+     * 生成目录页（当前为静态文本目录）。
+     */
     private void addTocPage(DocxRenderContext context, List<VNode> sections) {
         addHeading(context, "目录", 1);
         for (int i = 0; i < sections.size(); i++) {
@@ -274,6 +311,9 @@ public class ReportDocxExporter implements DocumentExporter {
         pageBreak(context.document);
     }
 
+    /**
+     * 渲染正文章节与其子块。
+     */
     private void addContentPages(DocxRenderContext context, List<VNode> sections) throws IOException {
         for (int i = 0; i < sections.size(); i++) {
             VNode section = sections.get(i);
@@ -288,6 +328,9 @@ public class ReportDocxExporter implements DocumentExporter {
         }
     }
 
+    /**
+     * 生成总结页。
+     */
     private void addSummaryPage(DocxRenderContext context, Map<String, Object> props, List<VNode> sections) {
         pageBreak(context.document);
         String summaryTitle = str(props.get("summaryTitle"), "执行摘要");
@@ -296,6 +339,9 @@ public class ReportDocxExporter implements DocumentExporter {
         addCalloutParagraph(context, summaryText);
     }
 
+    /**
+     * 输出标准标题段落（章节标题/小节标题）。
+     */
     private void addHeading(DocxRenderContext context, String text, int level) {
         XWPFParagraph p = context.document.createParagraph();
         p.setAlignment(ParagraphAlignment.LEFT);
@@ -309,6 +355,9 @@ public class ReportDocxExporter implements DocumentExporter {
         run.setFontSize(level <= 1 ? 18 : 14);
     }
 
+    /**
+     * 输出强调段（callout）文本块。
+     */
     private void addCalloutParagraph(DocxRenderContext context, String text) {
         XWPFTable table = context.document.createTable(1, 1);
         table.setWidth("100%");
@@ -323,6 +372,11 @@ public class ReportDocxExporter implements DocumentExporter {
         run.setFontSize(11);
     }
 
+    /**
+     * 渲染图表卡片：
+     * - 优先原生图表
+     * - 失败时输出占位卡片与样本预览
+     */
     private void addChartCard(DocxRenderContext context, ChartSpec spec, List<Map<String, Object>> rows) {
         boolean nativeRendered = renderNativeChartIfNeeded(context, spec, rows);
         if (nativeRendered) {
@@ -347,6 +401,9 @@ public class ReportDocxExporter implements DocumentExporter {
         gap.setSpacingAfter(80);
     }
 
+    /**
+     * 输出最多 8 行 * 6 列样本预览，便于运行态排障。
+     */
     private void addSampleRowPreview(DocxRenderContext context, List<Map<String, Object>> rows) {
         if (rows == null || rows.isEmpty()) {
             return;
@@ -381,6 +438,9 @@ public class ReportDocxExporter implements DocumentExporter {
         }
     }
 
+    /**
+     * 渲染表格块（含多级表头/合并/重复表头）。
+     */
     private void addTableBlock(DocxRenderContext context, VNode tableNode, List<Map<String, Object>> rows) {
         TableModel model = tableSpecParser.parse(tableNode, rows);
         if (model.columnCount() <= 0) {
@@ -408,6 +468,9 @@ public class ReportDocxExporter implements DocumentExporter {
         gap.setSpacingAfter(80);
     }
 
+    /**
+     * 写入 DOCX 表头矩阵。
+     */
     private void fillDocxHeaderRows(DocxRenderContext context, XWPFTable table, TableModel model) {
         for (int r = 0; r < model.headerRowCount(); r++) {
             XWPFTableRow row = table.getRow(r);
@@ -426,6 +489,9 @@ public class ReportDocxExporter implements DocumentExporter {
         }
     }
 
+    /**
+     * 写入 DOCX 数据区矩阵。
+     */
     private void fillDocxBodyRows(DocxRenderContext context, XWPFTable table, TableModel model) {
         for (int r = 0; r < model.bodyRowCount(); r++) {
             int tableRowIndex = model.headerRowCount() + r;
@@ -446,6 +512,9 @@ public class ReportDocxExporter implements DocumentExporter {
         }
     }
 
+    /**
+     * 将 TableModel 的合并语义映射到 DOCX merge 标记。
+     */
     private void applyDocxMerges(XWPFTable table, TableModel model) {
         for (int r = 0; r < model.headerRowCount(); r++) {
             List<TableCell> row = model.headerRows().get(r);
@@ -468,6 +537,9 @@ public class ReportDocxExporter implements DocumentExporter {
         }
     }
 
+    /**
+     * 在 DOCX 表格中执行一次合并（hMerge/vMerge + gridSpan）。
+     */
     private void applyDocxMerge(XWPFTable table, int row, int col, int rowSpan, int colSpan) {
         int rowCount = table.getNumberOfRows();
         int colCount = table.getRow(row).getTableCells().size();
@@ -529,6 +601,9 @@ public class ReportDocxExporter implements DocumentExporter {
         return cell.getCTTc().isSetTcPr() ? cell.getCTTc().getTcPr() : cell.getCTTc().addNewTcPr();
     }
 
+    /**
+     * 标记表头行为“跨页重复”。
+     */
     private void markHeaderRowsRepeat(XWPFTable table, int headerRows) {
         for (int r = 0; r < headerRows && r < table.getNumberOfRows(); r++) {
             XWPFTableRow row = table.getRow(r);
@@ -559,6 +634,9 @@ public class ReportDocxExporter implements DocumentExporter {
         }
     }
 
+    /**
+     * 尝试绘制原生图表；异常时静默回退到占位卡片。
+     */
     private boolean renderNativeChartIfNeeded(DocxRenderContext context, ChartSpec spec, List<Map<String, Object>> rows) {
         boolean nativeChartEnabled = VNode.asBoolean(context.rootProps().get("nativeChartEnabled"), true);
         if (!nativeChartEnabled || rows == null || rows.isEmpty()) {
@@ -579,6 +657,9 @@ public class ReportDocxExporter implements DocumentExporter {
         }
     }
 
+    /**
+     * 在样本预览中按遇到顺序收集列，最多 6 列。
+     */
     private List<String> collectColumns(List<Map<String, Object>> rows) {
         List<String> columns = new ArrayList<>();
         for (Map<String, Object> row : rows) {
@@ -594,6 +675,9 @@ public class ReportDocxExporter implements DocumentExporter {
         return columns;
     }
 
+    /**
+     * 解析 chartType 对应的风味渲染器。
+     */
     private DocxChartFlavorRenderer resolveFlavor(String chartType) {
         for (DocxChartFlavorRenderer renderer : chartFlavorRenderers) {
             if (renderer.supports(chartType)) {
@@ -639,10 +723,16 @@ public class ReportDocxExporter implements DocumentExporter {
         run.setColor(VisualStyle.toHexNoHash(fg));
     }
 
+    /**
+     * 默认报告标题。
+     */
     private String defaultReportTitle(VDoc doc) {
         return doc.title == null || doc.title.isBlank() ? "报告" : doc.title;
     }
 
+    /**
+     * 自动构建总结文本（章节数/图表数/复杂图表数）。
+     */
     private String buildDefaultSummary(List<VNode> sections) {
         int chartCount = 0;
         int textCount = 0;
@@ -664,6 +754,9 @@ public class ReportDocxExporter implements DocumentExporter {
                 + " 段文本。复杂图表数量: " + advancedCharts + "。";
     }
 
+    /**
+     * 提取 section 子节点。
+     */
     private List<VNode> sectionNodes(VNode root) {
         if (root == null) {
             return Collections.emptyList();
@@ -686,11 +779,17 @@ public class ReportDocxExporter implements DocumentExporter {
         return s == null ? fallback : s;
     }
 
+    /**
+     * 快速插入分页符。
+     */
     private static void pageBreak(XWPFDocument document) {
         XWPFParagraph p = document.createParagraph();
         p.setPageBreak(true);
     }
 
+    /**
+     * 目录编号格式化。
+     */
     private String tocLabel(int index, String title) {
         if (title == null) {
             return index + ". 章节 " + index;
@@ -702,6 +801,9 @@ public class ReportDocxExporter implements DocumentExporter {
         return index + ". " + trimmed;
     }
 
+    /**
+     * DOCX 渲染上下文。
+     */
     public static final class DocxRenderContext {
         private final XWPFDocument document;
         private final ThemeTokens theme;
@@ -744,6 +846,9 @@ public class ReportDocxExporter implements DocumentExporter {
         }
     }
 
+    /**
+     * 图表风味渲染上下文（占位卡片模式）。
+     */
     public static final class DocxChartFlavorContext {
         private final XWPFTable table;
         private final ThemeTokens theme;
@@ -766,6 +871,9 @@ public class ReportDocxExporter implements DocumentExporter {
         }
     }
 
+    /**
+     * 节点 kind=text 渲染器。
+     */
     private final class TextNodeRenderer implements NodeRenderer<DocxRenderContext> {
         @Override
         public String kind() {
@@ -778,6 +886,9 @@ public class ReportDocxExporter implements DocumentExporter {
         }
     }
 
+    /**
+     * 节点 kind=chart 渲染器。
+     */
     private final class ChartNodeRenderer implements NodeRenderer<DocxRenderContext> {
         @Override
         public String kind() {
@@ -792,6 +903,9 @@ public class ReportDocxExporter implements DocumentExporter {
         }
     }
 
+    /**
+     * 节点 kind=table 渲染器。
+     */
     private final class TableNodeRenderer implements NodeRenderer<DocxRenderContext> {
         @Override
         public String kind() {
@@ -805,6 +919,9 @@ public class ReportDocxExporter implements DocumentExporter {
         }
     }
 
+    /**
+     * 未支持节点兜底渲染器。
+     */
     private final class UnsupportedNodeRenderer implements NodeRenderer<DocxRenderContext> {
         @Override
         public String kind() {
@@ -822,6 +939,9 @@ public class ReportDocxExporter implements DocumentExporter {
         }
     }
 
+    /**
+     * 图表风味渲染接口（用于占位卡片策略说明）。
+     */
     public interface DocxChartFlavorRenderer {
         boolean supports(String chartType);
 

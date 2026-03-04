@@ -10,7 +10,24 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+/**
+ * 表格 DSL 解析器。
+ * <p>
+ * 能力覆盖：
+ * - 静态列定义与自动推断
+ * - 多级表头（headerRows + rowSpan/colSpan）
+ * - 数据区渲染与格式化
+ * - mergeCells 合并规则
+ * - pivot 动态列展开（按 columnField/valueField）
+ * </p>
+ */
 public final class TableSpecParser {
+    /**
+     * 将 table 节点解析为统一 TableModel。
+     *
+     * @param tableNode 表格节点
+     * @param resolvedRows 上游已解析的数据行（query/source 结果）
+     */
     public TableModel parse(VNode tableNode, List<Map<String, Object>> resolvedRows) {
         Map<String, Object> props = tableNode == null ? Collections.emptyMap() : tableNode.propsOrEmpty();
         String title = str(props.get("titleText"), "表格");
@@ -51,6 +68,9 @@ public final class TableSpecParser {
         return new TableModel(title, columns, headerRows, bodyRows, repeatHeader, zebra);
     }
 
+    /**
+     * 行数限流，避免超大表格导致导出文档过重。
+     */
     private List<Map<String, Object>> limitRows(List<Map<String, Object>> rows, int maxRows) {
         if (rows.size() <= maxRows) {
             return rows;
@@ -58,6 +78,13 @@ public final class TableSpecParser {
         return rows.subList(0, maxRows);
     }
 
+    /**
+     * 解析输入行数据：
+     * - 优先 props.rows
+     * - 缺失时回退 resolvedRows
+     *
+     * 同时兼容数组行（按列序映射到 key）。
+     */
     @SuppressWarnings("unchecked")
     private List<Map<String, Object>> resolveRowsInput(
             Map<String, Object> props,
@@ -86,6 +113,9 @@ public final class TableSpecParser {
         return rows;
     }
 
+    /**
+     * 解析列定义，兼容字符串列与对象列。
+     */
     private List<TableColumn> parseColumns(Object raw) {
         if (!(raw instanceof List<?> list)) {
             return Collections.emptyList();
@@ -115,6 +145,9 @@ public final class TableSpecParser {
         return columns;
     }
 
+    /**
+     * 当列定义缺失时，从数据 key 推断列结构。
+     */
     private List<TableColumn> inferColumns(List<Map<String, Object>> rows) {
         if (rows == null || rows.isEmpty()) {
             return Collections.emptyList();
@@ -130,6 +163,9 @@ public final class TableSpecParser {
         return columns;
     }
 
+    /**
+     * 构建表头矩阵，并把合并区域转换为锚点 + hidden 占位。
+     */
     private List<List<TableCell>> buildHeaderGrid(Object rawDefs, List<TableColumn> columns) {
         if (!(rawDefs instanceof List<?> list) || list.isEmpty()) {
             return Collections.emptyList();
@@ -191,6 +227,9 @@ public final class TableSpecParser {
         return new ArrayList<>(matrix);
     }
 
+    /**
+     * 构建数据区矩阵。
+     */
     private List<List<TableCell>> buildBodyGrid(List<Map<String, Object>> rows, List<TableColumn> columns) {
         if (columns.isEmpty()) {
             return Collections.emptyList();
@@ -211,6 +250,9 @@ public final class TableSpecParser {
         return body;
     }
 
+    /**
+     * 应用 mergeCells 配置（按 scope 过滤 header/body）。
+     */
     private void applyMergeSpecs(List<List<TableCell>> grid, Object rawMerges, String scope) {
         if (!(rawMerges instanceof List<?> merges) || grid.isEmpty()) {
             return;
@@ -231,6 +273,9 @@ public final class TableSpecParser {
         }
     }
 
+    /**
+     * 在矩阵中执行一次合并。
+     */
     private void applyMerge(List<List<TableCell>> grid, int row, int col, int rowSpan, int colSpan) {
         int rowCount = grid.size();
         int colCount = grid.get(0).size();
@@ -257,6 +302,12 @@ public final class TableSpecParser {
         }
     }
 
+    /**
+     * Pivot 解析：
+     * - rowFields 作为行维
+     * - columnField 展开为动态列
+     * - valueField 按 agg 聚合
+     */
     @SuppressWarnings("unchecked")
     private PivotResult buildPivot(
             List<Map<String, Object>> rows,
@@ -374,6 +425,9 @@ public final class TableSpecParser {
         return new PivotResult(columns, outRows, headerDefs);
     }
 
+    /**
+     * 计算聚合值。
+     */
     private double aggregateValue(PivotAggregate aggregate, String agg) {
         return switch (agg) {
             case "avg" -> aggregate.count > 0 ? aggregate.sum / aggregate.count : 0.0;
@@ -384,6 +438,9 @@ public final class TableSpecParser {
         };
     }
 
+    /**
+     * 读取字符串列表并清洗空值。
+     */
     private List<String> stringList(Object raw) {
         if (!(raw instanceof List<?> list)) {
             return Collections.emptyList();
@@ -398,6 +455,9 @@ public final class TableSpecParser {
         return values;
     }
 
+    /**
+     * 用不可见分隔符拼接多维行键，避免常规字符冲突。
+     */
     private String joinRowKey(Map<String, Object> row, List<String> fields) {
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < fields.size(); i++) {
@@ -413,6 +473,9 @@ public final class TableSpecParser {
         return raw instanceof List<?> list && !list.isEmpty();
     }
 
+    /**
+     * 按列 format 对值做文本格式化。
+     */
     private String formatValue(Object value, String format) {
         if (value == null) {
             return "";
@@ -471,6 +534,9 @@ public final class TableSpecParser {
         return null;
     }
 
+    /**
+     * Pivot 聚合桶（sum/count/min/max）。
+     */
     private static final class PivotAggregate {
         double sum = 0.0;
         int count = 0;
@@ -478,9 +544,15 @@ public final class TableSpecParser {
         double max = Double.NEGATIVE_INFINITY;
     }
 
+    /**
+     * Pivot 行桶：维度值 + 列聚合映射。
+     */
     private record PivotBucket(LinkedHashMap<String, Object> dims, LinkedHashMap<String, PivotAggregate> values) {
     }
 
+    /**
+     * Pivot 输出结果：列定义 + 行数据 + 动态表头定义。
+     */
     private record PivotResult(
             List<TableColumn> columns,
             List<Map<String, Object>> rows,

@@ -4,6 +4,12 @@ import java.awt.Color;
 import java.util.Collections;
 import java.util.List;
 
+/**
+ * 主题令牌集合。
+ * <p>
+ * 将前端 DSL 的主题概念映射为导出端可直接消费的颜色/字体参数。
+ * </p>
+ */
 public final class ThemeTokens {
     private final String id;
     private final String fontPrimary;
@@ -18,6 +24,20 @@ public final class ThemeTokens {
     private final Color primarySoft;
     private final List<Color> palette;
 
+    /**
+     * @param id 主题标识
+     * @param fontPrimary 主字体
+     * @param fontMono 等宽字体
+     * @param canvas 页面背景色
+     * @param panel 卡片背景色
+     * @param panelAlt 次级卡片背景色
+     * @param border 边框色
+     * @param text 主文本色
+     * @param muted 次级文本色
+     * @param primary 主品牌色
+     * @param primarySoft 主色浅底
+     * @param palette 图表调色板
+     */
     public ThemeTokens(
             String id,
             String fontPrimary,

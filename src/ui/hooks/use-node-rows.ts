@@ -15,6 +15,12 @@ interface UseNodeRowsResult {
   error?: string;
 }
 
+/**
+ * 节点数据获取 Hook：
+ * 1) 按 node.data 拉取源数据
+ * 2) 对图表应用 computedFields
+ * 3) 应用全局/节点过滤器
+ */
 export const useNodeRows = (
   doc: VDoc,
   node: VNode,
@@ -61,6 +67,7 @@ export const useNodeRows = (
       });
     return () => {
       active = false;
+      // 卸载或依赖切换时取消本请求键，防止旧请求晚到覆盖。
       engine.cancel(`${sourceId}::${node.data?.queryId ?? "na"}::${JSON.stringify(node.data?.params ?? {})}`);
     };
   }, [dataVersion, engine, node.data?.params, node.data?.queryId, node.data?.sourceId]);

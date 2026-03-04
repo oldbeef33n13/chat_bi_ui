@@ -3,12 +3,14 @@ import type { TableSpec, VNode } from "../../core/doc/types";
 import { EChartView } from "../chart/EChartView";
 import { TableView } from "../table/TableView";
 
+/** 渲染上下文：外部提供节点数据。 */
 export interface RenderContext {
   getRows: (node: VNode) => Array<Record<string, unknown>>;
 }
 
 export type NodeRenderer = (node: VNode, ctx: RenderContext) => ReactNode;
 
+/** 节点渲染注册器。 */
 export class RendererRegistry {
   private readonly map = new Map<string, NodeRenderer>();
 
@@ -25,6 +27,7 @@ export class RendererRegistry {
   }
 }
 
+/** 默认渲染注册：text/chart/table + 占位节点。 */
 export const createDefaultRendererRegistry = (): RendererRegistry => {
   const registry = new RendererRegistry();
 

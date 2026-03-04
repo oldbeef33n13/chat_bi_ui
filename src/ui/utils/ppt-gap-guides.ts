@@ -9,12 +9,14 @@ export interface GapGuide {
   label: string;
 }
 
+/** 根据等距分布结果生成可视化 gap 引导线。 */
 export const buildGapGuides = (
   nodes: VNode[],
   selectedIds: string[],
   commands: Command[],
   kind: "hdistribute" | "vdistribute"
 ): GapGuide[] => {
+  // 仅绝对定位节点支持可视化等距辅助线。
   const selected = nodes
     .filter((node) => selectedIds.includes(node.id) && node.layout?.mode === "absolute")
     .map((node) => ({
@@ -27,6 +29,7 @@ export const buildGapGuides = (
   if (selected.length < 3) {
     return [];
   }
+  // 先基于 commands 计算分布后的目标坐标。
   const next = selected.map((item) => ({ ...item }));
   commands.forEach((command) => {
     if (command.type !== "UpdateLayout" || !command.nodeId || !command.layout) {
@@ -45,6 +48,7 @@ export const buildGapGuides = (
   });
 
   if (kind === "hdistribute") {
+    // 水平等距：按 x 排序，计算相邻节点的水平间隔。
     const sorted = [...next].sort((a, b) => a.x - b.x);
     return sorted.slice(0, -1).map((item, idx) => {
       const nxt = sorted[idx + 1]!;
@@ -60,6 +64,7 @@ export const buildGapGuides = (
     });
   }
 
+  // 垂直等距：按 y 排序，计算相邻节点的垂直间隔。
   const sorted = [...next].sort((a, b) => a.y - b.y);
   return sorted.slice(0, -1).map((item, idx) => {
     const nxt = sorted[idx + 1]!;

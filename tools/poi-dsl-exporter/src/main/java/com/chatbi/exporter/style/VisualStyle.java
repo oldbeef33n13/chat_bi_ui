@@ -5,6 +5,12 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+/**
+ * 视觉样式工具类。
+ * <p>
+ * 提供默认色板与颜色解析辅助，供 DOCX/PPTX 导出统一调用。
+ * </p>
+ */
 public final class VisualStyle {
     private VisualStyle() {
     }
@@ -20,6 +26,12 @@ public final class VisualStyle {
     public static final Color TEXT = color("#1f2937");
     public static final Color MUTED = color("#6b7280");
 
+    /**
+     * 解析 Hex 颜色字符串，支持：
+     * - `#RGB`
+     * - `#RRGGBB`
+     * - `#AARRGGBB`（忽略 alpha）
+     */
     public static Color color(String hex) {
         if (hex == null) {
             throw new IllegalArgumentException("Color is null.");
@@ -42,10 +54,16 @@ public final class VisualStyle {
         return new Color(r, g, b);
     }
 
+    /**
+     * 将颜色转换为无 # 的十六进制字符串（给 POI XML 属性使用）。
+     */
     public static String toHexNoHash(Color color) {
         return String.format("%02X%02X%02X", color.getRed(), color.getGreen(), color.getBlue());
     }
 
+    /**
+     * 批量构建不可变调色板。
+     */
     public static List<Color> palette(String... colors) {
         if (colors == null || colors.length == 0) {
             return Collections.emptyList();

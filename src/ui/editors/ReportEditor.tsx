@@ -70,6 +70,12 @@ interface TocEntry extends ReportEntryBase {
 
 type ReportEntry = CoverEntry | TocEntry | SectionHeaderEntry | BlockEntry | QuickInsertEntry | SummaryEntry;
 
+/**
+ * Report 编辑器：
+ * - 支持封面/目录/页眉页脚/总结页
+ * - 支持大文档虚拟化渲染
+ * - 支持块级插入与导出
+ */
 export function ReportEditor({ doc }: ReportEditorProps): JSX.Element {
   const store = useEditorStore();
   const selection = useSignalValue(store.selection);
@@ -98,6 +104,7 @@ export function ReportEditor({ doc }: ReportEditorProps): JSX.Element {
   };
 
   const insertBlock = (section: VNode, blockKind: "text" | "chart" | "table"): void => {
+    // 新插入图表/表格时尽量补齐默认数据绑定，降低空白态概率。
     const fallbackSourceId = doc.dataSources?.[0]?.id;
     const fallbackQueryId = doc.queries?.find((item) => item.sourceId === fallbackSourceId)?.queryId;
     const node: VNode =

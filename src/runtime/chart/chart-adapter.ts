@@ -1,8 +1,14 @@
 import type { EChartsOption } from "echarts";
 import type { ChartSpec, ChartType, FieldBinding } from "../../core/doc/types";
 
+/**
+ * ChartSpec -> EChartsOption 适配层。
+ * 目标：把 DSL 统一映射成可渲染 option，并在复杂图表场景提供保底策略。
+ */
+/** 从一行数据中按 binding 安全读取字段。 */
 const valueOf = (row: Record<string, unknown>, binding?: FieldBinding): unknown => (binding ? row[binding.field] : undefined);
 
+/** 通用分组工具，保持输入顺序。 */
 const groupBy = <T, K extends string | number>(items: T[], toKey: (item: T) => K): Map<K, T[]> => {
   const map = new Map<K, T[]>();
   items.forEach((item) => {
@@ -15,6 +21,7 @@ const groupBy = <T, K extends string | number>(items: T[], toKey: (item: T) => K
   return map;
 };
 
+/** 深度合并 optionPatch：对象递归合并，数组以 patch 覆盖。 */
 const deepMerge = (base: unknown, patch: unknown): unknown => {
   if (Array.isArray(base) && Array.isArray(patch)) {
     return patch;
@@ -36,6 +43,7 @@ const deepMerge = (base: unknown, patch: unknown): unknown => {
   return patch ?? base;
 };
 
+/** chartType=auto 的本地推断规则。 */
 const inferType = (spec: ChartSpec): ChartType => {
   if (spec.chartType !== "auto") {
     return spec.chartType;
@@ -53,6 +61,7 @@ const inferType = (spec: ChartSpec): ChartType => {
   return "bar";
 };
 
+/** 容错数值转换，非法值回退 0。 */
 const asNumber = (value: unknown): number => {
   if (typeof value === "number") {
     return value;
@@ -64,8 +73,10 @@ const asNumber = (value: unknown): number => {
   return 0;
 };
 
+/** 去重并保持顺序。 */
 const uniq = <T,>(items: T[]): T[] => [...new Set(items)];
 
+/** 分位数计算（离散下标法）。 */
 const quantile = (values: number[], p: number): number => {
   if (values.length === 0) {
     return 0;
@@ -75,6 +86,7 @@ const quantile = (values: number[], p: number): number => {
   return sorted[idx] ?? 0;
 };
 
+/** 按聚合函数计算数值列表。 */
 const aggregateValues = (values: number[], agg?: FieldBinding["agg"]): number => {
   switch (agg) {
     case "avg":
@@ -99,6 +111,7 @@ const aggregateValues = (values: number[], agg?: FieldBinding["agg"]): number =>
   }
 };
 
+/** 按 category 聚合，输出饼图/树图可直接消费的数据结构。 */
 const aggregateByCategory = (
   rows: Array<Record<string, unknown>>,
   categoryBinding: FieldBinding | undefined,
@@ -114,6 +127,7 @@ const aggregateByCategory = (
   }));
 };
 
+/** 推断 calendar 图表的年份范围基准。 */
 const inferCalendarYear = (rows: Array<Record<string, unknown>>, binding: FieldBinding | undefined): number => {
   for (const row of rows) {
     const raw = String(valueOf(row, binding) ?? "").trim();
@@ -128,6 +142,7 @@ const inferCalendarYear = (rows: Array<Record<string, unknown>>, binding: FieldB
   return new Date().getFullYear();
 };
 
+/** 归一化日期为 YYYY-MM-DD。 */
 const normalizeCalendarDate = (value: unknown, fallbackYear: number, index: number): string => {
   const raw = String(value ?? "").trim();
   const fallbackDay = String((index % 28) + 1).padStart(2, "0");
@@ -156,6 +171,7 @@ const paletteByRef: Record<string, string[]> = {
   "palette.business": ["#0f766e", "#ca8a04", "#b45309", "#7c3aed", "#dc2626", "#1d4ed8"]
 };
 
+/** 根据主题与 paletteRef 解析调色板。 */
 const resolvePalette = (spec: ChartSpec): string[] | undefined => {
   if (spec.paletteRef && paletteByRef[spec.paletteRef]) {
     return paletteByRef[spec.paletteRef];
@@ -169,6 +185,7 @@ const resolvePalette = (spec: ChartSpec): string[] | undefined => {
   return paletteByRef["palette.tech"];
 };
 
+/** 根据主题解析图表背景色。 */
 const resolveChartBg = (spec: ChartSpec): string | undefined => {
   if (!spec.themeRef) {
     return undefined;
@@ -176,7 +193,9 @@ const resolveChartBg = (spec: ChartSpec): string | undefined => {
   return spec.themeRef.includes("dark") ? "#0f172a" : "#ffffff";
 };
 
+/** 主入口：将图表 DSL + 数据行映射为 ECharts option。 */
 export const chartSpecToOption = (spec: ChartSpec, rows: Array<Record<string, unknown>>): EChartsOption => {
+  // 先归一化图表族，后续分支共用同一套绑定提取逻辑。
   const chartType = inferType(spec);
   const nativeSankey = chartType === "sankey";
   const nativeTreemap = chartType === "treemap";
@@ -213,6 +232,7 @@ export const chartSpecToOption = (spec: ChartSpec, rows: Array<Record<string, un
   };
 
   if (nativeSankey) {
+    // Sankey：按 source/target 聚合 linkValue。
     const sourceBinding = spec.bindings.find((b) => b.role === "linkSource" || b.role === "category" || b.role === "x");
     const targetBinding = spec.bindings.find((b) => b.role === "linkTarget");
     const valueBinding = spec.bindings.find((b) => b.role === "linkValue" || b.role === "value" || b.role === "y");
@@ -265,6 +285,7 @@ export const chartSpecToOption = (spec: ChartSpec, rows: Array<Record<string, un
   }
 
   if (nativeTreemap) {
+    // Treemap：按 category 聚合 value。
     const categoryBinding = spec.bindings.find((b) => b.role === "category" || b.role === "x");
     const valueBinding = spec.bindings.find((b) => b.role === "value" || b.role === "y");
     const data = aggregateByCategory(rows, categoryBinding, valueBinding);
@@ -284,6 +305,7 @@ export const chartSpecToOption = (spec: ChartSpec, rows: Array<Record<string, un
   }
 
   if (nativeGauge) {
+    // Gauge：输出 0~100 的单值，支持 0~1 比例自动转百分比。
     const valueBinding = spec.bindings.find((b) => b.role === "value" || b.role === "y" || b.role === "linkValue");
     const rawValue = aggregateValues(
       rows.map((row) => asNumber(valueOf(row, valueBinding))),
@@ -308,6 +330,7 @@ export const chartSpecToOption = (spec: ChartSpec, rows: Array<Record<string, un
   }
 
   if (nativeCalendar) {
+    // Calendar：日期聚合 + visualMap，自动推断年度范围。
     const dateBinding = spec.bindings.find((b) => b.role === "x" || b.role === "category");
     const valueBinding = spec.bindings.find((b) => b.role === "y" || b.role === "value");
     const year = inferCalendarYear(rows, dateBinding);
@@ -361,6 +384,7 @@ export const chartSpecToOption = (spec: ChartSpec, rows: Array<Record<string, un
   }
 
   if (pieLike) {
+    // Pie/Sunburst 降级同路：统一走分类聚合渲染。
     const category = spec.bindings.find((b) => b.role === "category" || b.role === "x" || b.role === "linkSource" || b.role === "node");
     const value = spec.bindings.find((b) => b.role === "value" || b.role === "y" || b.role === "linkValue");
     const data = aggregateByCategory(rows, category, value);

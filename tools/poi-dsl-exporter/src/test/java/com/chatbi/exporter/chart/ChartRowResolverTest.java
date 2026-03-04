@@ -9,7 +9,13 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+/**
+ * ChartRowResolver 单元测试。
+ */
 class ChartRowResolverTest {
+    /**
+     * sampleRows 应优先于其他数据来源。
+     */
     @Test
     void preferSampleRows() {
         ChartSpec spec = new ChartSpec(
@@ -36,6 +42,9 @@ class ChartRowResolverTest {
         assertEquals("A", rows.get(0).get("x"));
     }
 
+    /**
+     * queryId 命中时应优先返回查询结果。
+     */
     @Test
     void resolveFromQueryResult() {
         VDoc doc = new VDoc();
@@ -68,6 +77,9 @@ class ChartRowResolverTest {
         assertEquals("Mon", rows.get(0).get("day"));
     }
 
+    /**
+     * query 未命中时，应回退到静态数据源。
+     */
     @Test
     void resolveFromStaticDataSource() {
         VDoc doc = new VDoc();

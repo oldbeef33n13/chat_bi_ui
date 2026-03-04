@@ -6,6 +6,7 @@ import { CanvasRenderer } from "echarts/renderers";
 import type { ChartSpec } from "../../core/doc/types";
 import { chartSpecToOption } from "./chart-adapter";
 
+// 只注册当前业务使用到的组件，避免全量引入 ECharts 体积。
 use([
   TitleComponent,
   TooltipComponent,
@@ -32,6 +33,7 @@ interface EChartViewProps {
   height?: number | string;
 }
 
+/** 图表运行态组件：负责实例生命周期与 option 更新。 */
 export function EChartView({ spec, rows, height = 240 }: EChartViewProps): JSX.Element {
   const rootRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<ECharts | null>(null);
@@ -57,6 +59,7 @@ export function EChartView({ spec, rows, height = 240 }: EChartViewProps): JSX.E
     if (!chartRef.current) {
       return;
     }
+    // spec 或数据变化时全量覆盖 option，保证和编辑器 DSL 同步。
     const option = chartSpecToOption(spec, rows);
     chartRef.current.setOption(option, true);
   }, [rows, spec]);

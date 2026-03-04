@@ -8,7 +8,19 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * DSL 基础校验器。
+ * <p>
+ * 目标是提供“导出前最小安全网”：
+ * - 文档结构完整性
+ * - schemaVersion 主版本兼容性
+ * - chartType 与 Web 规格一致性
+ * </p>
+ */
 public final class VDocValidator {
+    /**
+     * 返回问题列表，不抛异常。
+     */
     public List<String> validate(VDoc doc) {
         List<String> issues = new ArrayList<>();
         if (doc == null) {
@@ -33,6 +45,11 @@ public final class VDocValidator {
         return issues;
     }
 
+    /**
+     * 根据 strict 模式决定行为：
+     * - strict=true：发现问题直接抛异常
+     * - strict=false：仅输出告警，继续导出
+     */
     public void ensureValid(VDoc doc, boolean strict) {
         List<String> issues = validate(doc);
         if (issues.isEmpty()) {
@@ -44,6 +61,9 @@ public final class VDocValidator {
         System.err.println("[warn] DSL validation issues: " + String.join("; ", issues));
     }
 
+    /**
+     * 仅解析 schemaVersion 的主版本号。
+     */
     private Integer parseMajor(String schemaVersion) {
         String[] pieces = schemaVersion.split("\\.");
         if (pieces.length == 0) {
@@ -60,6 +80,9 @@ public final class VDocValidator {
         return value == null || value.isBlank();
     }
 
+    /**
+     * 遍历树并校验 chartType。
+     */
     private List<String> validateChartTypes(VNode root) {
         List<String> issues = new ArrayList<>();
         if (root == null) {
@@ -84,6 +107,9 @@ public final class VDocValidator {
         }
     }
 
+    /**
+     * 从节点属性中抽取 chartType。
+     */
     private String extractChartType(Map<String, Object> props) {
         Object value = props.get("chartType");
         return value == null ? "" : String.valueOf(value);

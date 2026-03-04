@@ -1,5 +1,6 @@
 import type { Command } from "../../core/doc/types";
 
+/** Dashboard 网格布局矩形。 */
 export interface GridRect {
   mode: "grid";
   gx: number;
@@ -19,6 +20,7 @@ export interface GridResolveResult {
   strategy: "swap" | "push" | "single";
 }
 
+/** 约束网格参数到合法区间，避免越界与异常尺寸。 */
 export const normalizeGrid = (rect: GridRect, cols: number): GridRect => {
   const gw = Math.max(2, Math.min(cols, Math.round(rect.gw)));
   const gh = Math.max(2, Math.round(rect.gh));
@@ -30,9 +32,11 @@ export const normalizeGrid = (rect: GridRect, cols: number): GridRect => {
 export const isGridOverlap = (a: GridRect, b: GridRect): boolean =>
   a.gx < b.gx + b.gw && a.gx + a.gw > b.gx && a.gy < b.gy + b.gh && a.gy + a.gh > b.gy;
 
+/** 判定 candidate 是否可放置（忽略指定节点）。 */
 const canPlaceGridRect = (candidate: GridRect, occupied: GridNodeState[], ignoreIds: Set<string>): boolean =>
   !occupied.some((item) => !ignoreIds.has(item.id) && isGridOverlap(candidate, item.layout));
 
+/** 从首选位置出发，搜索最近可用网格位。 */
 const findFreeGridRect = (
   source: GridRect,
   occupied: GridNodeState[],
@@ -41,6 +45,7 @@ const findFreeGridRect = (
   preferredY: number,
   ignoreIds: Set<string>
 ): GridRect => {
+  // 优先在 preferredX 附近寻找可用位；找不到再向下扩展行。
   const boundedX = Math.max(0, Math.min(cols - source.gw, preferredX));
   for (let dy = 0; dy < 260; dy += 1) {
     const gy = Math.max(0, preferredY + dy);
@@ -63,6 +68,12 @@ export const resolveGridConflict = (
   cols: number,
   op: "move" | "resize"
 ): GridResolveResult => {
+  /**
+   * 冲突解法优先级：
+   * 1) single：无冲突直接更新；
+   * 2) swap：移动且仅一个冲突时尝试换位；
+   * 3) push：广度方式把冲突块向后挤压。
+   */
   const normalizedNext = normalizeGrid(nextLayout, cols);
   const map = new Map<string, GridNodeState>(nodes.map((node) => [node.id, { ...node, layout: normalizeGrid(node.layout, cols) }]));
   const moved = map.get(movedId);
@@ -162,5 +173,6 @@ const collectGridCommands = (before: GridNodeState[], after: GridNodeState[]): C
     }));
 };
 
+/** 网格矩形完全相等判定。 */
 const isSameGridRect = (a: GridRect, b: GridRect): boolean =>
   a.gx === b.gx && a.gy === b.gy && a.gw === b.gw && a.gh === b.gh;

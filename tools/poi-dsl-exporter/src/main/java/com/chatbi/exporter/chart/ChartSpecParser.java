@@ -9,7 +9,19 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+/**
+ * VNode(chart) -> ChartSpec 解析器。
+ * <p>
+ * 负责将前端多种历史字段与新字段统一收敛到稳定结构：
+ * - xField / yField / yFields / measures / bindings
+ * - legend/axis/stack/smooth
+ * - palette / optionPatch
+ * </p>
+ */
 public final class ChartSpecParser {
+    /**
+     * 解析图表节点语义规格。
+     */
     public ChartSpec parse(VNode chartNode) {
         if (chartNode == null) {
             return emptySpec();
@@ -63,6 +75,9 @@ public final class ChartSpecParser {
         );
     }
 
+    /**
+     * 返回空安全默认规格。
+     */
     private ChartSpec emptySpec() {
         return new ChartSpec(
                 "图表",
@@ -87,6 +102,9 @@ public final class ChartSpecParser {
         );
     }
 
+    /**
+     * 标题优先级：titleText > node.name > "图表"。
+     */
     private String resolveTitle(VNode node) {
         String title = node.propString("titleText", "");
         if (!title.isBlank()) {
@@ -98,6 +116,9 @@ public final class ChartSpecParser {
         return "图表";
     }
 
+    /**
+     * 解析维度字段（X 轴）。
+     */
     private String resolveDimension(Map<String, Object> props, List<ChartBinding> bindings) {
         String direct = str(props.get("xField"), "");
         if (!direct.isBlank()) {
@@ -112,6 +133,9 @@ public final class ChartSpecParser {
         return "";
     }
 
+    /**
+     * 解析指标字段列表（Y 轴）。
+     */
     private List<String> resolveMeasures(Map<String, Object> props, List<ChartBinding> bindings) {
         Set<String> result = new LinkedHashSet<>();
         addField(result, props.get("yField"));
@@ -132,6 +156,9 @@ public final class ChartSpecParser {
         return new ArrayList<>(result);
     }
 
+    /**
+     * 解析系列分组字段。
+     */
     private String resolveSeries(Map<String, Object> props, List<ChartBinding> bindings) {
         String direct = str(props.get("seriesField"), "");
         if (!direct.isBlank()) {
@@ -146,6 +173,9 @@ public final class ChartSpecParser {
         return "";
     }
 
+    /**
+     * 解析第二轴字段。
+     */
     private String resolveSecondAxis(Map<String, Object> props, List<ChartBinding> bindings) {
         String direct = str(props.get("secondAxisField"), "");
         if (!direct.isBlank()) {
@@ -160,6 +190,9 @@ public final class ChartSpecParser {
         return "";
     }
 
+    /**
+     * 解析 bindings 配置。
+     */
     @SuppressWarnings("unchecked")
     private List<ChartBinding> parseBindings(Object raw) {
         if (!(raw instanceof List<?> list)) {
@@ -182,6 +215,9 @@ public final class ChartSpecParser {
         return result;
     }
 
+    /**
+     * 兼容 measures 中对象结构（{ field: ... }）。
+     */
     @SuppressWarnings("unchecked")
     private void addMeasureObjects(Set<String> result, Object raw) {
         if (!(raw instanceof List<?> list)) {
@@ -196,6 +232,9 @@ public final class ChartSpecParser {
         }
     }
 
+    /**
+     * 兼容 yFields 中字符串/对象混合结构。
+     */
     @SuppressWarnings("unchecked")
     private void addStringList(Set<String> result, Object raw) {
         if (!(raw instanceof List<?> list)) {
@@ -209,6 +248,9 @@ public final class ChartSpecParser {
         }
     }
 
+    /**
+     * 解析调色板，优先 props.palette，回退 style.palette。
+     */
     @SuppressWarnings("unchecked")
     private List<String> readPalette(VNode node, Map<String, Object> props) {
         Object raw = props.get("palette");
@@ -235,6 +277,9 @@ public final class ChartSpecParser {
         }
     }
 
+    /**
+     * 读取 optionPatch，缺失则返回空 Map。
+     */
     @SuppressWarnings("unchecked")
     private Map<String, Object> readOptionPatch(Map<String, Object> props) {
         Object raw = props.get("optionPatch");

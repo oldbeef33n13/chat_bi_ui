@@ -8,7 +8,21 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 图表数据行解析器。
+ * <p>
+ * 按优先级回填 rows：
+ * 1) spec.sampleRows
+ * 2) queryId 命中的 query 结果
+ * 3) sourceId 命中的 dataSource.staticData
+ * 4) sourceId 关联 query 结果
+ * 5) 首个可用 dataSource
+ * </p>
+ */
 public final class ChartRowResolver {
+    /**
+     * 解析图表节点可用的数据行。
+     */
     public List<Map<String, Object>> resolve(VDoc doc, VNode chartNode, ChartSpec spec) {
         if (spec != null && !spec.sampleRows().isEmpty()) {
             return spec.sampleRows();
@@ -40,6 +54,9 @@ public final class ChartRowResolver {
         return Collections.emptyList();
     }
 
+    /**
+     * 从节点 data 中读取 sourceId。
+     */
     @SuppressWarnings("unchecked")
     private String sourceId(VNode chartNode) {
         if (chartNode == null || chartNode.data == null) {
@@ -49,6 +66,9 @@ public final class ChartRowResolver {
         return value == null ? "" : String.valueOf(value);
     }
 
+    /**
+     * 从节点 data 中读取 queryId。
+     */
     @SuppressWarnings("unchecked")
     private String queryId(VNode chartNode) {
         if (chartNode == null || chartNode.data == null) {
@@ -58,6 +78,9 @@ public final class ChartRowResolver {
         return value == null ? "" : String.valueOf(value);
     }
 
+    /**
+     * 从 dataSources 中按 sourceId 查找 staticData。
+     */
     @SuppressWarnings("unchecked")
     private List<Map<String, Object>> fromSource(VDoc doc, String sourceId) {
         if (doc == null || doc.dataSources == null || doc.dataSources.isEmpty()) {
@@ -75,6 +98,9 @@ public final class ChartRowResolver {
         return Collections.emptyList();
     }
 
+    /**
+     * 取第一个可用 dataSource 的数据，作为兜底。
+     */
     @SuppressWarnings("unchecked")
     private List<Map<String, Object>> fromFirstSource(VDoc doc) {
         if (doc == null || doc.dataSources == null || doc.dataSources.isEmpty()) {
@@ -89,6 +115,9 @@ public final class ChartRowResolver {
         return Collections.emptyList();
     }
 
+    /**
+     * 按 queryId 查找查询结果。
+     */
     @SuppressWarnings("unchecked")
     private List<Map<String, Object>> fromQueryResult(VDoc doc, String queryId) {
         if (queryId.isBlank() || doc == null || doc.queries == null) {
@@ -118,6 +147,9 @@ public final class ChartRowResolver {
         return Collections.emptyList();
     }
 
+    /**
+     * 按 sourceId 关联查询结果。
+     */
     @SuppressWarnings("unchecked")
     private List<Map<String, Object>> fromQueryBySource(VDoc doc, String sourceId) {
         if (sourceId.isBlank() || doc == null || doc.queries == null) {
@@ -147,6 +179,9 @@ public final class ChartRowResolver {
         return Collections.emptyList();
     }
 
+    /**
+     * 统一解码 rows/data/result 等常见结构。
+     */
     @SuppressWarnings("unchecked")
     private List<Map<String, Object>> decodeRows(Object raw) {
         if (raw == null) {

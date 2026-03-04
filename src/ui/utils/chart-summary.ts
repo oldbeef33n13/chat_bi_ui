@@ -1,5 +1,6 @@
 import type { ChartSpec } from "../../core/doc/types";
 
+/** 容错数值转换。 */
 const asNumber = (value: unknown): number => {
   if (typeof value === "number") {
     return value;
@@ -8,6 +9,7 @@ const asNumber = (value: unknown): number => {
   return Number.isFinite(n) ? n : 0;
 };
 
+/** 分位数计算（离散下标法）。 */
 const quantile = (values: number[], p: number): number => {
   if (values.length === 0) {
     return 0;
@@ -17,6 +19,7 @@ const quantile = (values: number[], p: number): number => {
   return sorted[idx] ?? 0;
 };
 
+/** 聚合函数计算，和图表渲染 agg 语义保持一致。 */
 const aggregate = (values: number[], agg: ChartSpec["bindings"][number]["agg"]): number => {
   switch (agg) {
     case "avg":
@@ -41,6 +44,7 @@ const aggregate = (values: number[], agg: ChartSpec["bindings"][number]["agg"]):
   }
 };
 
+/** 从图表数据生成一段可直接展示/导出的中文总结。 */
 export const summarizeChartRows = (spec: ChartSpec, rows: Array<Record<string, unknown>>): string => {
   if (rows.length === 0) {
     return "当前数据为空，建议先检查数据源或过滤条件。";

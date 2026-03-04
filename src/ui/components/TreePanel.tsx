@@ -9,6 +9,11 @@ import type { Persona } from "../types/persona";
 
 const canHaveChildren = (node: VNode): boolean => node.kind === "container" || node.kind === "section" || node.kind === "slide";
 
+/**
+ * 结构树 + 模板市场入口：
+ * - 结构模式：新增节点、层级操作、图层控制
+ * - 模板模式：按 persona 推荐并一键应用模板
+ */
 export function TreePanel({ persona = "analyst" }: { persona?: Persona }): JSX.Element {
   const store = useEditorStore();
   const doc = useSignalValue(store.doc);
@@ -44,6 +49,7 @@ export function TreePanel({ persona = "analyst" }: { persona?: Persona }): JSX.E
 
   const addNode = (kind: "chart" | "text" | "section" | "slide"): void => {
     const current = selection.primaryId ? findNode(doc.root, selection.primaryId) : undefined;
+    // 智能推断插入父节点：优先当前可容器节点，否则按文档类型回退到默认容器。
     const parent =
       current && canHaveChildren(current)
         ? current
@@ -471,6 +477,7 @@ const resolveTemplateParentId = (
   docType: "chart" | "dashboard" | "report" | "ppt",
   target: "dashboard" | "report" | "ppt" | "slide" | "section"
 ): string => {
+  // 模板应用父节点解析：保证 dashboard/report/ppt 行为一致。
   if (docType === "dashboard") {
     return root.id;
   }

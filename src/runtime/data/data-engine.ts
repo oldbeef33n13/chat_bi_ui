@@ -1,11 +1,13 @@
 import type { DataSourceDef, QueryDef } from "../../core/doc/types";
 
+/** 查询执行请求参数。 */
 export interface QueryRequest {
   sourceId: string;
   queryId?: string;
   params?: Record<string, string | number | boolean | string[]>;
 }
 
+/** DataEngine 运行参数。 */
 export interface DataEngineOptions {
   debounceMs?: number;
 }
@@ -15,11 +17,16 @@ interface CacheEntry {
   value: unknown;
 }
 
+/** 简单异步等待，用于重试退避。 */
 const wait = (ms: number): Promise<void> =>
   new Promise((resolve) => {
     setTimeout(resolve, ms);
   });
 
+/**
+ * 统一数据执行引擎。
+ * 支持静态数据、远端数据、缓存、重试、防抖与请求取消。
+ */
 export class DataEngine {
   private readonly sources = new Map<string, DataSourceDef>();
   private readonly queries = new Map<string, QueryDef>();
@@ -36,6 +43,7 @@ export class DataEngine {
     this.syncSources(sources, queries);
   }
 
+  /** 同步数据源定义：定义变化时清理缓存与在途请求。 */
   syncSources(sources: DataSourceDef[] = [], queries: QueryDef[] = []): void {
     const nextSignature = this.serializeDefinitions(sources, queries);
     if (nextSignature === this.defsSignature) {
@@ -52,6 +60,7 @@ export class DataEngine {
     queries.forEach((item) => this.queries.set(item.queryId, item));
   }
 
+  /** 取消指定请求或全部在途请求。 */
   cancel(requestKey?: string): void {
     if (requestKey) {
       this.inFlight.get(requestKey)?.abort();
@@ -62,6 +71,7 @@ export class DataEngine {
     this.inFlight.clear();
   }
 
+  /** 执行查询：缓存命中 -> 防抖 -> 发起请求 -> 重试 -> 回填缓存。 */
   async execute(request: QueryRequest): Promise<unknown> {
     const source = this.sources.get(request.sourceId);
     if (!source) {
@@ -96,6 +106,7 @@ export class DataEngine {
     }
   }
 
+  /** 请求执行器：静态源直接返回；远端源按重试策略请求。 */
   private async fetchWithRetry(
     source: DataSourceDef,
     query: QueryDef | undefined,
@@ -105,6 +116,7 @@ export class DataEngine {
     if (source.type === "static") {
       return source.staticData ?? [];
     }
+    // 远端数据源：按 source 配置做重试和退避。
     const retryEnabled = source.retryEnabled ?? true;
     const retryMax = source.retryMax ?? 2;
     const retryInterval = source.retryInterval ?? 250;
@@ -143,6 +155,7 @@ export class DataEngine {
     throw latestError instanceof Error ? latestError : new Error(String(latestError));
   }
 
+  /** GET 请求拼装查询参数；POST 原样返回 base。 */
   private buildUrl(base: string, method: "GET" | "POST", params?: QueryRequest["params"]): string {
     if (method === "POST" || !params || Object.keys(params).length === 0) {
       return base;
@@ -158,6 +171,7 @@ export class DataEngine {
     return url.toString();
   }
 
+  /** 生成缓存键。 */
   private buildCacheKey(
     source: DataSourceDef,
     query: QueryDef | undefined,
@@ -166,11 +180,13 @@ export class DataEngine {
     return `${source.id}::${query?.queryId ?? "na"}::${JSON.stringify(params ?? {})}`;
   }
 
+  /** 序列化定义，用于判定 sources/queries 是否发生实质变化。 */
   private serializeDefinitions(sources: DataSourceDef[], queries: QueryDef[]): string {
     return JSON.stringify({ sources, queries });
   }
 
   private debounce(key: string, ms: number): Promise<void> {
+    // 同 key 只保留最后一次触发，避免高频请求抖动。
     return new Promise((resolve) => {
       const lastTimer = this.pendingTimers.get(key);
       if (lastTimer) {

@@ -23,6 +23,12 @@ interface Guides {
   h?: number;
 }
 
+/**
+ * PPT 编辑器：
+ * - 页面管理（新增/复制/重排）
+ * - 绝对定位拖拽与缩放
+ * - 吸附、对齐、等距分布可视化
+ */
 export function PptEditor({ doc }: PptEditorProps): JSX.Element {
   const store = useEditorStore();
   const selection = useSignalValue(store.selection);
@@ -114,6 +120,7 @@ export function PptEditor({ doc }: PptEditorProps): JSX.Element {
     setActionHint("已完成对齐");
     setTimeout(() => setActionHint(""), 1200);
     if (kind === "hdistribute" || kind === "vdistribute") {
+      // 等距分布后给出短暂的可视化引导线，提升可理解性。
       const movedIds = commands.map((item) => item.nodeId).filter((id): id is string => !!id);
       const hints = buildGapGuides(activeSlide?.children ?? [], movedIds, commands, kind);
       setGapGuides(hints);

@@ -12,8 +12,10 @@ import {
   type SaveDraftInput
 } from "./doc-repository";
 
+/** 保证解析阶段始终拿到对象，避免后续属性读取抛异常。 */
 const ensureObject = (value: unknown): Record<string, unknown> => (value && typeof value === "object" ? (value as Record<string, unknown>) : {});
 
+/** 统一把后端响应映射为前端稳定的 DocMeta 结构。 */
 const parseDocMeta = (value: unknown): DocMeta => {
   const raw = ensureObject(value);
   const revisionsRaw = ensureObject(raw.revisions);
@@ -34,6 +36,7 @@ const parseDocMeta = (value: unknown): DocMeta => {
   };
 };
 
+/** 统一解析文档内容；doc 缺失时视为协议错误。 */
 const parseDocContent = (value: unknown): DocContent => {
   const raw = ensureObject(value);
   const doc = raw.doc as VDoc | undefined;
@@ -46,6 +49,10 @@ const parseDocContent = (value: unknown): DocContent => {
   };
 };
 
+/**
+ * 真实后端仓储实现：负责 HTTP 请求、协议解析与错误标准化。
+ * 设计目标：让上层 UI 只面向 DocRepository，不关心 transport 细节。
+ */
 export class HttpDocRepository implements DocRepository {
   readonly source = "api" as const;
 
@@ -145,6 +152,7 @@ export class HttpDocRepository implements DocRepository {
   }
 
   private async requestJson(url: string, init: RequestInit): Promise<unknown> {
+    // 全部请求默认 JSON；外部可通过 init.headers 局部覆盖。
     const response = await fetch(url, {
       ...init,
       headers: {
@@ -156,6 +164,7 @@ export class HttpDocRepository implements DocRepository {
     try {
       payload = await response.json();
     } catch {
+      // 允许空响应体，错误时用 HTTP 状态码兜底。
       payload = null;
     }
     if (!response.ok) {

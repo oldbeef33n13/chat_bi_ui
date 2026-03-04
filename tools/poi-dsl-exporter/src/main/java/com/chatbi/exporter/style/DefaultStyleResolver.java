@@ -9,7 +9,22 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 默认主题解析器。
+ * <p>
+ * 解析优先级：
+ * 1) ExportRequest.themeOverride
+ * 2) VDoc.themeId
+ * 3) root.props.themeId
+ * 4) 默认 enterprise-light
+ *
+ * 同时支持 root.props.theme 局部覆盖颜色/字体/调色板。
+ * </p>
+ */
 public class DefaultStyleResolver implements StyleResolver {
+    /**
+     * 解析最终主题令牌。
+     */
     @Override
     public ThemeTokens resolve(VDoc doc, ExportRequest request) {
         ExportRequest safeRequest = request == null ? ExportRequest.defaults() : request;
@@ -41,6 +56,9 @@ public class DefaultStyleResolver implements StyleResolver {
         );
     }
 
+    /**
+     * 统一解析主题 ID，避免多端大小写与空白不一致。
+     */
     private String normalizeThemeId(VDoc doc, ExportRequest request) {
         if (doc == null) {
             return "enterprise-light";
@@ -60,6 +78,9 @@ public class DefaultStyleResolver implements StyleResolver {
         return "enterprise-light";
     }
 
+    /**
+     * 从 DSL 中读取主题覆盖对象（若存在）。
+     */
     @SuppressWarnings("unchecked")
     private Map<String, Object> resolveThemeOverrideMap(VDoc doc) {
         if (doc == null || doc.root == null) {
@@ -72,6 +93,9 @@ public class DefaultStyleResolver implements StyleResolver {
         return Collections.emptyMap();
     }
 
+    /**
+     * 企业浅色主题默认值。
+     */
     private ThemeTokens lightTheme() {
         return new ThemeTokens(
                 "enterprise-light",
@@ -89,6 +113,9 @@ public class DefaultStyleResolver implements StyleResolver {
         );
     }
 
+    /**
+     * 企业深色主题默认值。
+     */
     private ThemeTokens darkTheme() {
         return new ThemeTokens(
                 "enterprise-dark",
@@ -106,6 +133,9 @@ public class DefaultStyleResolver implements StyleResolver {
         );
     }
 
+    /**
+     * 高对比海洋主题默认值。
+     */
     private ThemeTokens oceanTheme() {
         return new ThemeTokens(
                 "ocean-contrast",
@@ -127,6 +157,9 @@ public class DefaultStyleResolver implements StyleResolver {
         return value == null ? fallback : String.valueOf(value);
     }
 
+    /**
+     * 颜色容错解析，失败时回退到 fallback。
+     */
     private Color parseColor(Object raw, Color fallback) {
         if (raw == null) {
             return fallback;
@@ -142,6 +175,9 @@ public class DefaultStyleResolver implements StyleResolver {
         }
     }
 
+    /**
+     * 调色板容错解析，忽略非法颜色项。
+     */
     @SuppressWarnings("unchecked")
     private List<Color> parsePalette(Object raw, List<Color> fallback) {
         if (!(raw instanceof List<?> list)) {

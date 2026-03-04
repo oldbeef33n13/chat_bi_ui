@@ -19,6 +19,10 @@ interface AbsNode {
   h: number;
 }
 
+/**
+ * 生成对齐/分布命令：仅对同父级 absolute 节点生效。
+ * 返回命令数组，便于统一进入 command pipeline（可撤销/审计）。
+ */
 export const buildAlignCommands = (root: VNode, selectedIds: string[], kind: AlignKind): Command[] => {
   const nodes = resolveAbsoluteSelection(root, selectedIds);
   if (nodes.length < 2) {
@@ -55,6 +59,7 @@ export const buildAlignCommands = (root: VNode, selectedIds: string[], kind: Ali
     nodes.forEach((node) => updates.set(node.node.id, { y: maxBottom - node.h }));
   }
   if (kind === "hdistribute") {
+    // 水平等距：固定首尾范围，按总宽度反推 gap。
     const sorted = [...nodes].sort((a, b) => a.x - b.x);
     const totalWidth = sorted.reduce((sum, node) => sum + node.w, 0);
     const gap = (maxRight - minX - totalWidth) / (sorted.length - 1);
@@ -65,6 +70,7 @@ export const buildAlignCommands = (root: VNode, selectedIds: string[], kind: Ali
     });
   }
   if (kind === "vdistribute") {
+    // 垂直等距：固定首尾范围，按总高度反推 gap。
     const sorted = [...nodes].sort((a, b) => a.y - b.y);
     const totalHeight = sorted.reduce((sum, node) => sum + node.h, 0);
     const gap = (maxBottom - minY - totalHeight) / (sorted.length - 1);
@@ -100,6 +106,7 @@ export const buildAlignCommands = (root: VNode, selectedIds: string[], kind: Ali
   return commands;
 };
 
+/** 解析选中节点，筛出同父级且可编辑的 absolute 节点。 */
 const resolveAbsoluteSelection = (root: VNode, selectedIds: string[]): AbsNode[] => {
   const located = selectedIds.map((id) => locateWithParent(root, id)).filter((item): item is { node: VNode; parent: VNode } => !!item);
   const absolute = located
@@ -120,6 +127,7 @@ const resolveAbsoluteSelection = (root: VNode, selectedIds: string[]): AbsNode[]
   return absolute.filter((item) => item.parentId === parentId);
 };
 
+/** 在节点树中查找目标节点及其父节点。 */
 const locateWithParent = (root: VNode, nodeId: string, parent?: VNode): { node: VNode; parent: VNode } | undefined => {
   if (root.id === nodeId && parent) {
     return { node: root, parent };

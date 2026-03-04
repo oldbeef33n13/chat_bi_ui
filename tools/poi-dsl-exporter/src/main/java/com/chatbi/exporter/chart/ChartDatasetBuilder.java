@@ -8,11 +8,25 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+/**
+ * ChartSpec -> ChartDataset 构建器。
+ * <p>
+ * 支持两种模式：
+ * - 普通模式：每个 measure 一条序列
+ * - 透视模式：按 seriesField 拆分序列（可叠加 measure）
+ * </p>
+ */
 public final class ChartDatasetBuilder {
+    /**
+     * 默认使用 spec.sampleRows 构建。
+     */
     public ChartDataset build(ChartSpec spec) {
         return build(spec, spec == null ? Collections.emptyList() : spec.sampleRows());
     }
 
+    /**
+     * 基于外部传入行数据构建图表数据集。
+     */
     public ChartDataset build(ChartSpec spec, List<Map<String, Object>> rows) {
         if (spec == null || rows == null || rows.isEmpty()) {
             return new ChartDataset("", Collections.emptyList(), new LinkedHashMap<>());
@@ -36,6 +50,9 @@ public final class ChartDatasetBuilder {
         return new ChartDataset(categoryField, categories, series);
     }
 
+    /**
+     * 提取类目轴，保持输入顺序且去重。
+     */
     private List<String> collectCategories(List<Map<String, Object>> rows, String categoryField) {
         LinkedHashSet<String> categories = new LinkedHashSet<>();
         for (int i = 0; i < rows.size(); i++) {
@@ -48,6 +65,11 @@ public final class ChartDatasetBuilder {
         return new ArrayList<>(categories);
     }
 
+    /**
+     * 解析指标字段：
+     * - 优先使用 spec.measureFields
+     * - 否则从首行推断数值字段
+     */
     private List<String> resolveMeasures(ChartSpec spec, List<Map<String, Object>> rows) {
         if (!spec.measureFields().isEmpty()) {
             return spec.measureFields();
@@ -75,6 +97,9 @@ public final class ChartDatasetBuilder {
         return inferred;
     }
 
+    /**
+     * 构建普通模式序列（measure -> values）。
+     */
     private LinkedHashMap<String, List<Double>> buildMeasureSeries(
             List<Map<String, Object>> rows,
             List<String> categories,
@@ -106,6 +131,9 @@ public final class ChartDatasetBuilder {
         return series;
     }
 
+    /**
+     * 构建透视序列（seriesField + measure 组合）。
+     */
     private LinkedHashMap<String, List<Double>> buildPivotSeries(
             List<Map<String, Object>> rows,
             List<String> categories,
@@ -138,6 +166,9 @@ public final class ChartDatasetBuilder {
         return series;
     }
 
+    /**
+     * 构建类目 -> 下标映射。
+     */
     private Map<String, Integer> indexMap(List<String> categories) {
         LinkedHashMap<String, Integer> map = new LinkedHashMap<>();
         for (int i = 0; i < categories.size(); i++) {
@@ -146,6 +177,9 @@ public final class ChartDatasetBuilder {
         return map;
     }
 
+    /**
+     * 生成固定长度的 0 值数组，用于补齐缺失点。
+     */
     private List<Double> zeroList(int size) {
         List<Double> values = new ArrayList<>(size);
         for (int i = 0; i < size; i++) {
@@ -154,6 +188,9 @@ public final class ChartDatasetBuilder {
         return values;
     }
 
+    /**
+     * 容错转数值，失败返回 null。
+     */
     private Double toDouble(Object value) {
         if (value instanceof Number number) {
             return number.doubleValue();
@@ -168,6 +205,9 @@ public final class ChartDatasetBuilder {
         return null;
     }
 
+    /**
+     * 容错转字符串，为空时返回 fallback。
+     */
     private String asString(Object value, String fallback) {
         if (value == null) {
             return fallback;

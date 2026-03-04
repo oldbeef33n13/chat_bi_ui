@@ -14,6 +14,7 @@ import {
   type SaveDraftInput
 } from "./doc-repository";
 
+/** 本地仓储内部记录结构：一份 meta + published + draft。 */
 interface LocalDocRecord {
   meta: DocMeta;
   published: DocContent;
@@ -23,6 +24,7 @@ interface LocalDocRecord {
 const cloneDoc = (doc: VDoc): VDoc => structuredClone(doc);
 const nowIso = (): string => new Date().toISOString();
 
+/** 简单全文检索（名称/描述/标签）。 */
 const includesText = (meta: DocMeta, q?: string): boolean => {
   if (!q) {
     return true;
@@ -35,6 +37,7 @@ const includesText = (meta: DocMeta, q?: string): boolean => {
   return haystack.includes(key);
 };
 
+/** 基于内置样例生成本地 seed 数据，便于离线和开发态兜底。 */
 const makeSeedRecord = (docType: EditorDocType): LocalDocRecord[] => {
   return listBuiltInDocExamples(docType).map((example) => {
     const doc = example.build();
@@ -57,6 +60,10 @@ const makeSeedRecord = (docType: EditorDocType): LocalDocRecord[] => {
   });
 };
 
+/**
+ * 本地仓储实现：用于 API 不可用时的降级、开发演示与单元测试。
+ * 注意：它同样实现 revision 冲突逻辑，保证行为尽量贴近真实后端。
+ */
 export class LocalDocRepository implements DocRepository {
   readonly source = "local" as const;
   private readonly records = new Map<string, LocalDocRecord>();
@@ -145,6 +152,7 @@ export class LocalDocRepository implements DocRepository {
 
   async saveDraft(docId: string, input: SaveDraftInput): Promise<{ meta: DocMeta; draft: DocContent }> {
     const record = this.requireRecord(docId);
+    // 并发保护：baseRevision 不一致直接返回 409，避免静默覆盖。
     if (input.baseRevision !== undefined && input.baseRevision !== null && input.baseRevision !== record.draft.revision) {
       throw new DocApiError("草稿已被更新，请刷新后重试", 409, {
         expected: record.draft.revision,
@@ -176,6 +184,7 @@ export class LocalDocRepository implements DocRepository {
 
   async publishDraft(docId: string, input: PublishDraftInput = {}): Promise<PublishResult> {
     const record = this.requireRecord(docId);
+    // 发布也需要校验草稿版本，保证“所见即所发”。
     if (
       input.fromDraftRevision !== undefined &&
       input.fromDraftRevision !== null &&
@@ -216,6 +225,7 @@ export class LocalDocRepository implements DocRepository {
 
   async discardDraft(docId: string): Promise<{ meta: DocMeta; draft: DocContent }> {
     const record = this.requireRecord(docId);
+    // 放弃草稿时直接回退到发布版快照。
     record.draft = {
       doc: cloneDoc(record.published.doc),
       revision: record.published.revision
@@ -246,4 +256,5 @@ export class LocalDocRepository implements DocRepository {
   }
 }
 
+/** 工厂函数：避免上层直接依赖类实现。 */
 export const createLocalDocRepository = (): LocalDocRepository => new LocalDocRepository();

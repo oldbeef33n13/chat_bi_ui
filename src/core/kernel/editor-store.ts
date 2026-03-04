@@ -10,6 +10,13 @@ const clone = <T>(value: T): T => structuredClone(value);
 
 const nowIso = (): string => new Date().toISOString();
 
+/**
+ * 编辑器状态核心：
+ * 1) 管理文档与选区；
+ * 2) 执行命令并维护 undo/redo；
+ * 3) 支持 CommandPlan 预览/接受/拒绝；
+ * 4) 输出审计日志。
+ */
 export class EditorStore {
   readonly doc = signal<VDoc | null>(null);
   readonly selection = signal<SelectionState>({ selectedIds: [] });
@@ -24,6 +31,7 @@ export class EditorStore {
     initialDoc: VDoc,
     private readonly context: ExecutorContext = { selectedIds: [] }
   ) {
+    // 构造时即校验初始文档，避免无效状态进入运行期。
     const validation = validateDoc(initialDoc);
     if (!validation.ok) {
       throw new Error(`Invalid initial doc: ${validation.errors?.map((e) => `${e.instancePath} ${e.message}`).join("; ")}`);
@@ -32,6 +40,7 @@ export class EditorStore {
   }
 
   setDoc(nextDoc: VDoc): void {
+    // setDoc 是“硬重置”语义：替换文档并清空历史/预览态。
     const validation = validateDoc(nextDoc);
     if (!validation.ok) {
       this.lastError.value = validation.errors?.map((e) => `${e.instancePath} ${e.message}`).join("; ") ?? "invalid doc";
@@ -93,6 +102,7 @@ export class EditorStore {
     }
     this.lastError.value = null;
     try {
+      // 执行前注入当前选区，便于命令执行器处理 selection scope。
       this.context.selectedIds = [...this.selection.value.selectedIds];
       const result = executeCommands(this.doc.value, commands, this.context);
       if (result.patches.length === 0) {
@@ -111,6 +121,7 @@ export class EditorStore {
         options.mergeWindowMs
       );
       this.historyFuture.value = [];
+      // 每次成功执行都写一条审计日志，供回溯和问题定位。
       this.auditLogs.value = [
         {
           id: randomUUID(),
@@ -135,6 +146,7 @@ export class EditorStore {
     this.lastError.value = null;
     try {
       const plan = typeof planTextOrObject === "string" ? (JSON.parse(planTextOrObject) as CommandPlan) : planTextOrObject;
+      // 先做 schema 校验，再 dry-run，避免非法计划污染状态。
       const validation = validateCommandPlan(plan);
       if (!validation.ok) {
         this.lastError.value = validation.errors?.map((e) => `${e.instancePath} ${e.message}`).join("; ") ?? "invalid plan";
@@ -151,6 +163,7 @@ export class EditorStore {
         sideEffects: result.sideEffects
       };
       if (!this.pendingPlan.value.preview) {
+        // 兜底自动生成 preview，便于前端无需依赖模型也能展示 Diff 摘要。
         this.pendingPlan.value.preview = {
           summary: this.pendingPlanDryRun.value.summary,
           expectedChangedNodeIds: changedNodeIds,
@@ -260,6 +273,7 @@ export class EditorStore {
   }
 
   private pushHistory(entry: HistoryEntry, mergeWindowMs = 0): void {
+    // mergeWindow 用于输入类操作（如文本编辑）的历史压缩，减少 undo 粒度噪音。
     if (mergeWindowMs > 0 && this.historyPast.value.length > 0) {
       const latest = this.historyPast.value[0];
       const rest = this.historyPast.value.slice(1);

@@ -5,7 +5,17 @@ import org.apache.poi.xddf.usermodel.chart.LegendPosition;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * ECharts optionPatch 适配器。
+ * <p>
+ * 将 DSL 中 optionPatch 的常见配置映射为 POI 可用参数，
+ * 同时保留 props 字段作为回退来源，保证 Web/Poi 体验一致。
+ * </p>
+ */
 public final class ChartOptionPatchAdapter {
+    /**
+     * 解析图表标题：optionPatch.title.text > spec.title > "图表"。
+     */
     public String resolveTitle(ChartSpec spec) {
         String fromPatch = string(path(spec.optionPatch(), "title", "text"));
         if (!fromPatch.isBlank()) {
@@ -14,6 +24,9 @@ public final class ChartOptionPatchAdapter {
         return safe(spec.title(), "图表");
     }
 
+    /**
+     * 解析是否显示图例。
+     */
     public boolean resolveLegendShow(ChartSpec spec) {
         Boolean fromPatch = bool(path(spec.optionPatch(), "legend", "show"));
         if (fromPatch != null) {
@@ -22,6 +35,9 @@ public final class ChartOptionPatchAdapter {
         return spec.legendShow();
     }
 
+    /**
+     * 解析图例位置，兼容 legend.left/right/top/bottom 语义。
+     */
     public LegendPosition resolveLegendPosition(ChartSpec spec) {
         String pos = spec.legendPos();
         Object legendObj = spec.optionPatch().get("legend");
@@ -45,6 +61,9 @@ public final class ChartOptionPatchAdapter {
         };
     }
 
+    /**
+     * 解析 X 轴标题。
+     */
     public String resolveXAxisTitle(ChartSpec spec) {
         String fromPatch = string(path(spec.optionPatch(), "xAxis", "name"));
         if (fromPatch.isBlank()) {
@@ -59,6 +78,9 @@ public final class ChartOptionPatchAdapter {
         return safe(spec.dimensionField(), "x");
     }
 
+    /**
+     * 解析 Y 轴标题。
+     */
     public String resolveYAxisTitle(ChartSpec spec) {
         String fromPatch = string(path(spec.optionPatch(), "yAxis", "name"));
         if (fromPatch.isBlank()) {
@@ -76,6 +98,9 @@ public final class ChartOptionPatchAdapter {
         return "value";
     }
 
+    /**
+     * 读取 series.type 提示，供 chartType 缺省时兜底。
+     */
     public String resolveSeriesTypeHint(ChartSpec spec) {
         String direct = string(path(spec.optionPatch(), "series", "type"));
         if (!direct.isBlank()) {
@@ -88,6 +113,9 @@ public final class ChartOptionPatchAdapter {
         return "";
     }
 
+    /**
+     * 从 root[key1][key2] 读取值。
+     */
     @SuppressWarnings("unchecked")
     private Object path(Map<String, Object> root, String key1, String key2) {
         Object level1 = root.get(key1);
@@ -97,6 +125,9 @@ public final class ChartOptionPatchAdapter {
         return null;
     }
 
+    /**
+     * 从 root[key][index][childKey] 读取值。
+     */
     @SuppressWarnings("unchecked")
     private Object pathFromArray(Map<String, Object> root, String key, int index, String childKey) {
         Object level1 = root.get(key);

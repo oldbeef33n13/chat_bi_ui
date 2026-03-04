@@ -2,9 +2,12 @@ import { describe, expect, it } from "vitest";
 import { DataEngine } from "./data-engine";
 import type { DataSourceDef, QueryDef } from "../../core/doc/types";
 
+/** 深拷贝测试数据，确保 syncSources 比较不受引用影响。 */
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
+/** DataEngine 缓存与定义同步回归测试。 */
 describe("DataEngine syncSources", () => {
+  /** 定义语义不变时，应保留缓存命中。 */
   it("keeps cache when source/query definitions are equivalent", async () => {
     const sources: DataSourceDef[] = [
       {
@@ -26,6 +29,7 @@ describe("DataEngine syncSources", () => {
     expect(second).toBe(first);
   });
 
+  /** 定义发生变化时，应失效缓存并返回新数据。 */
   it("invalidates cache when source definitions change", async () => {
     const sourceV1: DataSourceDef[] = [
       {
@@ -58,4 +62,3 @@ describe("DataEngine syncSources", () => {
     expect((second as Array<{ value: number }>)[0]?.value).toBe(2);
   });
 });
-

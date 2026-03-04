@@ -5,6 +5,13 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 图表语义规格（ChartSpec）。
+ * <p>
+ * 该对象是“DSL 属性 -> 渲染层”之间的稳定中间层，
+ * 用于统一 Web 与 POI 的图表行为。
+ * </p>
+ */
 public final class ChartSpec {
     private final String title;
     private final String chartType;
@@ -26,6 +33,9 @@ public final class ChartSpec {
     private final List<String> palette;
     private final Map<String, Object> optionPatch;
 
+    /**
+     * 兼容旧构造，补齐默认 legend/axis/optionPatch。
+     */
     public ChartSpec(
             String title,
             String chartType,
@@ -65,6 +75,9 @@ public final class ChartSpec {
         );
     }
 
+    /**
+     * 完整构造函数。
+     */
     public ChartSpec(
             String title,
             String chartType,
@@ -187,10 +200,16 @@ public final class ChartSpec {
         return optionPatch;
     }
 
+    /**
+     * @return 是否启用双轴
+     */
     public boolean dualAxis() {
         return secondAxisField != null && !secondAxisField.isBlank();
     }
 
+    /**
+     * 复杂度打分，用于导出摘要/策略选择。
+     */
     public int complexityScore() {
         int score = 0;
         score += Math.max(0, measureFields.size() - 1);
@@ -202,6 +221,9 @@ public final class ChartSpec {
         return score;
     }
 
+    /**
+     * 复杂度分层：simple/standard/advanced/enterprise。
+     */
     public String complexityLevel() {
         int score = complexityScore();
         if (score >= 7) {
@@ -216,6 +238,9 @@ public final class ChartSpec {
         return "simple";
     }
 
+    /**
+     * 输出字段绑定提示文本，便于在导出描述中复用。
+     */
     public String bindingHint() {
         if (bindings.isEmpty()) {
             return "字段绑定: -";

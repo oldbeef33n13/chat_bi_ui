@@ -2,7 +2,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChartSpec, VDoc, VNode } from "../../core/doc/types";
 import { useEditorStore } from "../state/editor-context";
 import { askChartAssistant, type ChartAssistantResult } from "../utils/chart-assistant";
+import { createAiTimer, createAiTraceId, emitAiTelemetry } from "../telemetry/ai-telemetry";
 
+/**
+ * 图表级智能追问面板：
+ * 1) 问答分析；2) 生成可执行计划；3) 预览或直接应用改动。
+ */
 export function ChartAskAssistant({
   doc,
   node,
@@ -22,6 +27,14 @@ export function ChartAskAssistant({
   const [hint, setHint] = useState("");
 
   const spec = useMemo(() => (node.props ?? {}) as ChartSpec, [node.props]);
+  const telemetryContext = useMemo(
+    () => ({
+      docType: doc.docType,
+      nodeId: node.id,
+      sourceId: node.data?.sourceId
+    }),
+    [doc.docType, node.data?.sourceId, node.id]
+  );
 
   useEffect(() => {
     setResult(null);
@@ -47,12 +60,41 @@ export function ChartAskAssistant({
     if (!value) {
       return;
     }
+    const traceId = createAiTraceId();
+    const timer = createAiTimer();
+    emitAiTelemetry({
+      traceId,
+      stage: "start",
+      surface: "chart_assistant",
+      action: "ask",
+      source: "local",
+      context: telemetryContext,
+      meta: {
+        promptLength: value.length,
+        rowCount: rows.length
+      }
+    });
     setPrompt(value);
     const next = askChartAssistant({
       prompt: value,
       nodeId: node.id,
       spec,
       rows
+    });
+    emitAiTelemetry({
+      traceId,
+      stage: "success",
+      surface: "chart_assistant",
+      action: "ask",
+      source: "local",
+      latencyMs: timer(),
+      context: telemetryContext,
+      meta: {
+        promptLength: value.length,
+        rowCount: rows.length,
+        hasPlan: Boolean(next.plan),
+        suggestionCount: next.suggestions.length
+      }
     });
     setResult(next);
     setHint(next.plan ? "已生成分析 + 建议改动" : "已生成分析结论");
@@ -62,7 +104,20 @@ export function ChartAskAssistant({
     if (!result?.plan) {
       return;
     }
+    // 走统一预览链路，后续可在 ChatBridge 继续 Accept/Reject。
     const ok = store.previewPlan(result.plan);
+    emitAiTelemetry({
+      traceId: createAiTraceId(),
+      stage: "preview",
+      surface: "chart_assistant",
+      action: "plan_preview",
+      source: "rule",
+      context: telemetryContext,
+      meta: {
+        ok,
+        commandCount: result.plan.commands.length
+      }
+    });
     setHint(ok ? "已生成预览，可在 Chat Bridge 里 Accept/Reject" : store.lastError.value ?? "预览失败");
   };
 
@@ -70,11 +125,40 @@ export function ChartAskAssistant({
     if (!result?.plan) {
       return;
     }
+    // 直接应用属于“快捷通道”，但仍保留可撤销能力。
     const ok = store.executeCommands(result.plan.commands, {
       actor: "ai",
       summary: result.plan.explain ?? "chart assistant apply"
     });
+    emitAiTelemetry({
+      traceId: createAiTraceId(),
+      stage: "apply",
+      surface: "chart_assistant",
+      action: "plan_apply",
+      source: "rule",
+      context: telemetryContext,
+      meta: {
+        ok,
+        commandCount: result.plan.commands.length
+      }
+    });
     setHint(ok ? "建议已应用，可按 Ctrl/Cmd+Z 撤销" : store.lastError.value ?? "应用失败");
+  };
+
+  const toggleOpen = (): void => {
+    setOpen((value) => {
+      const next = !value;
+      emitAiTelemetry({
+        traceId: createAiTraceId(),
+        stage: "click",
+        surface: "chart_assistant",
+        action: "panel_toggle",
+        source: "local",
+        context: telemetryContext,
+        meta: { open: next }
+      });
+      return next;
+    });
   };
 
   return (
@@ -84,7 +168,7 @@ export function ChartAskAssistant({
       onPointerDown={(event) => event.stopPropagation()}
       onClick={(event) => event.stopPropagation()}
     >
-      <button className="mini-btn chart-ask-trigger" onClick={() => setOpen((value) => !value)}>
+      <button className="mini-btn chart-ask-trigger" onClick={toggleOpen}>
         智能追问
       </button>
       {open ? (

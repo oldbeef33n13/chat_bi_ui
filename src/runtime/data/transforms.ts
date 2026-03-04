@@ -14,6 +14,7 @@ export interface AdvancedFilterGroup {
   rules: AdvancedFilterRule[];
 }
 
+/** 数字兜底转换，避免比较时出现 NaN。 */
 const asNumber = (value: unknown): number => {
   if (typeof value === "number") {
     return value;
@@ -22,6 +23,7 @@ const asNumber = (value: unknown): number => {
   return Number.isFinite(n) ? n : 0;
 };
 
+/** 单条规则执行器。 */
 const evaluateRule = (row: Record<string, unknown>, rule: AdvancedFilterRule): boolean => {
   const left = row[rule.field];
   const right = rule.value;
@@ -69,6 +71,7 @@ const applySingleFilter = (rows: Array<Record<string, unknown>>, filter: FilterD
   return rows.filter((row) => String(row[filter.bindField!]) === String(value));
 };
 
+/** 高级过滤组执行（AND / OR）。 */
 const applyAdvancedFilter = (rows: Array<Record<string, unknown>>, group: AdvancedFilterGroup): Array<Record<string, unknown>> => {
   if (group.rules.length === 0) {
     return rows;
@@ -81,6 +84,7 @@ const applyAdvancedFilter = (rows: Array<Record<string, unknown>>, group: Advanc
   });
 };
 
+/** 将表达式中的字段标识符替换为 row 取值表达式。 */
 const normalizeExpression = (expression: string, sampleRow: Record<string, unknown>): string => {
   const tokens = expression.match(/[A-Za-z_][A-Za-z0-9_]*/g) ?? [];
   const known = new Set(Object.keys(sampleRow));
@@ -92,6 +96,7 @@ const normalizeExpression = (expression: string, sampleRow: Record<string, unkno
   return normalized;
 };
 
+/** 应用图表计算字段。 */
 export const applyComputedFields = (
   rows: Array<Record<string, unknown>>,
   spec: ChartSpec
@@ -104,6 +109,7 @@ export const applyComputedFields = (
     const next = { ...row };
     for (const field of computed) {
       try {
+        // 运行期沙盒表达式：当前仅支持基础算术，异常则回退为 null。
         const js = normalizeExpression(field.expression, next);
         const value = new Function("row", `return (${js});`)(next);
         next[field.name] = value;
@@ -122,6 +128,7 @@ const filterAppliesToNode = (filter: FilterDef, node: VNode): boolean => {
   return filter.scope.nodeId === node.id;
 };
 
+/** 应用全局/节点级过滤。 */
 export const applyFilters = (
   rows: Array<Record<string, unknown>>,
   filters: FilterDef[] = [],

@@ -1,5 +1,8 @@
 package com.chatbi.exporter.table;
 
+/**
+ * 表格列定义。
+ */
 public record TableColumn(
         String key,
         String title,
@@ -7,6 +10,9 @@ public record TableColumn(
         String align,
         String format
 ) {
+    /**
+     * 统一列字段兜底与宽度下限，减少下游渲染分支。
+     */
     public TableColumn {
         key = key == null ? "" : key;
         title = title == null || title.isBlank() ? key : title;
@@ -25,4 +31,3 @@ public record TableColumn(
         };
     }
 }
-

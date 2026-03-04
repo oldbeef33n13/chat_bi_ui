@@ -45,6 +45,10 @@ interface PivotResult {
 
 type Align = "left" | "center" | "right";
 
+/**
+ * TableSpec -> TableRenderModel 适配层。
+ * 支持：静态列、推断列、多级表头、merge、pivot 动态列、格式化。
+ */
 export const buildTableRenderModel = (
   rawSpec: TableSpec | Record<string, unknown> | undefined,
   sourceRows: Array<Record<string, unknown>>
@@ -74,6 +78,7 @@ export const buildTableRenderModel = (
       : [columns.map((col) => anchorCell(col.title, "center"))];
 
   const bodyRows = buildBodyGrid(rows, columns);
+  // merge 在 header/body 两个作用域独立应用。
   applyMergeSpecs(headerRows, spec.mergeCells, "header");
   applyMergeSpecs(bodyRows, spec.mergeCells, "body");
 
@@ -94,6 +99,7 @@ const normalizeSpec = (rawSpec: TableSpec | Record<string, unknown> | undefined)
   return rawSpec as TableSpec;
 };
 
+/** rows 既支持对象数组，也支持二维数组。 */
 const resolveRowsInput = (spec: TableSpec, sourceRows: Array<Record<string, unknown>>): Array<Record<string, unknown>> => {
   const inline = spec.rows;
   if (!Array.isArray(inline) || inline.length === 0) {
@@ -113,6 +119,7 @@ const resolveRowsInput = (spec: TableSpec, sourceRows: Array<Record<string, unkn
     .filter((row): row is Record<string, unknown> => !!row);
 };
 
+/** 将二维数组行映射为对象行（按列 key 对齐）。 */
 const rowArrayToObject = (values: unknown[], columns: TableRenderColumn[]): Record<string, unknown> => {
   const row: Record<string, unknown> = {};
   values.forEach((value, index) => {
@@ -122,6 +129,7 @@ const rowArrayToObject = (values: unknown[], columns: TableRenderColumn[]): Reco
   return row;
 };
 
+/** 规范化列定义并补齐默认值。 */
 const normalizeColumns = (rawColumns: TableColumnSpec[] | undefined): TableRenderColumn[] => {
   if (!Array.isArray(rawColumns)) {
     return [];
@@ -143,6 +151,7 @@ const normalizeColumns = (rawColumns: TableColumnSpec[] | undefined): TableRende
   return columns;
 };
 
+/** 当列定义缺失时，根据数据 key 自动推断列。 */
 const inferColumns = (rows: Array<Record<string, unknown>>): TableRenderColumn[] => {
   if (rows.length === 0) {
     return [];
@@ -158,11 +167,13 @@ const inferColumns = (rows: Array<Record<string, unknown>>): TableRenderColumn[]
   return keys.map((key) => ({ key, title: key, width: 120, align: "left" }));
 };
 
+/** Pivot 动态列构建：rowFields + columnField + valueField + agg。 */
 const buildPivot = (
   rows: Array<Record<string, unknown>>,
   pivot: TablePivotSpec | undefined,
   titleMap: Map<string, string>
 ): PivotResult | null => {
+  // pivot 关闭或关键字段缺失时不生效，直接走普通表格流程。
   if (!pivot) {
     return null;
   }
@@ -271,6 +282,7 @@ const buildPivot = (
   return { columns, rows: outputRows, headerRows };
 };
 
+/** 聚合函数兜底与规范化。 */
 const normalizePivotAgg = (agg: TablePivotSpec["agg"]): NonNullable<TablePivotSpec["agg"]> => {
   switch (agg) {
     case "avg":
@@ -284,6 +296,7 @@ const normalizePivotAgg = (agg: TablePivotSpec["agg"]): NonNullable<TablePivotSp
   }
 };
 
+/** 根据聚合策略计算单元值。 */
 const aggregateValue = (aggregate: PivotAggregate, agg: NonNullable<TablePivotSpec["agg"]>): number => {
   switch (agg) {
     case "avg":
@@ -300,6 +313,7 @@ const aggregateValue = (aggregate: PivotAggregate, agg: NonNullable<TablePivotSp
   }
 };
 
+/** 构建完整表头网格，并处理 rowSpan/colSpan。 */
 const buildHeaderGrid = (defs: TableHeaderCellSpec[][], columns: TableRenderColumn[]): TableRenderCell[][] => {
   const rowCount = defs.length;
   const colCount = columns.length;
@@ -308,6 +322,7 @@ const buildHeaderGrid = (defs: TableHeaderCellSpec[][], columns: TableRenderColu
   }
   const matrix: Array<Array<TableRenderCell | null>> = Array.from({ length: rowCount }, () => Array.from({ length: colCount }, () => null));
 
+  // 先按定义填锚点，再补 hidden 占位，最后兜底空单元格。
   defs.forEach((cells, rowIndex) => {
     let cursor = 0;
     cells.forEach((cell) => {
@@ -345,6 +360,7 @@ const buildHeaderGrid = (defs: TableHeaderCellSpec[][], columns: TableRenderColu
   return matrix.map((row) => row.map((cell) => cell ?? anchorCell("", "center")));
 };
 
+/** 构建数据区网格。 */
 const buildBodyGrid = (rows: Array<Record<string, unknown>>, columns: TableRenderColumn[]): TableRenderCell[][] =>
   rows.map((row) =>
     columns.map((column) => {
@@ -354,6 +370,7 @@ const buildBodyGrid = (rows: Array<Record<string, unknown>>, columns: TableRende
     })
   );
 
+/** 在指定作用域应用 mergeCells 配置（header/body）。 */
 const applyMergeSpecs = (
   grid: TableRenderCell[][],
   mergeSpecs: TableMergeSpec[] | undefined,
@@ -374,6 +391,7 @@ const applyMergeSpecs = (
   });
 };
 
+/** 在二维网格执行一次合并，锚点保留，覆盖区改为 hidden。 */
 const applyMerge = (grid: TableRenderCell[][], row: number, col: number, rowSpan: number, colSpan: number): void => {
   const rowCount = grid.length;
   const colCount = grid[0]?.length ?? 0;
@@ -401,6 +419,7 @@ const applyMerge = (grid: TableRenderCell[][], row: number, col: number, rowSpan
   }
 };
 
+/** 数据区对齐规则：显式对齐优先，否则数值右对齐。 */
 const resolveBodyAlign = (align: Align, value: unknown): Align => {
   if (align !== "left") {
     return align;
@@ -411,6 +430,7 @@ const resolveBodyAlign = (align: Align, value: unknown): Align => {
   return "left";
 };
 
+/** 单元格值格式化（百分比/整数/小数）。 */
 const formatValue = (value: unknown, format: string | undefined): string => {
   if (value === null || value === undefined) {
     return "";
@@ -437,6 +457,7 @@ const formatValue = (value: unknown, format: string | undefined): string => {
   }
 };
 
+/** 构造可见锚点单元格。 */
 const anchorCell = (text: string, align: Align, rowSpan = 1, colSpan = 1): TableRenderCell => ({
   text,
   rowSpan: Math.max(1, rowSpan),
@@ -445,6 +466,7 @@ const anchorCell = (text: string, align: Align, rowSpan = 1, colSpan = 1): Table
   hidden: false
 });
 
+/** 构造隐藏占位单元格（用于合并覆盖区）。 */
 const hiddenCell = (align: Align): TableRenderCell => ({
   text: "",
   rowSpan: 1,
@@ -453,11 +475,13 @@ const hiddenCell = (align: Align): TableRenderCell => ({
   hidden: true
 });
 
+/** 整数裁剪。 */
 const clampInt = (value: number, min: number, max: number): number => {
   const integer = Math.floor(Number.isFinite(value) ? value : min);
   return Math.max(min, Math.min(max, integer));
 };
 
+/** 对齐值标准化。 */
 const normalizeAlign = (align: unknown): Align => {
   if (align === "center" || align === "right" || align === "left") {
     return align;
@@ -465,6 +489,7 @@ const normalizeAlign = (align: unknown): Align => {
   return "left";
 };
 
+/** 容错数值转换。 */
 const toNumber = (value: unknown): number | null => {
   if (typeof value === "number" && Number.isFinite(value)) {
     return value;
@@ -478,6 +503,7 @@ const toNumber = (value: unknown): number | null => {
   return null;
 };
 
+/** 统一字符串化，空值回退 fallback。 */
 const stringifyValue = (value: unknown, fallback: string): string => {
   if (value === null || value === undefined) {
     return fallback;

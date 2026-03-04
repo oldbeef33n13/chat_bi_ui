@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { resolveGridConflict, type GridNodeState, type GridRect } from "./dashboard-grid";
 
+/** 构造网格布局节点。 */
 const grid = (gx: number, gy: number, gw: number, gh: number): GridRect => ({
   mode: "grid",
   gx,
@@ -9,7 +10,9 @@ const grid = (gx: number, gy: number, gw: number, gh: number): GridRect => ({
   gh
 });
 
+/** Dashboard 网格冲突算法测试（swap/push/lock）。 */
 describe("resolveGridConflict", () => {
+  /** 单碰撞且可复用旧位时，优先换位。 */
   it("swaps when one collision and previous slot is reusable", () => {
     const nodes: GridNodeState[] = [
       { id: "a", lock: false, layout: grid(0, 0, 4, 4) },
@@ -26,6 +29,7 @@ describe("resolveGridConflict", () => {
     expect(updateB).toMatchObject({ type: "UpdateLayout", nodeId: "b", layout: { gx: 0, gy: 0 } });
   });
 
+  /** resize 扩张碰撞时，应推动受影响节点下移。 */
   it("pushes collided nodes on resize", () => {
     const nodes: GridNodeState[] = [
       { id: "a", lock: false, layout: grid(0, 0, 4, 4) },
@@ -41,6 +45,7 @@ describe("resolveGridConflict", () => {
     expect((updateB?.layout as Record<string, unknown>).gy).toBeGreaterThan(0);
   });
 
+  /** 碰撞到锁定节点时，应保持锁定节点不动并重定位活动节点。 */
   it("keeps locked collision target unchanged and relocates active node", () => {
     const nodes: GridNodeState[] = [
       { id: "a", lock: false, layout: grid(0, 0, 4, 4) },

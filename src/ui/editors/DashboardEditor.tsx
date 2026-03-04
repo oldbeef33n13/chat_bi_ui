@@ -16,6 +16,12 @@ interface DashboardEditorProps {
   doc: VDoc;
 }
 
+/**
+ * Dashboard 编辑器：
+ * - 支持 grid/absolute 混合布局
+ * - 支持冲突挤压/换位
+ * - 支持图表快捷编辑与智能追问
+ */
 export function DashboardEditor({ doc }: DashboardEditorProps): JSX.Element {
   const store = useEditorStore();
   const selection = useSignalValue(store.selection);
@@ -37,6 +43,7 @@ export function DashboardEditor({ doc }: DashboardEditorProps): JSX.Element {
       return;
     }
     const updateWidth = (): void => {
+      // 统一宽度计算，避免硬编码 1200 带来的交互偏差。
       const width = resolveContainerWidth(host.getBoundingClientRect().width || host.clientWidth, 1200, 640);
       setWrapWidth(width);
     };

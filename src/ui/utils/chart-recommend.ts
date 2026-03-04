@@ -1,6 +1,7 @@
 import type { ChartSpec, ChartType, DataSourceDef, DocType, FieldBinding, VDoc, VNode } from "../../core/doc/types";
 import { defaultChartSpec } from "../../core/doc/defaults";
 import { prefixedId } from "../../core/utils/id";
+import { createAiTimer, createAiTraceId, emitAiTelemetry, emitAiTelemetryError } from "../telemetry/ai-telemetry";
 
 export interface SourceField {
   name: string;
@@ -33,6 +34,7 @@ export interface AiRecommendResult extends RecommendResult {
 
 type RecommendProvider = (request: AiRecommendRequest) => Promise<Partial<RecommendResult> | null> | Partial<RecommendResult> | null;
 
+/** 可插拔推荐器（后续接真实 AI 服务时只替换这里）。 */
 let recommendProvider: RecommendProvider | null = null;
 
 const chartTypes: ChartType[] = [
@@ -56,6 +58,7 @@ const chartTypes: ChartType[] = [
   "custom"
 ];
 
+/** 基于字段名+样本值的轻量字段类型推断。 */
 const guessFieldType = (key: string, values: unknown[]): SourceField["type"] => {
   const first = values.find((item) => item !== null && item !== undefined);
   const keyLower = key.toLowerCase();
@@ -78,6 +81,7 @@ const guessFieldType = (key: string, values: unknown[]): SourceField["type"] => 
   return "string";
 };
 
+/** 从数据源抽取可绑定字段，供新建向导/属性面板共用。 */
 export const extractSourceFields = (source?: DataSourceDef): SourceField[] => {
   if (!source) {
     return [];
@@ -102,11 +106,14 @@ export const extractSourceFields = (source?: DataSourceDef): SourceField[] => {
   return [];
 };
 
+/** 返回第一个命中类型集合的字段。 */
 const firstOfType = (fields: SourceField[], types: SourceField["type"][]): SourceField | undefined => fields.find((field) => types.includes(field.type));
 
+/** 返回全部命中类型集合的字段。 */
 const allOfType = (fields: SourceField[], types: SourceField["type"][]): SourceField[] =>
   fields.filter((field) => types.includes(field.type));
 
+/** 本地图表类型推荐策略。 */
 export const recommendChartType = (fields: SourceField[]): ChartType => {
   const timeField = firstOfType(fields, ["time"]);
   const metricField = firstOfType(fields, ["number"]);
@@ -120,6 +127,7 @@ export const recommendChartType = (fields: SourceField[]): ChartType => {
   return "line";
 };
 
+/** 按图表类型输出最小可渲染的字段绑定策略。 */
 export const recommendBindings = (chartType: ChartType, fields: SourceField[]): FieldBinding[] => {
   const metrics = allOfType(fields, ["number"]);
   const timeField = firstOfType(fields, ["time"]);
@@ -187,6 +195,7 @@ export const recommendBindings = (chartType: ChartType, fields: SourceField[]): 
   return bindings;
 };
 
+/** 本地规则推荐：即使 AI 不可用也能返回稳定结果。 */
 export const recommendChartConfig = (requestedType: ChartType, fields: SourceField[]): RecommendResult => {
   const autoType = recommendChartType(fields);
   const finalType = requestedType === "auto" ? autoType : requestedType;
@@ -217,32 +226,127 @@ export const registerChartRecommendProvider = (provider: RecommendProvider): voi
   recommendProvider = provider;
 };
 
+/** 清理外部 AI 推荐器，回到本地规则模式。 */
 export const clearChartRecommendProvider = (): void => {
   recommendProvider = null;
 };
 
+/** AI 推荐入口：provider 成功时用 AI，失败时回退本地规则并埋点。 */
 export const requestAiChartRecommend = async (request: AiRecommendRequest): Promise<AiRecommendResult> => {
+  // 总是先准备 fallback，避免推荐链路失败后页面不可操作。
   const fallback = recommendChartConfig(request.requestedType, request.fields);
+  const traceId = createAiTraceId();
+  const timer = createAiTimer();
+  const context = {
+    docType: request.context.docType,
+    nodeId: request.context.nodeId,
+    sourceId: request.context.sourceId,
+    trigger: request.context.trigger
+  };
+  const baseMeta = {
+    requestedType: request.requestedType,
+    fieldCount: request.fields.length,
+    currentBindingCount: request.currentBindings?.length ?? 0
+  };
+
+  emitAiTelemetry({
+    traceId,
+    stage: "start",
+    surface: "chart_recommend",
+    action: "request",
+    source: "ai",
+    context,
+    meta: baseMeta
+  });
+
   if (!recommendProvider) {
+    emitAiTelemetry({
+      traceId,
+      stage: "fallback",
+      surface: "chart_recommend",
+      action: "request",
+      source: "local",
+      latencyMs: timer(),
+      context,
+      meta: {
+        ...baseMeta,
+        reason: "provider_missing"
+      }
+    });
     return { ...fallback, source: "local" };
   }
   try {
     const next = await recommendProvider(request);
     if (!next) {
+      emitAiTelemetry({
+        traceId,
+        stage: "fallback",
+        surface: "chart_recommend",
+        action: "request",
+        source: "local",
+        latencyMs: timer(),
+        context,
+        meta: {
+          ...baseMeta,
+          reason: "provider_empty"
+        }
+      });
       return { ...fallback, source: "local" };
     }
     const chartType = next.chartType ?? fallback.chartType;
     const bindings = next.bindings && next.bindings.length > 0 ? next.bindings : fallback.bindings;
     const reasons = next.reasons && next.reasons.length > 0 ? next.reasons : fallback.reasons;
+    emitAiTelemetry({
+      traceId,
+      stage: "success",
+      surface: "chart_recommend",
+      action: "request",
+      source: "ai",
+      latencyMs: timer(),
+      context,
+      meta: {
+        ...baseMeta,
+        outputChartType: chartType,
+        outputBindingCount: bindings.length,
+        outputReasonCount: reasons.length
+      }
+    });
     return { chartType, bindings, reasons, source: "ai" };
-  } catch {
+  } catch (error) {
+    emitAiTelemetryError(
+      {
+        traceId,
+        surface: "chart_recommend",
+        action: "request",
+        source: "ai",
+        latencyMs: timer(),
+        context,
+        meta: baseMeta
+      },
+      error
+    );
+    emitAiTelemetry({
+      traceId,
+      stage: "fallback",
+      surface: "chart_recommend",
+      action: "request",
+      source: "local",
+      latencyMs: timer(),
+      context,
+      meta: {
+        ...baseMeta,
+        reason: "provider_error"
+      }
+    });
     return { ...fallback, source: "local" };
   }
 };
 
+/** 网格布局矩形相交判定。 */
 const intersects = (a: { x: number; y: number; w: number; h: number }, b: { x: number; y: number; w: number; h: number }): boolean =>
   a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 
+/** 计算 Dashboard 网格下一个可放置位置。 */
 const nextGridPosition = (
   nodes: VNode[],
   size: { w: number; h: number },
@@ -269,11 +373,13 @@ const nextGridPosition = (
   return { gx: 0, gy: occupied.length * size.h, gw: size.w, gh: size.h };
 };
 
+/** 推荐新图表初始布局（Dashboard 网格 / PPT 绝对定位）。 */
 export const recommendLayout = (
   docType: DocType,
   parent: VNode,
   chartType: ChartType
 ): NonNullable<VNode["layout"]> | undefined => {
+  // 新建图表默认布局策略：Dashboard 走网格，PPT 走绝对定位。
   if (docType === "dashboard") {
     const compact = chartType === "pie" || chartType === "gauge" || chartType === "treemap" || chartType === "sunburst";
     const size = compact ? { w: 4, h: 5 } : { w: 6, h: 6 };
@@ -298,6 +404,7 @@ export const recommendLayout = (
   return undefined;
 };
 
+/** 构造图表节点：类型、绑定、布局、数据源一次性补齐。 */
 export const buildChartNode = ({
   doc,
   parent,
@@ -313,6 +420,7 @@ export const buildChartNode = ({
   title?: string;
   forcedRecommend?: RecommendResult;
 }): VNode<ChartSpec> => {
+  // 图表节点初始化统一走推荐链路，保证类型/绑定/布局一次成型。
   const source = doc.dataSources?.find((item) => item.id === sourceId) ?? doc.dataSources?.[0];
   const fields = extractSourceFields(source);
   const recommend = forcedRecommend ?? recommendChartConfig(chartType, fields);

@@ -21,6 +21,7 @@ const asNumber = (value: unknown): number => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
+/** 统一聚合计算，确保问答与图表绑定的 agg 语义一致。 */
 const aggregate = (values: number[], agg: ChartSpec["bindings"][number]["agg"]): number => {
   if (values.length === 0) {
     return 0;
@@ -39,6 +40,7 @@ const aggregate = (values: number[], agg: ChartSpec["bindings"][number]["agg"]):
   }
 };
 
+/** 按 x 维度聚合成问答可读的点位数据。 */
 const buildPoints = (spec: ChartSpec, rows: Array<Record<string, unknown>>): Point[] => {
   const xBinding = spec.bindings.find((item) => item.role === "x" || item.role === "category");
   const yBinding = spec.bindings.find((item) => item.role === "y" || item.role === "value");
@@ -56,6 +58,7 @@ const buildPoints = (spec: ChartSpec, rows: Array<Record<string, unknown>>): Poi
   return [...grouped.entries()].map(([x, values]) => ({ x, y: aggregate(values, yBinding.agg) }));
 };
 
+/** 从自然语言中抽取“可执行修改”并构造 CommandPlan。 */
 const inferPlan = (prompt: string, nodeId: string, spec: ChartSpec, rows: Array<Record<string, unknown>>): { plan: CommandPlan | null; planSummary?: string } => {
   const text = prompt.toLowerCase();
   const nextProps: Partial<ChartSpec> = {};
@@ -132,6 +135,7 @@ const inferPlan = (prompt: string, nodeId: string, spec: ChartSpec, rows: Array<
   };
 };
 
+/** 构造分析回答文本：趋势/峰值/低点/均值等。 */
 const buildAnswer = (prompt: string, spec: ChartSpec, rows: Array<Record<string, unknown>>): string => {
   if (rows.length === 0) {
     return "当前图表没有可分析的数据，请先检查数据源或筛选条件。";
@@ -166,6 +170,7 @@ const buildAnswer = (prompt: string, spec: ChartSpec, rows: Array<Record<string,
   return summarizeChartRows(spec, rows);
 };
 
+/** 给用户生成可继续点击的追问建议。 */
 const buildSuggestions = (spec: ChartSpec): string[] => {
   const xBinding = spec.bindings.find((item) => item.role === "x" || item.role === "category");
   return [
@@ -175,6 +180,7 @@ const buildSuggestions = (spec: ChartSpec): string[] => {
   ];
 };
 
+/** 图表智能追问入口：返回分析结论 + 建议问题 + 可执行计划。 */
 export const askChartAssistant = ({
   prompt,
   nodeId,

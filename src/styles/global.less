@@ -1,3 +1,4 @@
+// 全局设计令牌（浅色主风格）。
 :root {
   --bg: #f4f6fb;
   --bg-panel: #ffffff;
@@ -15,6 +16,7 @@
   box-sizing: border-box;
 }
 
+// 基础布局与字体。
 html,
 body,
 #root {
@@ -33,6 +35,7 @@ textarea {
   font: inherit;
 }
 
+// 应用主壳与顶栏。
 .app-shell {
   display: grid;
   grid-template-rows: auto 1fr;
@@ -76,6 +79,7 @@ textarea {
   color: #13326b;
 }
 
+// 三栏工作区（Tree / Canvas / Inspector）。
 .layout {
   min-height: 0;
   display: grid;
@@ -109,6 +113,7 @@ textarea {
   padding: 10px;
 }
 
+// 基础控件样式。
 .muted {
   color: var(--muted);
 }
@@ -208,6 +213,7 @@ textarea {
   color: #92400e;
 }
 
+// 文档中心 / 运行态卡片。
 .library-shell {
   min-height: 0;
   display: flex;
@@ -316,6 +322,7 @@ textarea {
   border: 1px solid #bfdbfe;
 }
 
+// Report 运行态区块。
 .section {
   border: 1px dashed var(--line);
   border-radius: 10px;
@@ -361,6 +368,7 @@ textarea {
   padding: 8px;
 }
 
+// Table 运行态样式。
 .bi-table-wrap {
   min-height: 120px;
 }
@@ -408,6 +416,7 @@ textarea {
   padding: 12px 8px;
 }
 
+// PPT / Dashboard 编辑态画布。
 .slide {
   width: 960px;
   height: 540px;
@@ -477,6 +486,7 @@ textarea {
   padding: 8px;
 }
 
+// 交互组件：命令面板 / 图表追问。
 .diff-list {
   margin: 0;
   padding-left: 18px;
@@ -626,6 +636,7 @@ textarea {
   color: #64748b;
 }
 
+// 响应式：窄屏下三栏堆叠。
 @media (max-width: 1200px) {
   .layout {
     grid-template-columns: 1fr;

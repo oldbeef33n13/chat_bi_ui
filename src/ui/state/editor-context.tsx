@@ -20,6 +20,7 @@ export function EditorProvider({
   onDocChange?: (doc: VDoc) => void;
   children: React.ReactNode;
 }): JSX.Element {
+  // 优先使用外部 initialDoc，否则按 docType/exampleId 生成内置样例。
   const resolvedInitialDoc = useMemo(() => (initialDoc ? structuredClone(initialDoc) : createBuiltInDoc(docType, exampleId)), [docType, exampleId, initialDoc]);
   const store = useMemo(
     () =>
@@ -50,6 +51,7 @@ function EditorDocSync({ onDocChange }: { onDocChange: (doc: VDoc) => void }): n
   const doc = useSignalValue(store.doc);
   useEffect(() => {
     if (doc) {
+      // 外层持久化会话依赖这个同步回调（编辑态实时快照）。
       onDocChange(doc);
     }
   }, [doc, onDocChange]);

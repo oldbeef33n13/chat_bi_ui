@@ -26,6 +26,15 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * 示例集回归测试。
+ * <p>
+ * 目标：
+ * - 批量导出 examples 下所有 DSL
+ * - 校验输出文件可正常被 POI 打开
+ * - 校验关键别名 PPT 文件存在且包含原生表格 XML
+ * </p>
+ */
 class ExamplesExportRegressionTest {
 
     private static final Path MODULE_EXAMPLES_DIR = Path.of("examples");
@@ -45,6 +54,9 @@ class ExamplesExportRegressionTest {
             "ppt-table-pivot-showcase.pptx"
     );
 
+    /**
+     * 导出全部样例并检查可打开性。
+     */
     @Test
     void exportAllExamplesAndVerifyOpenability() throws Exception {
         Path examplesDir = resolveExistingPath(MODULE_EXAMPLES_DIR, REPO_EXAMPLES_DIR);
@@ -87,6 +99,9 @@ class ExamplesExportRegressionTest {
         assertTrue(docCount > 0, "no doc examples exported");
     }
 
+    /**
+     * 生成 6 个约定别名文件，便于人工快速验收。
+     */
     @Test
     void generateRequiredAliasPptFilesForManualVerification() throws Exception {
         Path examplesDir = resolveExistingPath(MODULE_EXAMPLES_DIR, REPO_EXAMPLES_DIR);

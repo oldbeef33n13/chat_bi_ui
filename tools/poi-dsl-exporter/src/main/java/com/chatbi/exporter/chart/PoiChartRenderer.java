@@ -21,6 +21,15 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * POI 原生图表渲染器。
+ * <p>
+ * 目标：
+ * - 优先使用 POI 原生图元输出可编辑图表
+ * - 对 Web chartType 做可预期映射
+ * - 在超大数据量场景做采样，控制文档体积和稳定性
+ * </p>
+ */
 public final class PoiChartRenderer {
     private static final int MAX_CATEGORIES = 80;
     private static final int MAX_SERIES = 12;
@@ -28,23 +37,41 @@ public final class PoiChartRenderer {
     private final ChartDatasetBuilder datasetBuilder;
     private final ChartOptionPatchAdapter optionPatchAdapter;
 
+    /**
+     * 默认构造：使用内置数据构建器与 optionPatch 适配器。
+     */
     public PoiChartRenderer() {
         this(new ChartDatasetBuilder(), new ChartOptionPatchAdapter());
     }
 
+    /**
+     * 仅替换数据构建器（便于测试/注入）。
+     */
     public PoiChartRenderer(ChartDatasetBuilder datasetBuilder) {
         this(datasetBuilder, new ChartOptionPatchAdapter());
     }
 
+    /**
+     * 完整依赖注入构造。
+     */
     public PoiChartRenderer(ChartDatasetBuilder datasetBuilder, ChartOptionPatchAdapter optionPatchAdapter) {
         this.datasetBuilder = datasetBuilder;
         this.optionPatchAdapter = optionPatchAdapter;
     }
 
+    /**
+     * 使用 spec.sampleRows 渲染。
+     */
     public boolean render(XDDFChart chart, ChartSpec spec) {
         return render(chart, spec, spec == null ? List.of() : spec.sampleRows());
     }
 
+    /**
+     * 渲染主入口：
+     * 1) 构建并归一化数据集
+     * 2) 处理标题/图例
+     * 3) 按 chartType 分派到具体渲染分支
+     */
     public boolean render(XDDFChart chart, ChartSpec spec, List<Map<String, Object>> rows) {
         ChartDataset dataset = normalizeDataset(datasetBuilder.build(spec, rows));
         if (!dataset.isRenderable()) {
@@ -76,6 +103,9 @@ public final class PoiChartRenderer {
         };
     }
 
+    /**
+     * 统一设置图表标题与图例位置。
+     */
     private void setupHeader(XDDFChart chart, ChartSpec spec) {
         String title = spec == null ? "图表" : optionPatchAdapter.resolveTitle(spec);
         chart.setTitleText(title);
@@ -86,6 +116,9 @@ public final class PoiChartRenderer {
         }
     }
 
+    /**
+     * 对过大数据做采样，降低导出失败率和打开卡顿风险。
+     */
     private ChartDataset normalizeDataset(ChartDataset dataset) {
         if (!dataset.isRenderable()) {
             return dataset;
@@ -116,6 +149,9 @@ public final class PoiChartRenderer {
         return new ChartDataset(dataset.categoryLabel(), sampledCategories, sampledSeries);
     }
 
+    /**
+     * 在 [0, total-1] 上按等距采样返回下标。
+     */
     private List<Integer> sampleIndexes(int total, int limit) {
         if (total <= limit) {
             List<Integer> all = new ArrayList<>(total);
@@ -136,6 +172,9 @@ public final class PoiChartRenderer {
         return indexes;
     }
 
+    /**
+     * 折线图渲染。
+     */
     private boolean renderLine(XDDFChart chart, ChartSpec spec, ChartDataset dataset) {
         XDDFCategoryAxis xAxis = chart.createCategoryAxis(AxisPosition.BOTTOM);
         XDDFValueAxis yAxis = chart.createValueAxis(AxisPosition.LEFT);
@@ -154,6 +193,9 @@ public final class PoiChartRenderer {
         return true;
     }
 
+    /**
+     * 柱状图渲染。
+     */
     private boolean renderBar(XDDFChart chart, ChartSpec spec, ChartDataset dataset) {
         XDDFCategoryAxis xAxis = chart.createCategoryAxis(AxisPosition.BOTTOM);
         XDDFValueAxis yAxis = chart.createValueAxis(AxisPosition.LEFT);
@@ -172,6 +214,9 @@ public final class PoiChartRenderer {
         return true;
     }
 
+    /**
+     * 饼图渲染：POI 原生仅绘制首个系列。
+     */
     private boolean renderPie(XDDFChart chart, ChartSpec spec, ChartDataset dataset) {
         List<Map.Entry<String, Double[]>> series = dataset.seriesArrays();
         if (series.isEmpty()) {
@@ -187,6 +232,9 @@ public final class PoiChartRenderer {
         return true;
     }
 
+    /**
+     * 组合图渲染：首系列走柱图，其余系列走折线并挂右轴。
+     */
     private boolean renderCombo(XDDFChart chart, ChartSpec spec, ChartDataset dataset) {
         List<Map.Entry<String, Double[]>> series = dataset.seriesArrays();
         if (series.isEmpty()) {
@@ -229,6 +277,12 @@ public final class PoiChartRenderer {
         return true;
     }
 
+    /**
+     * 散点图渲染策略：
+     * - 若类目可转数值，类目作为 X
+     * - 否则单序列用序号为 X
+     * - 多序列且类目非数值时，首系列作为 X，其余作为 Y
+     */
     private boolean renderScatter(XDDFChart chart, ChartSpec spec, ChartDataset dataset) {
         List<Map.Entry<String, Double[]>> series = dataset.seriesArrays();
         if (series.isEmpty()) {
@@ -282,6 +336,9 @@ public final class PoiChartRenderer {
         return true;
     }
 
+    /**
+     * 雷达图渲染并补强网格线与 marker，提升可读性。
+     */
     private boolean renderRadar(XDDFChart chart, ChartSpec spec, ChartDataset dataset) {
         XDDFCategoryAxis xAxis = chart.createCategoryAxis(AxisPosition.BOTTOM);
         XDDFValueAxis yAxis = chart.createValueAxis(AxisPosition.LEFT);
@@ -301,55 +358,94 @@ public final class PoiChartRenderer {
         return true;
     }
 
+    /**
+     * 热力图目前映射为柱图近似表达。
+     */
     private boolean renderHeatmap(XDDFChart chart, ChartSpec spec, ChartDataset dataset) {
         return renderBar(chart, spec, dataset);
     }
 
+    /**
+     * K 线图当前降级为折线表达。
+     */
     private boolean renderKline(XDDFChart chart, ChartSpec spec, ChartDataset dataset) {
         return renderLine(chart, spec, dataset);
     }
 
+    /**
+     * 箱线图当前降级为柱图表达。
+     */
     private boolean renderBoxplot(XDDFChart chart, ChartSpec spec, ChartDataset dataset) {
         return renderBar(chart, spec, dataset);
     }
 
+    /**
+     * 桑基图当前降级为柱图表达。
+     */
     private boolean renderSankey(XDDFChart chart, ChartSpec spec, ChartDataset dataset) {
         return renderBar(chart, spec, dataset);
     }
 
+    /**
+     * 关系图当前降级为散点表达。
+     */
     private boolean renderGraph(XDDFChart chart, ChartSpec spec, ChartDataset dataset) {
         return renderScatter(chart, spec, dataset);
     }
 
+    /**
+     * 矩形树图当前降级为饼图表达。
+     */
     private boolean renderTreemap(XDDFChart chart, ChartSpec spec, ChartDataset dataset) {
         return renderPie(chart, spec, dataset);
     }
 
+    /**
+     * 旭日图当前降级为饼图表达。
+     */
     private boolean renderSunburst(XDDFChart chart, ChartSpec spec, ChartDataset dataset) {
         return renderPie(chart, spec, dataset);
     }
 
+    /**
+     * 平行坐标当前降级为折线表达。
+     */
     private boolean renderParallel(XDDFChart chart, ChartSpec spec, ChartDataset dataset) {
         return renderLine(chart, spec, dataset);
     }
 
+    /**
+     * 漏斗图当前降级为柱图表达。
+     */
     private boolean renderFunnel(XDDFChart chart, ChartSpec spec, ChartDataset dataset) {
         return renderBar(chart, spec, dataset);
     }
 
+    /**
+     * 仪表盘图转换为双扇区饼图（value/rest）。
+     */
     private boolean renderGauge(XDDFChart chart, ChartSpec spec, ChartDataset dataset) {
         ChartDataset gaugeDataset = toGaugeDataset(dataset);
         return renderPie(chart, spec, gaugeDataset);
     }
 
+    /**
+     * 日历图当前复用热力图分支。
+     */
     private boolean renderCalendar(XDDFChart chart, ChartSpec spec, ChartDataset dataset) {
         return renderHeatmap(chart, spec, dataset);
     }
 
+    /**
+     * 自定义图当前回退折线图。
+     */
     private boolean renderCustom(XDDFChart chart, ChartSpec spec, ChartDataset dataset) {
         return renderLine(chart, spec, dataset);
     }
 
+    /**
+     * 将任意数据集规约为 gauge 需要的 [value, rest] 结构。
+     */
     private ChartDataset toGaugeDataset(ChartDataset dataset) {
         List<Map.Entry<String, Double[]>> series = dataset.seriesArrays();
         if (series.isEmpty()) {
@@ -371,6 +467,9 @@ public final class PoiChartRenderer {
         return new ChartDataset("gauge", List.of("value", "rest"), gauge);
     }
 
+    /**
+     * 批量向 POI 图表对象追加系列。
+     */
     private void addSeries(
             XDDFChartData data,
             XDDFCategoryDataSource categories,
@@ -383,6 +482,10 @@ public final class PoiChartRenderer {
         }
     }
 
+    /**
+     * 解析最终图表类型：
+     * spec.chartType -> optionPatch.series.type 提示 -> line。
+     */
     private String resolveType(ChartSpec spec) {
         if (spec == null) {
             return "line";
@@ -401,6 +504,9 @@ public final class PoiChartRenderer {
         return chartType;
     }
 
+    /**
+     * 补强雷达图视觉元素（网格线/marker）。
+     */
     private void strengthenRadarVisuals(XDDFChart chart) {
         if (chart == null || chart.getCTChart() == null || chart.getCTChart().getPlotArea() == null) {
             return;
@@ -424,6 +530,9 @@ public final class PoiChartRenderer {
         }
     }
 
+    /**
+     * 若类目全可转数值，则返回数值 X 轴数组；否则返回 null。
+     */
     private Double[] numericCategoryArray(List<String> categories) {
         if (categories == null || categories.isEmpty()) {
             return null;
@@ -439,6 +548,9 @@ public final class PoiChartRenderer {
         return values;
     }
 
+    /**
+     * 生成 1..N 序号数组作为默认 X 轴。
+     */
     private Double[] indexArray(int size) {
         Double[] values = new Double[Math.max(size, 0)];
         for (int i = 0; i < values.length; i++) {

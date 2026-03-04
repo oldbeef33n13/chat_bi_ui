@@ -12,7 +12,13 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
+/**
+ * VDocValidator 单元测试。
+ */
 class VDocValidatorTest {
+    /**
+     * 应接受类型目录中的所有 chartType。
+     */
     @Test
     void acceptAllWebChartTypes() {
         VNode root = new VNode();
@@ -39,6 +45,9 @@ class VDocValidatorTest {
         assertTrue(issues.isEmpty(), "expected no validation issues but got: " + issues);
     }
 
+    /**
+     * 应拒绝未知 chartType。
+     */
     @Test
     void rejectUnknownChartType() {
         VNode chart = new VNode();

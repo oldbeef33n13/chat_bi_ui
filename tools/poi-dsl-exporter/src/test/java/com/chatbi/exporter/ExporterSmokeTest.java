@@ -18,8 +18,14 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * 导出链路冒烟测试。
+ */
 class ExporterSmokeTest {
 
+    /**
+     * 验证 report -> docx 编排链路可用，且支持注入自定义图表风味渲染器。
+     */
     @Test
     void exportReportDocxWithOrchestrator() throws Exception {
         VDoc doc = sampleReport();
@@ -45,6 +51,9 @@ class ExporterSmokeTest {
         assertTrue(Files.size(out) > 0);
     }
 
+    /**
+     * 验证 ppt -> pptx 导出可用，并能应用主题覆盖参数。
+     */
     @Test
     void exportDeckPptxWithThemeOverride() throws Exception {
         VDoc doc = samplePpt();

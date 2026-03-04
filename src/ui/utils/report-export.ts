@@ -41,6 +41,7 @@ interface ExportPageSize {
   cssSize: "A4" | "Letter";
 }
 
+/** HTML 安全转义，避免导出内容被当作标签执行。 */
 const escapeHtml = (value: string): string =>
   value
     .replaceAll("&", "&amp;")
@@ -48,8 +49,10 @@ const escapeHtml = (value: string): string =>
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
 
+/** 统一文本化，避免导出阶段处理 undefined/null。 */
 const asText = (value: unknown): string => String(value ?? "");
 
+/** 报告尺寸映射：当前支持 A4 / Letter。 */
 const resolvePageSize = (pageSize: ReportProps["pageSize"]): ExportPageSize => {
   if (pageSize === "Letter") {
     return { widthMm: 216, heightMm: 279, cssSize: "Letter" };
@@ -57,6 +60,7 @@ const resolvePageSize = (pageSize: ReportProps["pageSize"]): ExportPageSize => {
   return { widthMm: 210, heightMm: 297, cssSize: "A4" };
 };
 
+/** 补全运行时导出属性默认值。 */
 const normalizeReportProps = (doc: VDoc): NormalizedReportExportProps => {
   const raw = ((doc.root.props as ReportProps | undefined) ?? {}) as ReportProps;
   const reportTitle = raw.reportTitle ?? doc.title ?? "未命名报告";
@@ -80,22 +84,26 @@ const normalizeReportProps = (doc: VDoc): NormalizedReportExportProps => {
   };
 };
 
+/** 粗略估算文本块高度（毫米），用于分页。 */
 const estimateTextHeightMm = (text: string): number => {
   const lines = Math.max(2, Math.ceil(text.length / 28));
   return Math.min(95, 12 + lines * 4.6);
 };
 
+/** 粗略估算图表摘要块高度（毫米），用于分页。 */
 const estimateChartHeightMm = (summary: string): number => {
   const lines = Math.max(2, Math.ceil(summary.length / 30));
   return Math.min(120, 62 + lines * 4.4);
 };
 
+/** 提取图表核心绑定提示，写入导出文本。 */
 const blockBindingHint = (spec: ChartSpec): string => {
   const x = spec.bindings.find((item) => item.role === "x" || item.role === "category");
   const y = spec.bindings.find((item) => item.role === "y" || item.role === "value");
   return `字段: ${x?.field ?? "-"} / ${y?.field ?? "-"}`;
 };
 
+/** 拉取用于导出摘要的图表行数据，并应用计算字段与过滤条件。 */
 const chartRowsForExport = (doc: VDoc, node: VNode, spec: ChartSpec): Array<Record<string, unknown>> => {
   const sourceId = node.data?.sourceId;
   if (!sourceId) {
@@ -110,6 +118,7 @@ const chartRowsForExport = (doc: VDoc, node: VNode, spec: ChartSpec): Array<Reco
   return applyFilters(withComputed, doc.filters ?? [], node);
 };
 
+/** 将报告 DSL 结构转换成导出中间模型。 */
 const buildExportSections = (doc: VDoc): ExportSection[] => {
   const sections = (doc.root.children ?? []).filter((node) => node.kind === "section");
   return sections.map((section, index) => {
@@ -144,6 +153,7 @@ const paginateContentPages = ({
   contentHeightMm: number;
   startPageNo: number;
 }): { pages: ExportContentPage[]; sectionPageMap: Map<string, number> } => {
+  // 基于估算高度分页，确保前端导出时页眉页脚和目录页逻辑可控。
   const pages: ExportContentPage[] = [];
   const sectionPageMap = new Map<string, number>();
   let current: ExportContentPage = { pageNo: startPageNo, items: [] };
@@ -185,6 +195,7 @@ const paginateContentPages = ({
   return { pages, sectionPageMap };
 };
 
+/** 自动总结文案兜底。 */
 const buildAutoSummaryForExport = (sections: ExportSection[]): string => {
   if (sections.length === 0) {
     return "本报告暂无章节内容。";
@@ -194,6 +205,7 @@ const buildAutoSummaryForExport = (sections: ExportSection[]): string => {
   return `本报告共 ${sections.length} 个章节，包含 ${chartCount} 张图表与 ${textCount} 段文本。建议优先关注峰值异常区间及后续处置动作。`;
 };
 
+/** 渲染单个内容项为 HTML 片段。 */
 const renderContentItem = (item: ExportContentPage["items"][number]): string => {
   if (item.kind === "section") {
     return `<h2 class="section-title">${escapeHtml(item.title)}</h2>`;
@@ -212,6 +224,7 @@ const renderContentItem = (item: ExportContentPage["items"][number]): string => 
   return `<div class="other-block">${escapeHtml(block.text)}</div>`;
 };
 
+/** 渲染单页壳结构（页眉、正文、页脚）。 */
 const renderPageShell = ({
   props,
   pageNo,
@@ -234,6 +247,7 @@ const renderPageShell = ({
   </section>`;
 };
 
+/** 生成可打印 HTML（浏览器 print / 另存为 PDF）。 */
 const buildPrintHtml = (doc: VDoc): string => {
   const props = normalizeReportProps(doc);
   const pageSize = resolvePageSize(props.pageSize);
@@ -434,6 +448,7 @@ const buildPrintHtml = (doc: VDoc): string => {
   </html>`;
 };
 
+/** 导出入口：前端打开新窗口并触发浏览器打印。 */
 export const exportReportToPrint = (doc: VDoc): { ok: boolean; message: string } => {
   if (typeof window === "undefined") {
     return { ok: false, message: "当前环境不支持浏览器导出" };

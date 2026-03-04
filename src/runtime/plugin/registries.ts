@@ -1,6 +1,7 @@
 import type { Command, VNode } from "../../core/doc/types";
 import type { NodeRenderer } from "../renderer/registry";
 
+/** 节点类型定义注册器（可用于插件化新增节点种类）。 */
 export interface NodeTypeDef {
   kind: string;
   defaults: () => VNode;
@@ -23,6 +24,7 @@ export class NodeTypeRegistry {
   }
 }
 
+/** 渲染器注册器的轻量适配层。 */
 export class RendererRegistryAdapter {
   private readonly map = new Map<string, NodeRenderer>();
 
@@ -37,6 +39,7 @@ export class RendererRegistryAdapter {
 
 export type InspectorFactory = (node: VNode) => JSX.Element | null;
 
+/** 属性面板工厂注册器。 */
 export class InspectorRegistry {
   private readonly map = new Map<string, InspectorFactory>();
 
@@ -51,6 +54,7 @@ export class InspectorRegistry {
 
 export type CommandHandler = (command: Command) => boolean;
 
+/** 命令处理器注册器（便于扩展自定义命令）。 */
 export class CommandRegistry {
   private readonly map = new Map<Command["type"], CommandHandler>();
 
@@ -73,6 +77,7 @@ export interface TemplateItem {
   nodes: VNode[];
 }
 
+/** 模板仓库注册器。 */
 export class TemplateRegistry {
   private readonly map = new Map<string, TemplateItem>();
 

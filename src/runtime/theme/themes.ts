@@ -6,6 +6,7 @@ export interface ThemeTokens {
   paletteRef: string;
 }
 
+/** 运行时主题列表：编辑器和运行态共用。 */
 export const themes: ThemeTokens[] = [
   {
     id: "theme.tech.light",
@@ -50,4 +51,5 @@ export const themes: ThemeTokens[] = [
 
 const fallbackTheme: ThemeTokens = themes[0]!;
 
+/** 按 id 读取主题，找不到时回退默认主题。 */
 export const findTheme = (themeId?: string): ThemeTokens => themes.find((t) => t.id === themeId) ?? fallbackTheme;

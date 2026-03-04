@@ -4,7 +4,13 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * ChartTypeCatalog 单元测试。
+ */
 class ChartTypeCatalogTest {
+    /**
+     * 保证类型目录覆盖前端 DSL 支持的全部图表类型。
+     */
     @Test
     void containAllFrontendChartTypes() {
         assertTrue(ChartTypeCatalog.webTypes().contains("line"));

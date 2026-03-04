@@ -14,6 +14,7 @@ export interface TemplateDef {
   build: () => VNode[];
 }
 
+// 模板库：按场景/人群提供默认结构，支持一键落地。
 const dashboardTemplates: TemplateDef[] = [
   {
     id: "dash.noc.overview",
@@ -102,6 +103,7 @@ const pptTemplates: TemplateDef[] = [
 
 export const allTemplates: TemplateDef[] = [...dashboardTemplates, ...reportTemplates, ...pptTemplates];
 
+/** 根据 templateId + target 解析模板节点。 */
 export const resolveTemplate = (templateId: string, target?: Command["templateTarget"]): VNode[] => {
   const template = allTemplates.find((tpl) => tpl.id === templateId && (!target || tpl.target === target));
   return template ? template.build() : [];
@@ -127,6 +129,7 @@ export const listTemplatesForDocType = (docType: DocType): TemplateDef[] => {
   return allTemplates.filter((tpl) => tpl.target === target);
 };
 
+/** UI 人群标签转换。 */
 export const personaLabel = (persona: TemplateDef["personas"][number]): string => {
   switch (persona) {
     case "novice":

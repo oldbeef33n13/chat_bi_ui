@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { computeVirtualWindow } from "./report-virtual";
 
+/** Report 虚拟滚动窗口计算测试。 */
 describe("computeVirtualWindow", () => {
+  /** 顶部区域应只返回可见 + overscan 的子集。 */
   it("returns only visible subset with overscan", () => {
     const items = Array.from({ length: 300 }, () => ({ height: 50 }));
     const result = computeVirtualWindow(items, 0, 500, 100);
@@ -12,6 +14,7 @@ describe("computeVirtualWindow", () => {
     expect(result.visible[result.visible.length - 1]?.top).toBeLessThanOrEqual(600);
   });
 
+  /** 中部滚动时，返回项的 top 偏移应保持连续合理。 */
   it("scrolls to middle region and keeps top offsets consistent", () => {
     const items = Array.from({ length: 300 }, () => ({ height: 50 }));
     const result = computeVirtualWindow(items, 5000, 500, 100);

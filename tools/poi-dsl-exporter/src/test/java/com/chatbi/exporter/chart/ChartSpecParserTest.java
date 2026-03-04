@@ -9,7 +9,13 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * ChartSpecParser 单元测试。
+ */
 class ChartSpecParserTest {
+    /**
+     * 验证复杂图表配置可被完整解析并计算复杂度等级。
+     */
     @Test
     void parseComplexChartSpec() {
         VNode chart = new VNode();

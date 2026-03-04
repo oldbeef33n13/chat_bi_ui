@@ -14,10 +14,21 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 命令行入口。
+ * <p>
+ * 负责读取 DSL、解析目标类型、拼装导出请求并调用编排器执行导出。
+ * 该类保持“薄入口”设计，业务规则下沉到 core/docx/pptx 模块。
+ * </p>
+ */
 public final class CliMain {
     private CliMain() {
     }
 
+    /**
+     * CLI 主流程：
+     * 1) 解析参数；2) 读取 DSL；3) 推断导出目标；4) 调用编排器导出。
+     */
     public static void main(String[] args) throws Exception {
         if (args.length == 0 || hasFlag(args, "--help") || hasFlag(args, "-h")) {
             printHelp();
@@ -71,6 +82,10 @@ public final class CliMain {
         throw new IllegalArgumentException("Cannot infer target from docType/output extension. Use --target docx|pptx");
     }
 
+    /**
+     * 将 `--key value` 形式参数解析为 Map。
+     * 若某个开关未携带值，则记为 `"true"`。
+     */
     private static Map<String, String> parseArgs(String[] args) {
         Map<String, String> map = new HashMap<>();
         for (int i = 0; i < args.length; i++) {
@@ -97,6 +112,9 @@ public final class CliMain {
         return false;
     }
 
+    /**
+     * 打印命令行帮助信息。
+     */
     private static void printHelp() {
         System.out.println("""
                 Usage:

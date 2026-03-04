@@ -8,6 +8,7 @@ import { BatchOpsPanel } from "./BatchOpsPanel";
 import { buildAlignCommands, type AlignKind } from "../utils/alignment";
 import type { Persona } from "../types/persona";
 
+// 场景级懒加载：按文档类型拆分 Dashboard/Report/PPT 编辑器 chunk。
 const loadDashboardEditor = () => import("../editors/DashboardEditor");
 const loadReportEditor = () => import("../editors/ReportEditor");
 const loadPptEditor = () => import("../editors/PptEditor");
@@ -105,6 +106,7 @@ export function CanvasPanel({
   };
 
   const alignSelection = (kind: AlignKind, summary: string): void => {
+    // 对齐命令统一走 command 链，保证可撤销/审计一致。
     const commands = buildAlignCommands(doc.root, selection.selectedIds, kind);
     if (commands.length === 0) {
       return;

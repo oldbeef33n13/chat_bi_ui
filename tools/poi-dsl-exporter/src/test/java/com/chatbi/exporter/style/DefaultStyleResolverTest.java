@@ -9,7 +9,13 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+/**
+ * DefaultStyleResolver 单元测试。
+ */
 class DefaultStyleResolverTest {
+    /**
+     * 验证请求级主题覆盖 + DSL 局部主题覆盖均能生效。
+     */
     @Test
     void resolveThemeWithOverrides() {
         VNode root = new VNode();

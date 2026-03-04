@@ -9,6 +9,7 @@ import { TreePanel } from "./components/TreePanel";
 import { DocApiError, type DocContent, type DocMeta, type EditorDocType } from "./api/doc-repository";
 import { useDocLibrary } from "./hooks/use-doc-library";
 import { EditorProvider, useEditorStore } from "./state/editor-context";
+import { setAiTelemetryContext } from "./telemetry/ai-telemetry";
 import { buildAlignCommands, type AlignKind } from "./utils/alignment";
 import type { Persona } from "./types/persona";
 
@@ -31,6 +32,10 @@ type RouteState = { page: "library" } | { page: "detail"; docId: string; mode: "
 const DOC_TYPES: EditorDocType[] = ["dashboard", "report", "ppt"];
 const cloneDoc = (doc: VDoc): VDoc => structuredClone(doc);
 
+/**
+ * 应用主壳：承接文档中心 -> 详情运行态 -> 编辑态完整闭环。
+ * 关键职责：路由同步、详情加载、编辑会话管理、保存/发布流程。
+ */
 export function App(): JSX.Element {
   const [route, setRoute] = useState<RouteState>(() => parseRouteFromHash(window.location.hash));
   const { repo, source, page, loading: listLoading, error: listError, filters, refresh, createDoc } = useDocLibrary();
@@ -98,6 +103,26 @@ export function App(): JSX.Element {
     setPreviewDraft(false);
     setActionError(undefined);
   }, [route.page === "detail" ? route.docId : "", route.page, route.page === "detail" ? route.mode : ""]);
+
+  useEffect(() => {
+    // 把文档上下文注入 AI 埋点全局上下文，避免每个组件重复传参。
+    if (route.page !== "detail") {
+      setAiTelemetryContext({
+        docId: undefined,
+        docType: undefined,
+        routeMode: undefined,
+        nodeId: undefined,
+        sourceId: undefined,
+        trigger: undefined
+      });
+      return;
+    }
+    setAiTelemetryContext({
+      docId: route.docId,
+      docType: detail?.meta.docType,
+      routeMode: route.mode
+    });
+  }, [detail?.meta.docType, route]);
 
   useEffect(() => {
     if (route.page !== "detail") {
@@ -193,6 +218,7 @@ export function App(): JSX.Element {
   };
 
   const publishDraft = async (docId: string): Promise<void> => {
+    // 优先使用编辑态最新草稿版本，避免发布旧 revision。
     const draftRevision =
       route.page === "detail" && route.mode === "edit" && editSession?.docId === docId ? editSession.draftRevision : detail?.draft.revision;
     if (draftRevision === undefined || draftRevision === null) {
@@ -502,6 +528,7 @@ function LibraryPage({
     setKeywordInput(filters.q);
   }, [filters.q]);
 
+  // 简单分页控制，后续若接游标分页可在这里替换。
   const canPrev = pageIndex > 1;
   const canNext = pageIndex * pageSize < total;
 
@@ -634,6 +661,7 @@ const resolveActionError = (action: string, error: unknown): string => {
   return `${action}失败：${toErrorText(error)}`;
 };
 function AppLayout({ advanced }: { advanced: boolean }): JSX.Element {
+  // 产品策略：默认简化模式，开启“更多设置”后进入 analyst 能力层。
   const persona: Persona = advanced ? "analyst" : "novice";
   const store = useEditorStore();
   const [showFilterPanel, setShowFilterPanel] = useState(false);
@@ -981,6 +1009,7 @@ const pruneSelectedForRemoval = (root: VNode, selectedIds: string[]): string[] =
 };
 
 const parseRouteFromHash = (hash: string): RouteState => {
+  // 支持 #/docs -> 列表；#/docs/{id} -> 运行态；#/docs/{id}/edit -> 编辑态
   const cleaned = hash.replace(/^#\/?/, "");
   const [path = ""] = cleaned.split("?");
   const parts = path.split("/").filter(Boolean);
