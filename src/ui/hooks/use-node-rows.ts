@@ -15,7 +15,12 @@ interface UseNodeRowsResult {
   error?: string;
 }
 
-export const useNodeRows = (doc: VDoc, node: VNode, engine: DataEngine): UseNodeRowsResult => {
+export const useNodeRows = (
+  doc: VDoc,
+  node: VNode,
+  engine: DataEngine,
+  dataVersion?: string
+): UseNodeRowsResult => {
   const [state, setState] = useState<FetchState>({ rawRows: [], loading: false });
 
   useEffect(() => {
@@ -58,7 +63,7 @@ export const useNodeRows = (doc: VDoc, node: VNode, engine: DataEngine): UseNode
       active = false;
       engine.cancel(`${sourceId}::${node.data?.queryId ?? "na"}::${JSON.stringify(node.data?.params ?? {})}`);
     };
-  }, [doc.docId, engine, node.data?.params, node.data?.queryId, node.data?.sourceId]);
+  }, [dataVersion, engine, node.data?.params, node.data?.queryId, node.data?.sourceId]);
 
   const rows = useMemo(() => {
     const withComputed = node.kind === "chart" ? applyComputedFields(state.rawRows, (node.props ?? {}) as ChartSpec) : state.rawRows;

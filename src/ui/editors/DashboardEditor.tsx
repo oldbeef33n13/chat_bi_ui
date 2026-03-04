@@ -1,13 +1,16 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { ChartSpec, VDoc, VNode } from "../../core/doc/types";
+import { useEffect, useRef, useState } from "react";
+import type { ChartSpec, TableSpec, VDoc, VNode } from "../../core/doc/types";
 import { DataEngine } from "../../runtime/data/data-engine";
 import { EChartView } from "../../runtime/chart/EChartView";
+import { TableView } from "../../runtime/table/TableView";
 import { useNodeRows } from "../hooks/use-node-rows";
+import { useDataEngine } from "../hooks/use-data-engine";
 import { useEditorStore } from "../state/editor-context";
 import { useSignalValue } from "../state/use-signal-value";
 import { ChartQuickActions } from "../components/ChartQuickActions";
 import { ChartAskAssistant } from "../components/ChartAskAssistant";
 import { isGridOverlap, resolveGridConflict, type GridRect } from "../utils/dashboard-grid";
+import { resolveContainerWidth } from "../utils/container-width";
 
 interface DashboardEditorProps {
   doc: VDoc;
@@ -16,7 +19,7 @@ interface DashboardEditorProps {
 export function DashboardEditor({ doc }: DashboardEditorProps): JSX.Element {
   const store = useEditorStore();
   const selection = useSignalValue(store.selection);
-  const engine = useMemo(() => new DataEngine(doc.dataSources ?? [], doc.queries ?? [], { debounceMs: 120 }), [doc.docId]);
+  const { engine, dataVersion } = useDataEngine(doc.dataSources ?? [], doc.queries ?? [], { debounceMs: 120 });
   const root = doc.root;
   const children = root.children ?? [];
   const gridCols = Number((root.props as Record<string, unknown>)?.gridCols ?? 12);
@@ -26,7 +29,26 @@ export function DashboardEditor({ doc }: DashboardEditorProps): JSX.Element {
   const [layoutHint, setLayoutHint] = useState("");
   const [gridPreview, setGridPreview] = useState<{ nodeId: string; layout: GridRect; conflictIds: string[] } | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
-  const wrapWidth = 1200;
+  const [wrapWidth, setWrapWidth] = useState(1200);
+
+  useEffect(() => {
+    const host = wrapRef.current;
+    if (!host) {
+      return;
+    }
+    const updateWidth = (): void => {
+      const width = resolveContainerWidth(host.getBoundingClientRect().width || host.clientWidth, 1200, 640);
+      setWrapWidth(width);
+    };
+    updateWidth();
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", updateWidth);
+      return () => window.removeEventListener("resize", updateWidth);
+    }
+    const observer = new ResizeObserver(updateWidth);
+    observer.observe(host);
+    return () => observer.disconnect();
+  }, []);
 
   return (
     <div className="col" style={{ height: "100%" }}>
@@ -60,6 +82,8 @@ export function DashboardEditor({ doc }: DashboardEditorProps): JSX.Element {
             rowH={rowH}
             gap={gap}
             engine={engine}
+            dataVersion={dataVersion}
+            wrapWidth={wrapWidth}
             previewMode={previewMode}
             active={selection.selectedIds.includes(node.id)}
             onSelect={(multi) => store.setSelection(node.id, multi)}
@@ -206,6 +230,8 @@ interface DashboardCardProps {
   rowH: number;
   gap: number;
   engine: DataEngine;
+  dataVersion: string;
+  wrapWidth: number;
   previewMode: boolean;
   active: boolean;
   onSelect: (multi: boolean) => void;
@@ -230,6 +256,8 @@ function DashboardCard({
   rowH,
   gap,
   engine,
+  dataVersion,
+  wrapWidth,
   previewMode,
   active,
   onSelect,
@@ -245,7 +273,6 @@ function DashboardCard({
   const gy = Number(layout.gy ?? 0);
   const gw = Number(layout.gw ?? 6);
   const gh = Number(layout.gh ?? 6);
-  const wrapWidth = 1200;
   const cellW = (wrapWidth - gap * (gridCols + 1)) / gridCols;
   const baseRect: RectState = isAbsolute
     ? {
@@ -264,7 +291,7 @@ function DashboardCard({
   const [rect, setRect] = useState(baseRect);
   const [dragMode, setDragMode] = useState<"move" | "resize" | null>(null);
   const [start, setStart] = useState<{ x: number; y: number; rect: typeof baseRect } | null>(null);
-  const { rows, loading, error } = useNodeRows(doc, node, engine);
+  const { rows, loading, error } = useNodeRows(doc, node, engine, dataVersion);
 
   useEffect(() => {
     setRect(baseRect);
@@ -386,6 +413,14 @@ function DashboardCard({
               </div>
               <EChartView spec={node.props as ChartSpec} rows={rows} height="100%" />
             </div>
+          )
+        ) : node.kind === "table" ? (
+          loading ? (
+            <div className="muted">loading...</div>
+          ) : error ? (
+            <div className="muted">error: {error}</div>
+          ) : (
+            <TableView spec={node.props as TableSpec} rows={rows} height="100%" />
           )
         ) : (
           <div className="muted">暂未支持: {node.kind}</div>

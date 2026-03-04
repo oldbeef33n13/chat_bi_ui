@@ -13,6 +13,28 @@ export interface RecommendResult {
   reasons: string[];
 }
 
+export interface AiRecommendContext {
+  docType: DocType;
+  nodeId?: string;
+  sourceId?: string;
+  trigger: "create-wizard" | "inspector" | "source-switch";
+}
+
+export interface AiRecommendRequest {
+  requestedType: ChartType;
+  fields: SourceField[];
+  currentBindings?: FieldBinding[];
+  context: AiRecommendContext;
+}
+
+export interface AiRecommendResult extends RecommendResult {
+  source: "ai" | "local";
+}
+
+type RecommendProvider = (request: AiRecommendRequest) => Promise<Partial<RecommendResult> | null> | Partial<RecommendResult> | null;
+
+let recommendProvider: RecommendProvider | null = null;
+
 const chartTypes: ChartType[] = [
   "auto",
   "line",
@@ -191,6 +213,33 @@ export const recommendChartConfig = (requestedType: ChartType, fields: SourceFie
   return { chartType: finalType, bindings, reasons };
 };
 
+export const registerChartRecommendProvider = (provider: RecommendProvider): void => {
+  recommendProvider = provider;
+};
+
+export const clearChartRecommendProvider = (): void => {
+  recommendProvider = null;
+};
+
+export const requestAiChartRecommend = async (request: AiRecommendRequest): Promise<AiRecommendResult> => {
+  const fallback = recommendChartConfig(request.requestedType, request.fields);
+  if (!recommendProvider) {
+    return { ...fallback, source: "local" };
+  }
+  try {
+    const next = await recommendProvider(request);
+    if (!next) {
+      return { ...fallback, source: "local" };
+    }
+    const chartType = next.chartType ?? fallback.chartType;
+    const bindings = next.bindings && next.bindings.length > 0 ? next.bindings : fallback.bindings;
+    const reasons = next.reasons && next.reasons.length > 0 ? next.reasons : fallback.reasons;
+    return { chartType, bindings, reasons, source: "ai" };
+  } catch {
+    return { ...fallback, source: "local" };
+  }
+};
+
 const intersects = (a: { x: number; y: number; w: number; h: number }, b: { x: number; y: number; w: number; h: number }): boolean =>
   a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 
@@ -254,17 +303,19 @@ export const buildChartNode = ({
   parent,
   chartType,
   sourceId,
-  title
+  title,
+  forcedRecommend
 }: {
   doc: VDoc;
   parent: VNode;
   chartType: ChartType;
   sourceId?: string;
   title?: string;
+  forcedRecommend?: RecommendResult;
 }): VNode<ChartSpec> => {
   const source = doc.dataSources?.find((item) => item.id === sourceId) ?? doc.dataSources?.[0];
   const fields = extractSourceFields(source);
-  const recommend = recommendChartConfig(chartType, fields);
+  const recommend = forcedRecommend ?? recommendChartConfig(chartType, fields);
   const finalType = recommend.chartType;
   const spec = defaultChartSpec(title ?? "新图表");
   spec.chartType = finalType;

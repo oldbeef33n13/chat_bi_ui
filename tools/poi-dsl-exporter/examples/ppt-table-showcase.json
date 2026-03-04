@@ -1,0 +1,97 @@
+{
+  "docId": "ppt_table_showcase",
+  "docType": "ppt",
+  "schemaVersion": "1.0.0",
+  "title": "PPT Table Showcase",
+  "locale": "zh-CN",
+  "themeId": "theme.tech.light",
+  "dataSources": [
+    {
+      "id": "ds_ops",
+      "type": "static",
+      "staticData": [
+        { "region": "华东", "site": "上海A", "availability_pct": 99.97, "latency_ms": 18, "loss_pct": 0.12, "alarm_total": 12, "alarm_p1": 1 },
+        { "region": "华东", "site": "杭州B", "availability_pct": 99.95, "latency_ms": 21, "loss_pct": 0.18, "alarm_total": 16, "alarm_p1": 2 },
+        { "region": "华北", "site": "北京A", "availability_pct": 99.94, "latency_ms": 23, "loss_pct": 0.22, "alarm_total": 20, "alarm_p1": 3 },
+        { "region": "华北", "site": "天津C", "availability_pct": 99.93, "latency_ms": 24, "loss_pct": 0.26, "alarm_total": 23, "alarm_p1": 3 },
+        { "region": "华南", "site": "广州A", "availability_pct": 99.96, "latency_ms": 19, "loss_pct": 0.15, "alarm_total": 14, "alarm_p1": 1 },
+        { "region": "华南", "site": "深圳B", "availability_pct": 99.95, "latency_ms": 20, "loss_pct": 0.17, "alarm_total": 17, "alarm_p1": 2 }
+      ]
+    }
+  ],
+  "queries": [
+    {
+      "queryId": "q_ops",
+      "sourceId": "ds_ops",
+      "kind": "static"
+    }
+  ],
+  "root": {
+    "id": "root",
+    "kind": "container",
+    "props": {
+      "size": "16:9",
+      "defaultBg": "#ffffff"
+    },
+    "children": [
+      {
+        "id": "slide_1",
+        "kind": "slide",
+        "props": { "title": "多级表头与原生合并" },
+        "layout": { "mode": "absolute", "x": 0, "y": 0, "w": 960, "h": 540 },
+        "children": [
+          {
+            "id": "txt_1",
+            "kind": "text",
+            "layout": { "mode": "absolute", "x": 36, "y": 24, "w": 880, "h": 48, "z": 2 },
+            "props": { "text": "区域站点质量明细（表头合并 + 数据区合并）", "format": "plain" },
+            "style": { "fontSize": 24, "bold": true }
+          },
+          {
+            "id": "tbl_ops",
+            "kind": "table",
+            "layout": { "mode": "absolute", "x": 36, "y": 84, "w": 888, "h": 392, "z": 1 },
+            "data": { "sourceId": "ds_ops", "queryId": "q_ops" },
+            "props": {
+              "titleText": "区域站点质量明细",
+              "repeatHeader": true,
+              "zebra": true,
+              "maxRows": 50,
+              "columns": [
+                { "key": "region", "title": "区域", "width": 120, "align": "left" },
+                { "key": "site", "title": "站点", "width": 140, "align": "left" },
+                { "key": "availability_pct", "title": "可用率", "width": 120, "align": "right", "format": "pct" },
+                { "key": "latency_ms", "title": "时延(ms)", "width": 120, "align": "right" },
+                { "key": "loss_pct", "title": "丢包率", "width": 120, "align": "right", "format": "pct" },
+                { "key": "alarm_total", "title": "告警总量", "width": 120, "align": "right", "format": "int" },
+                { "key": "alarm_p1", "title": "P1告警", "width": 120, "align": "right", "format": "int" }
+              ],
+              "headerRows": [
+                [
+                  { "text": "区域信息", "colSpan": 2, "rowSpan": 1, "align": "center" },
+                  { "text": "服务质量", "colSpan": 3, "rowSpan": 1, "align": "center" },
+                  { "text": "告警态势", "colSpan": 2, "rowSpan": 1, "align": "center" }
+                ],
+                [
+                  { "text": "区域", "colSpan": 1, "rowSpan": 1, "align": "center" },
+                  { "text": "站点", "colSpan": 1, "rowSpan": 1, "align": "center" },
+                  { "text": "可用率", "colSpan": 1, "rowSpan": 1, "align": "center" },
+                  { "text": "时延(ms)", "colSpan": 1, "rowSpan": 1, "align": "center" },
+                  { "text": "丢包率", "colSpan": 1, "rowSpan": 1, "align": "center" },
+                  { "text": "告警总量", "colSpan": 1, "rowSpan": 1, "align": "center" },
+                  { "text": "P1告警", "colSpan": 1, "rowSpan": 1, "align": "center" }
+                ]
+              ],
+              "mergeCells": [
+                { "scope": "body", "row": 0, "col": 0, "rowSpan": 2, "colSpan": 1 },
+                { "scope": "body", "row": 2, "col": 0, "rowSpan": 2, "colSpan": 1 },
+                { "scope": "body", "row": 4, "col": 0, "rowSpan": 2, "colSpan": 1 }
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  }
+}
+

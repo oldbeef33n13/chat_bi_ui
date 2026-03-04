@@ -3,7 +3,7 @@ import type { ChartType, VNode } from "../../core/doc/types";
 import { prefixedId } from "../../core/utils/id";
 import { useEditorStore } from "../state/editor-context";
 import { useSignalValue } from "../state/use-signal-value";
-import { buildChartNode, chartTypeOptions, extractSourceFields, recommendChartConfig } from "../utils/chart-recommend";
+import { buildChartNode, chartTypeOptions, extractSourceFields, recommendChartConfig, requestAiChartRecommend, type RecommendResult } from "../utils/chart-recommend";
 import { listTemplatesForDocType, personaLabel } from "../../runtime/template/templates";
 import type { Persona } from "../types/persona";
 
@@ -18,6 +18,9 @@ export function TreePanel({ persona = "analyst" }: { persona?: Persona }): JSX.E
   const [panelMode, setPanelMode] = useState<"structure" | "template">(panelByPersona(persona));
   const [templateKeyword, setTemplateKeyword] = useState("");
   const [lastTemplateName, setLastTemplateName] = useState<string>("");
+  const [aiRecommendResult, setAiRecommendResult] = useState<RecommendResult | null>(null);
+  const [aiRecommendHint, setAiRecommendHint] = useState("");
+  const [aiRecommendLoading, setAiRecommendLoading] = useState(false);
 
   useEffect(() => {
     setPanelMode(panelByPersona(persona));
@@ -31,6 +34,7 @@ export function TreePanel({ persona = "analyst" }: { persona?: Persona }): JSX.E
   const activeSourceId = newSourceId || sourceOptions[0]?.id || "";
   const sourceFieldPreview = extractSourceFields(sourceOptions.find((item) => item.id === activeSourceId));
   const recommendPreview = recommendChartConfig(newChartType, sourceFieldPreview);
+  const effectiveRecommend = aiRecommendResult ?? recommendPreview;
   const selectedNodes = selection.selectedIds.map((id) => findNode(doc.root, id)).filter((node): node is VNode => !!node);
   const selectedGroupNodes = selectedNodes.filter((node) => !!node.layout?.group);
   const selectedGroupIds = [...new Set(selectedGroupNodes.map((node) => node.layout?.group).filter((id): id is string => !!id))];
@@ -56,7 +60,8 @@ export function TreePanel({ persona = "analyst" }: { persona?: Persona }): JSX.E
             parent,
             chartType: newChartType,
             sourceId: activeSourceId || undefined,
-            title: "新图表"
+            title: "新图表",
+            forcedRecommend: aiRecommendResult ?? undefined
           })
         : kind === "section"
           ? { id: prefixedId("section"), kind: "section", props: { title: "新章节" }, children: [] }
@@ -72,6 +77,36 @@ export function TreePanel({ persona = "analyst" }: { persona?: Persona }): JSX.E
       },
       { summary: `insert ${kind}` }
     );
+    if (kind === "chart") {
+      setAiRecommendResult(null);
+      setAiRecommendHint("");
+      setAiRecommendLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    setAiRecommendResult(null);
+    setAiRecommendHint("");
+    setAiRecommendLoading(false);
+  }, [activeSourceId, newChartType]);
+
+  const runAiRecommend = async (): Promise<void> => {
+    setAiRecommendLoading(true);
+    try {
+      const next = await requestAiChartRecommend({
+        requestedType: newChartType,
+        fields: sourceFieldPreview,
+        context: {
+          docType: doc.docType,
+          sourceId: activeSourceId,
+          trigger: "create-wizard"
+        }
+      });
+      setAiRecommendResult(next);
+      setAiRecommendHint(`AI推荐(${next.source === "ai" ? "模型" : "本地兜底"}): ${next.reasons.join("；")}`);
+    } finally {
+      setAiRecommendLoading(false);
+    }
   };
 
   const removeSelected = (): void => {
@@ -259,11 +294,16 @@ export function TreePanel({ persona = "analyst" }: { persona?: Persona }): JSX.E
                 自动字段推荐: {sourceFieldPreview.slice(0, 4).map((field) => `${field.name}:${field.type}`).join(", ") || "暂无字段"}
               </div>
               <div className="muted" style={{ fontSize: 12 }}>
-                推荐说明: {recommendPreview.reasons[0] ?? "-"}
+                推荐说明: {aiRecommendHint || effectiveRecommend.reasons.join("；")}
               </div>
-              <button className="btn primary" onClick={() => addNode("chart")}>
-                新建图表
-              </button>
+              <div className="row">
+                <button className="btn primary" onClick={() => addNode("chart")}>
+                  新建图表
+                </button>
+                <button className="btn" disabled={aiRecommendLoading} onClick={() => void runAiRecommend()}>
+                  {aiRecommendLoading ? "AI 推荐中..." : "AI 推荐"}
+                </button>
+              </div>
             </div>
             <div className="col" style={{ border: "1px solid var(--line)", borderRadius: 10, padding: 8 }}>
               <div className="row" style={{ justifyContent: "space-between" }}>

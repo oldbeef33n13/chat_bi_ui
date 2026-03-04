@@ -26,17 +26,26 @@ export class DataEngine {
   private readonly cache = new Map<string, CacheEntry>();
   private readonly inFlight = new Map<string, AbortController>();
   private readonly pendingTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private defsSignature = "";
 
   constructor(
     sources: DataSourceDef[] = [],
     queries: QueryDef[] = [],
     private readonly options: DataEngineOptions = {}
   ) {
-    sources.forEach((item) => this.sources.set(item.id, item));
-    queries.forEach((item) => this.queries.set(item.queryId, item));
+    this.syncSources(sources, queries);
   }
 
   syncSources(sources: DataSourceDef[] = [], queries: QueryDef[] = []): void {
+    const nextSignature = this.serializeDefinitions(sources, queries);
+    if (nextSignature === this.defsSignature) {
+      return;
+    }
+    this.defsSignature = nextSignature;
+    this.cancel();
+    this.pendingTimers.forEach((timer) => clearTimeout(timer));
+    this.pendingTimers.clear();
+    this.cache.clear();
     this.sources.clear();
     this.queries.clear();
     sources.forEach((item) => this.sources.set(item.id, item));
@@ -155,6 +164,10 @@ export class DataEngine {
     params?: QueryRequest["params"]
   ): string {
     return `${source.id}::${query?.queryId ?? "na"}::${JSON.stringify(params ?? {})}`;
+  }
+
+  private serializeDefinitions(sources: DataSourceDef[], queries: QueryDef[]): string {
+    return JSON.stringify({ sources, queries });
   }
 
   private debounce(key: string, ms: number): Promise<void> {

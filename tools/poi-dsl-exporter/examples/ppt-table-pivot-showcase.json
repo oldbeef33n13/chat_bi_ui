@@ -1,0 +1,82 @@
+{
+  "docId": "ppt_table_pivot_showcase",
+  "docType": "ppt",
+  "schemaVersion": "1.0.0",
+  "title": "PPT Table Pivot Showcase",
+  "locale": "zh-CN",
+  "themeId": "theme.business.light",
+  "dataSources": [
+    {
+      "id": "ds_pivot",
+      "type": "static",
+      "staticData": [
+        { "region": "华东", "month": "2026-01", "err_qps": 38 },
+        { "region": "华东", "month": "2026-02", "err_qps": 32 },
+        { "region": "华东", "month": "2026-03", "err_qps": 28 },
+        { "region": "华北", "month": "2026-01", "err_qps": 45 },
+        { "region": "华北", "month": "2026-02", "err_qps": 40 },
+        { "region": "华北", "month": "2026-03", "err_qps": 35 },
+        { "region": "华南", "month": "2026-01", "err_qps": 30 },
+        { "region": "华南", "month": "2026-02", "err_qps": 26 },
+        { "region": "华南", "month": "2026-03", "err_qps": 22 }
+      ]
+    }
+  ],
+  "queries": [
+    {
+      "queryId": "q_pivot",
+      "sourceId": "ds_pivot",
+      "kind": "static"
+    }
+  ],
+  "root": {
+    "id": "root",
+    "kind": "container",
+    "props": {
+      "size": "16:9",
+      "defaultBg": "#ffffff"
+    },
+    "children": [
+      {
+        "id": "slide_1",
+        "kind": "slide",
+        "props": { "title": "透视表格（按月展开）" },
+        "layout": { "mode": "absolute", "x": 0, "y": 0, "w": 960, "h": 540 },
+        "children": [
+          {
+            "id": "txt_1",
+            "kind": "text",
+            "layout": { "mode": "absolute", "x": 36, "y": 24, "w": 880, "h": 48, "z": 2 },
+            "props": { "text": "区域错误QPS透视（Pivot）", "format": "plain" },
+            "style": { "fontSize": 24, "bold": true }
+          },
+          {
+            "id": "tbl_pivot",
+            "kind": "table",
+            "layout": { "mode": "absolute", "x": 120, "y": 96, "w": 720, "h": 320, "z": 1 },
+            "data": { "sourceId": "ds_pivot", "queryId": "q_pivot" },
+            "props": {
+              "titleText": "区域x月份错误QPS透视",
+              "repeatHeader": true,
+              "zebra": true,
+              "maxRows": 100,
+              "columns": [
+                { "key": "region", "title": "区域", "width": 180, "align": "left" }
+              ],
+              "pivot": {
+                "enabled": true,
+                "rowFields": ["region"],
+                "columnField": "month",
+                "valueField": "err_qps",
+                "agg": "sum",
+                "fill": 0,
+                "valueTitle": "错误QPS"
+              }
+            }
+          }
+        ]
+      }
+    ]
+  }
+}
+

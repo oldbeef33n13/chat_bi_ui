@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { defaultChartSpec } from "../../core/doc/defaults";
-import type { ChartSpec, VDoc, VNode } from "../../core/doc/types";
+import type { ChartSpec, TableSpec, VDoc, VNode } from "../../core/doc/types";
 import { DataEngine } from "../../runtime/data/data-engine";
 import { EChartView } from "../../runtime/chart/EChartView";
+import { TableView } from "../../runtime/table/TableView";
 import { useNodeRows } from "../hooks/use-node-rows";
+import { useDataEngine } from "../hooks/use-data-engine";
 import { useEditorStore } from "../state/editor-context";
 import { useSignalValue } from "../state/use-signal-value";
 import { ChartQuickActions } from "../components/ChartQuickActions";
@@ -24,7 +26,7 @@ interface Guides {
 export function PptEditor({ doc }: PptEditorProps): JSX.Element {
   const store = useEditorStore();
   const selection = useSignalValue(store.selection);
-  const engine = useMemo(() => new DataEngine(doc.dataSources ?? [], doc.queries ?? [], { debounceMs: 120 }), [doc.docId]);
+  const { engine, dataVersion } = useDataEngine(doc.dataSources ?? [], doc.queries ?? [], { debounceMs: 120 });
   const slides = (doc.root.children ?? []).filter((node) => node.kind === "slide");
   const [activeSlideId, setActiveSlideId] = useState(slides[0]?.id);
   const activeSlide = slides.find((slide) => slide.id === activeSlideId) ?? slides[0];
@@ -295,6 +297,7 @@ export function PptEditor({ doc }: PptEditorProps): JSX.Element {
                 }
                 onSetGuides={setGuides}
                 engine={engine}
+                dataVersion={dataVersion}
                 snapEnabled={snapEnabled}
                 onQuickChartPatch={(patch, summary) =>
                   store.executeCommand(
@@ -329,6 +332,7 @@ function SlideNode({
   onSendBack,
   onSetGuides,
   engine,
+  dataVersion,
   snapEnabled,
   onQuickChartPatch
 }: {
@@ -343,10 +347,11 @@ function SlideNode({
   onSendBack: () => void;
   onSetGuides: (guides: Guides) => void;
   engine: DataEngine;
+  dataVersion: string;
   snapEnabled: boolean;
   onQuickChartPatch: (patch: Partial<ChartSpec>, summary: string) => void;
 }): JSX.Element {
-  const { rows, loading, error } = useNodeRows(doc, node, engine);
+  const { rows, loading, error } = useNodeRows(doc, node, engine, dataVersion);
   const layout = node.layout ?? { mode: "absolute", x: 80, y: 80, w: 200, h: 120, z: 1 };
   const [rect, setRect] = useState({
     x: Number(layout.x ?? 80),
@@ -471,6 +476,14 @@ function SlideNode({
         <pre style={{ margin: 0, whiteSpace: "pre-wrap", width: "100%", height: "100%", overflow: "auto" }}>
           {String((node.props as Record<string, unknown>)?.text ?? "")}
         </pre>
+      ) : node.kind === "table" ? (
+        loading ? (
+          <div className="muted">loading...</div>
+        ) : error ? (
+          <div className="muted">error: {error}</div>
+        ) : (
+          <TableView spec={node.props as TableSpec} rows={rows} height="100%" />
+        )
       ) : node.kind === "chart" ? (
         loading ? (
           <div className="muted">loading...</div>

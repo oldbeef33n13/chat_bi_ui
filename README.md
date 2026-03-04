@@ -13,7 +13,7 @@ npm run dev
 
 - 统一 DSL：
   - `VDoc / VNode / ChartSpec / Filter / DataSource / Query / CommandPlan`
-  - JSON Schema + AJV 校验
+  - JSON Schema 常量 + 运行时轻量校验器（同源枚举约束）
 - 统一编辑内核：
   - `Selection / Command / Patch / History / Undo/Redo / Transaction`
   - 审计日志（AI/UI 修改都记录）

@@ -11,6 +11,10 @@ import org.apache.poi.xddf.usermodel.chart.XDDFChartLegend;
 import org.apache.poi.xddf.usermodel.chart.XDDFDataSourcesFactory;
 import org.apache.poi.xddf.usermodel.chart.XDDFNumericalDataSource;
 import org.apache.poi.xddf.usermodel.chart.XDDFValueAxis;
+import org.openxmlformats.schemas.drawingml.x2006.chart.CTCatAx;
+import org.openxmlformats.schemas.drawingml.x2006.chart.CTRadarChart;
+import org.openxmlformats.schemas.drawingml.x2006.chart.CTValAx;
+import org.openxmlformats.schemas.drawingml.x2006.chart.STRadarStyle;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -241,21 +245,32 @@ public final class PoiChartRenderer {
             yAxis.setTitle(optionPatchAdapter.resolveYAxisTitle(spec));
         }
 
-        Double[] xValues = series.get(0).getValue();
+        Double[] numericCategoryX = numericCategoryArray(dataset.categories());
         XDDFChartData data = chart.createData(ChartTypes.SCATTER, xAxis, yAxis);
+
         if (series.size() == 1) {
-            Double[] indexValues = new Double[xValues.length];
-            for (int i = 0; i < xValues.length; i++) {
-                indexValues[i] = (double) (i + 1);
-            }
-            XDDFNumericalDataSource<Double> xData = XDDFDataSourcesFactory.fromArray(indexValues);
-            XDDFNumericalDataSource<Double> yData = XDDFDataSourcesFactory.fromArray(xValues);
+            Double[] yValues = series.get(0).getValue();
+            Double[] xValues = numericCategoryX != null ? numericCategoryX : indexArray(yValues.length);
+            XDDFNumericalDataSource<Double> xData = XDDFDataSourcesFactory.fromArray(xValues);
+            XDDFNumericalDataSource<Double> yData = XDDFDataSourcesFactory.fromArray(yValues);
             XDDFChartData.Series singleSeries = data.addSeries(xData, yData);
             singleSeries.setTitle(series.get(0).getKey(), null);
             chart.plot(data);
             return true;
         }
 
+        if (numericCategoryX != null) {
+            XDDFNumericalDataSource<Double> xData = XDDFDataSourcesFactory.fromArray(numericCategoryX);
+            for (Map.Entry<String, Double[]> entry : series) {
+                XDDFNumericalDataSource<Double> yData = XDDFDataSourcesFactory.fromArray(entry.getValue());
+                XDDFChartData.Series scatterSeries = data.addSeries(xData, yData);
+                scatterSeries.setTitle(entry.getKey(), null);
+            }
+            chart.plot(data);
+            return true;
+        }
+
+        Double[] xValues = series.get(0).getValue();
         XDDFNumericalDataSource<Double> xData = XDDFDataSourcesFactory.fromArray(xValues);
         for (int i = 1; i < series.size(); i++) {
             Map.Entry<String, Double[]> entry = series.get(i);
@@ -282,6 +297,7 @@ public final class PoiChartRenderer {
         XDDFChartData data = chart.createData(ChartTypes.RADAR, xAxis, yAxis);
         addSeries(data, categories, dataset.seriesArrays());
         chart.plot(data);
+        strengthenRadarVisuals(chart);
         return true;
     }
 
@@ -383,5 +399,65 @@ public final class PoiChartRenderer {
             }
         }
         return chartType;
+    }
+
+    private void strengthenRadarVisuals(XDDFChart chart) {
+        if (chart == null || chart.getCTChart() == null || chart.getCTChart().getPlotArea() == null) {
+            return;
+        }
+        for (CTRadarChart radar : chart.getCTChart().getPlotArea().getRadarChartArray()) {
+            if (radar.getRadarStyle() == null) {
+                radar.addNewRadarStyle().setVal(STRadarStyle.MARKER);
+            } else {
+                radar.getRadarStyle().setVal(STRadarStyle.MARKER);
+            }
+        }
+        for (CTValAx axis : chart.getCTChart().getPlotArea().getValAxArray()) {
+            if (!axis.isSetMajorGridlines()) {
+                axis.addNewMajorGridlines();
+            }
+        }
+        for (CTCatAx axis : chart.getCTChart().getPlotArea().getCatAxArray()) {
+            if (!axis.isSetMajorGridlines()) {
+                axis.addNewMajorGridlines();
+            }
+        }
+    }
+
+    private Double[] numericCategoryArray(List<String> categories) {
+        if (categories == null || categories.isEmpty()) {
+            return null;
+        }
+        Double[] values = new Double[categories.size()];
+        for (int i = 0; i < categories.size(); i++) {
+            Double parsed = toDouble(categories.get(i));
+            if (parsed == null) {
+                return null;
+            }
+            values[i] = parsed;
+        }
+        return values;
+    }
+
+    private Double[] indexArray(int size) {
+        Double[] values = new Double[Math.max(size, 0)];
+        for (int i = 0; i < values.length; i++) {
+            values[i] = (double) (i + 1);
+        }
+        return values;
+    }
+
+    private Double toDouble(Object value) {
+        if (value instanceof Number number) {
+            return number.doubleValue();
+        }
+        if (value instanceof String text) {
+            try {
+                return Double.parseDouble(text.trim());
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+        return null;
     }
 }

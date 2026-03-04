@@ -16,6 +16,9 @@ import com.chatbi.exporter.style.DefaultStyleResolver;
 import com.chatbi.exporter.style.StyleResolver;
 import com.chatbi.exporter.style.ThemeTokens;
 import com.chatbi.exporter.style.VisualStyle;
+import com.chatbi.exporter.table.TableCell;
+import com.chatbi.exporter.table.TableModel;
+import com.chatbi.exporter.table.TableSpecParser;
 import org.apache.poi.xwpf.model.XWPFHeaderFooterPolicy;
 import org.apache.poi.xwpf.usermodel.ParagraphAlignment;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
@@ -30,7 +33,10 @@ import org.apache.poi.xwpf.usermodel.XWPFChart;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTPageMar;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTPageSz;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTSectPr;
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTTcPr;
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTTrPr;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTSimpleField;
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.STMerge;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.STHdrFtr;
 
 import java.awt.Color;
@@ -50,6 +56,7 @@ public class ReportDocxExporter implements DocumentExporter {
     private final ChartSpecParser chartSpecParser;
     private final ChartRowResolver chartRowResolver;
     private final PoiChartRenderer poiChartRenderer;
+    private final TableSpecParser tableSpecParser;
     private final List<DocxChartFlavorRenderer> chartFlavorRenderers;
     private final RendererRegistry<DocxRenderContext> nodeRenderers;
 
@@ -62,6 +69,7 @@ public class ReportDocxExporter implements DocumentExporter {
         this.chartSpecParser = chartSpecParser;
         this.chartRowResolver = new ChartRowResolver();
         this.poiChartRenderer = new PoiChartRenderer();
+        this.tableSpecParser = new TableSpecParser();
         this.chartFlavorRenderers = new ArrayList<>();
         registerChartFlavorRenderer(new TrendFlavorRenderer());
         registerChartFlavorRenderer(new ComparisonFlavorRenderer());
@@ -74,7 +82,8 @@ public class ReportDocxExporter implements DocumentExporter {
         registerChartFlavorRenderer(new GenericFlavorRenderer());
         this.nodeRenderers = new RendererRegistry<>(new UnsupportedNodeRenderer())
                 .register(new TextNodeRenderer())
-                .register(new ChartNodeRenderer());
+                .register(new ChartNodeRenderer())
+                .register(new TableNodeRenderer());
     }
 
     public ReportDocxExporter registerChartFlavorRenderer(DocxChartFlavorRenderer renderer) {
@@ -372,6 +381,184 @@ public class ReportDocxExporter implements DocumentExporter {
         }
     }
 
+    private void addTableBlock(DocxRenderContext context, VNode tableNode, List<Map<String, Object>> rows) {
+        TableModel model = tableSpecParser.parse(tableNode, rows);
+        if (model.columnCount() <= 0) {
+            XWPFParagraph p = context.document.createParagraph();
+            XWPFRun run = p.createRun();
+            run.setText("未能解析有效表格列定义。");
+            run.setFontFamily(context.theme.fontPrimary());
+            run.setColor(VisualStyle.toHexNoHash(context.theme.muted()));
+            run.setFontSize(10);
+            return;
+        }
+
+        int totalRows = Math.max(1, model.totalRowCount());
+        XWPFTable table = context.document.createTable(totalRows, model.columnCount());
+        table.setWidth("100%");
+
+        fillDocxHeaderRows(context, table, model);
+        fillDocxBodyRows(context, table, model);
+        applyDocxMerges(table, model);
+        if (model.repeatHeader()) {
+            markHeaderRowsRepeat(table, model.headerRowCount());
+        }
+
+        XWPFParagraph gap = context.document.createParagraph();
+        gap.setSpacingAfter(80);
+    }
+
+    private void fillDocxHeaderRows(DocxRenderContext context, XWPFTable table, TableModel model) {
+        for (int r = 0; r < model.headerRowCount(); r++) {
+            XWPFTableRow row = table.getRow(r);
+            List<TableCell> header = model.headerRows().get(r);
+            for (int c = 0; c < model.columnCount(); c++) {
+                TableCell cell = header.get(c);
+                XWPFTableCell tableCell = row.getCell(c);
+                styleCell(tableCell, context.theme.primarySoft());
+                if (cell.hidden()) {
+                    writeCellText(tableCell, "", context.theme, true, 10, context.theme.text());
+                    continue;
+                }
+                writeCellText(tableCell, cell.text(), context.theme, true, 10, context.theme.text());
+                setParagraphAlign(tableCell, cell.align());
+            }
+        }
+    }
+
+    private void fillDocxBodyRows(DocxRenderContext context, XWPFTable table, TableModel model) {
+        for (int r = 0; r < model.bodyRowCount(); r++) {
+            int tableRowIndex = model.headerRowCount() + r;
+            XWPFTableRow row = table.getRow(tableRowIndex);
+            List<TableCell> body = model.bodyRows().get(r);
+            Color bg = model.zebra() && (r % 2 == 1) ? context.theme.panelAlt() : context.theme.panel();
+            for (int c = 0; c < model.columnCount(); c++) {
+                TableCell cell = body.get(c);
+                XWPFTableCell tableCell = row.getCell(c);
+                styleCell(tableCell, bg);
+                if (cell.hidden()) {
+                    writeCellText(tableCell, "", context.theme, false, 10, context.theme.text());
+                    continue;
+                }
+                writeCellText(tableCell, cell.text(), context.theme, false, 10, context.theme.text());
+                setParagraphAlign(tableCell, cell.align());
+            }
+        }
+    }
+
+    private void applyDocxMerges(XWPFTable table, TableModel model) {
+        for (int r = 0; r < model.headerRowCount(); r++) {
+            List<TableCell> row = model.headerRows().get(r);
+            for (int c = 0; c < model.columnCount(); c++) {
+                TableCell cell = row.get(c);
+                if (!cell.hidden() && (cell.rowSpan() > 1 || cell.colSpan() > 1)) {
+                    applyDocxMerge(table, r, c, cell.rowSpan(), cell.colSpan());
+                }
+            }
+        }
+        for (int r = 0; r < model.bodyRowCount(); r++) {
+            List<TableCell> row = model.bodyRows().get(r);
+            int baseRow = model.headerRowCount() + r;
+            for (int c = 0; c < model.columnCount(); c++) {
+                TableCell cell = row.get(c);
+                if (!cell.hidden() && (cell.rowSpan() > 1 || cell.colSpan() > 1)) {
+                    applyDocxMerge(table, baseRow, c, cell.rowSpan(), cell.colSpan());
+                }
+            }
+        }
+    }
+
+    private void applyDocxMerge(XWPFTable table, int row, int col, int rowSpan, int colSpan) {
+        int rowCount = table.getNumberOfRows();
+        int colCount = table.getRow(row).getTableCells().size();
+        int rs = Math.max(1, Math.min(rowSpan, rowCount - row));
+        int cs = Math.max(1, Math.min(colSpan, colCount - col));
+        if (rs <= 1 && cs <= 1) {
+            return;
+        }
+
+        XWPFTableCell anchor = table.getRow(row).getCell(col);
+        CTTcPr anchorTcPr = ensureTcPr(anchor);
+        if (cs > 1) {
+            if (anchorTcPr.isSetGridSpan()) {
+                anchorTcPr.getGridSpan().setVal(BigInteger.valueOf(cs));
+            } else {
+                anchorTcPr.addNewGridSpan().setVal(BigInteger.valueOf(cs));
+            }
+            if (anchorTcPr.isSetHMerge()) {
+                anchorTcPr.getHMerge().setVal(STMerge.RESTART);
+            } else {
+                anchorTcPr.addNewHMerge().setVal(STMerge.RESTART);
+            }
+        }
+        if (rs > 1) {
+            if (anchorTcPr.isSetVMerge()) {
+                anchorTcPr.getVMerge().setVal(STMerge.RESTART);
+            } else {
+                anchorTcPr.addNewVMerge().setVal(STMerge.RESTART);
+            }
+        }
+
+        for (int r = row; r < row + rs; r++) {
+            for (int c = col; c < col + cs; c++) {
+                if (r == row && c == col) {
+                    continue;
+                }
+                XWPFTableCell follower = table.getRow(r).getCell(c);
+                CTTcPr tcPr = ensureTcPr(follower);
+                if (cs > 1) {
+                    if (tcPr.isSetHMerge()) {
+                        tcPr.getHMerge().setVal(STMerge.CONTINUE);
+                    } else {
+                        tcPr.addNewHMerge().setVal(STMerge.CONTINUE);
+                    }
+                }
+                if (rs > 1) {
+                    if (tcPr.isSetVMerge()) {
+                        tcPr.getVMerge().setVal(STMerge.CONTINUE);
+                    } else {
+                        tcPr.addNewVMerge().setVal(STMerge.CONTINUE);
+                    }
+                }
+                clearCellText(follower);
+            }
+        }
+    }
+
+    private CTTcPr ensureTcPr(XWPFTableCell cell) {
+        return cell.getCTTc().isSetTcPr() ? cell.getCTTc().getTcPr() : cell.getCTTc().addNewTcPr();
+    }
+
+    private void markHeaderRowsRepeat(XWPFTable table, int headerRows) {
+        for (int r = 0; r < headerRows && r < table.getNumberOfRows(); r++) {
+            XWPFTableRow row = table.getRow(r);
+            CTTrPr trPr = row.getCtRow().isSetTrPr() ? row.getCtRow().getTrPr() : row.getCtRow().addNewTrPr();
+            trPr.addNewTblHeader();
+        }
+    }
+
+    private void setParagraphAlign(XWPFTableCell cell, String align) {
+        XWPFParagraph p = cell.getParagraphArray(0);
+        if (p == null) {
+            return;
+        }
+        p.setAlignment(switch (align) {
+            case "center" -> ParagraphAlignment.CENTER;
+            case "right" -> ParagraphAlignment.RIGHT;
+            default -> ParagraphAlignment.LEFT;
+        });
+    }
+
+    private void clearCellText(XWPFTableCell cell) {
+        XWPFParagraph p = cell.getParagraphArray(0);
+        if (p == null) {
+            p = cell.addParagraph();
+        }
+        while (p.getRuns().size() > 0) {
+            p.removeRun(0);
+        }
+    }
+
     private boolean renderNativeChartIfNeeded(DocxRenderContext context, ChartSpec spec, List<Map<String, Object>> rows) {
         boolean nativeChartEnabled = VNode.asBoolean(context.rootProps().get("nativeChartEnabled"), true);
         if (!nativeChartEnabled || rows == null || rows.isEmpty()) {
@@ -602,6 +789,19 @@ public class ReportDocxExporter implements DocumentExporter {
             ChartSpec spec = context.chartSpecParser.parse(node);
             List<Map<String, Object>> rows = chartRowResolver.resolve(context.doc(), node, spec);
             addChartCard(context, spec, rows);
+        }
+    }
+
+    private final class TableNodeRenderer implements NodeRenderer<DocxRenderContext> {
+        @Override
+        public String kind() {
+            return "table";
+        }
+
+        @Override
+        public void render(DocxRenderContext context, VNode node) {
+            List<Map<String, Object>> rows = chartRowResolver.resolve(context.doc(), node, null);
+            addTableBlock(context, node, rows);
         }
     }
 

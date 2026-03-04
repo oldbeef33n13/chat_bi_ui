@@ -16,16 +16,27 @@ import com.chatbi.exporter.style.DefaultStyleResolver;
 import com.chatbi.exporter.style.StyleResolver;
 import com.chatbi.exporter.style.ThemeTokens;
 import com.chatbi.exporter.style.VisualStyle;
+import com.chatbi.exporter.table.TableCell;
+import com.chatbi.exporter.table.TableModel;
+import com.chatbi.exporter.table.TableSpecParser;
+import org.apache.poi.sl.usermodel.TableCell.BorderEdge;
 import org.apache.poi.sl.usermodel.ShapeType;
 import org.apache.poi.sl.usermodel.TextParagraph;
+import org.apache.poi.sl.usermodel.VerticalAlignment;
 import org.apache.poi.util.Units;
 import org.apache.poi.xslf.usermodel.XMLSlideShow;
 import org.apache.poi.xslf.usermodel.XSLFAutoShape;
 import org.apache.poi.xslf.usermodel.XSLFChart;
 import org.apache.poi.xslf.usermodel.XSLFSlide;
+import org.apache.poi.xslf.usermodel.XSLFTable;
+import org.apache.poi.xslf.usermodel.XSLFTableCell;
+import org.apache.poi.xslf.usermodel.XSLFTableRow;
 import org.apache.poi.xslf.usermodel.XSLFTextBox;
 import org.apache.poi.xslf.usermodel.XSLFTextParagraph;
 import org.apache.poi.xslf.usermodel.XSLFTextRun;
+import org.apache.xmlbeans.XmlObject;
+import org.openxmlformats.schemas.drawingml.x2006.main.CTTableCell;
+import org.openxmlformats.schemas.drawingml.x2006.main.CTTextBody;
 
 import java.awt.Color;
 import java.awt.Dimension;
@@ -47,6 +58,7 @@ public class DeckPptxExporter implements DocumentExporter {
     private final ChartSpecParser chartSpecParser;
     private final ChartRowResolver chartRowResolver;
     private final PoiChartRenderer poiChartRenderer;
+    private final TableSpecParser tableSpecParser;
     private final List<PptxChartFlavorRenderer> chartFlavorRenderers;
     private final RendererRegistry<PptxRenderContext> nodeRenderers;
 
@@ -59,6 +71,7 @@ public class DeckPptxExporter implements DocumentExporter {
         this.chartSpecParser = chartSpecParser;
         this.chartRowResolver = new ChartRowResolver();
         this.poiChartRenderer = new PoiChartRenderer();
+        this.tableSpecParser = new TableSpecParser();
         this.chartFlavorRenderers = new ArrayList<>();
         registerChartFlavorRenderer(new TrendFlavorRenderer());
         registerChartFlavorRenderer(new ComparisonFlavorRenderer());
@@ -71,7 +84,8 @@ public class DeckPptxExporter implements DocumentExporter {
         registerChartFlavorRenderer(new GenericFlavorRenderer());
         this.nodeRenderers = new RendererRegistry<>(new UnsupportedNodeRenderer())
                 .register(new TextNodeRenderer())
-                .register(new ChartNodeRenderer());
+                .register(new ChartNodeRenderer())
+                .register(new TableNodeRenderer());
     }
 
     public DeckPptxExporter registerChartFlavorRenderer(PptxChartFlavorRenderer renderer) {
@@ -234,6 +248,181 @@ public class DeckPptxExporter implements DocumentExporter {
             addCardLine(card, context.theme, "暂无可用数据，未生成原生图表。", 11.0, context.theme.muted(), false);
         } else {
             addCardLine(card, context.theme, "当前图表类型在此环境下未生成原生图表，已使用占位卡片。", 11.0, context.theme.muted(), false);
+        }
+    }
+
+    private void addTableShape(PptxRenderContext context, VNode tableNode, List<Map<String, Object>> rows) {
+        TableModel table = tableSpecParser.parse(tableNode, rows);
+        if (table.columnCount() <= 0) {
+            addUnsupportedShape(context, tableNode);
+            return;
+        }
+
+        Rectangle rect = resolveRect(tableNode, 100, 100, 520, 260);
+        XSLFTable xslfTable = context.slide().createTable();
+        xslfTable.setAnchor(rect);
+
+        int totalRows = Math.max(1, table.totalRowCount());
+        int rowHeight = Math.max(18, rect.height / totalRows);
+        for (int r = 0; r < totalRows; r++) {
+            XSLFTableRow row = xslfTable.addRow();
+            row.setHeight(rowHeight);
+            for (int c = 0; c < table.columnCount(); c++) {
+                row.addCell();
+            }
+        }
+
+        applyColumnWidths(xslfTable, table, rect.width);
+        fillHeaderCells(context, xslfTable, table);
+        fillBodyCells(context, xslfTable, table);
+        applyTableMerges(xslfTable, table);
+        normalizeTableCellTextBodies(xslfTable);
+        xslfTable.updateCellAnchor();
+    }
+
+    private void applyColumnWidths(XSLFTable table, TableModel model, int totalWidth) {
+        double sum = model.columns().stream().mapToDouble(col -> Math.max(1.0, col.width())).sum();
+        if (sum <= 0.0) {
+            sum = model.columnCount();
+        }
+        for (int c = 0; c < model.columnCount(); c++) {
+            double weight = Math.max(1.0, model.columns().get(c).width());
+            double width = Math.max(36.0, (weight / sum) * totalWidth);
+            table.setColumnWidth(c, width);
+        }
+    }
+
+    private void fillHeaderCells(PptxRenderContext context, XSLFTable table, TableModel model) {
+        for (int r = 0; r < model.headerRowCount(); r++) {
+            List<TableCell> row = model.headerRows().get(r);
+            for (int c = 0; c < model.columnCount(); c++) {
+                TableCell cell = row.get(c);
+                XSLFTableCell tableCell = table.getCell(r, c);
+                if (cell.hidden()) {
+                    clearTableCell(tableCell);
+                    continue;
+                }
+                styleTableCell(tableCell, context.theme().primarySoft());
+                writeTableCellText(tableCell, cell.text(), context.theme(), true, 11);
+                setTableCellAlign(tableCell, cell.align());
+            }
+        }
+    }
+
+    private void fillBodyCells(PptxRenderContext context, XSLFTable table, TableModel model) {
+        for (int r = 0; r < model.bodyRowCount(); r++) {
+            List<TableCell> row = model.bodyRows().get(r);
+            int tableRow = model.headerRowCount() + r;
+            Color rowBg = model.zebra() && (r % 2 == 1) ? context.theme().panelAlt() : context.theme().panel();
+            for (int c = 0; c < model.columnCount(); c++) {
+                TableCell cell = row.get(c);
+                XSLFTableCell tableCell = table.getCell(tableRow, c);
+                if (cell.hidden()) {
+                    clearTableCell(tableCell);
+                    continue;
+                }
+                styleTableCell(tableCell, rowBg);
+                writeTableCellText(tableCell, cell.text(), context.theme(), false, 10);
+                setTableCellAlign(tableCell, cell.align());
+            }
+        }
+    }
+
+    private void styleTableCell(XSLFTableCell cell, Color background) {
+        cell.setFillColor(background);
+        cell.setVerticalAlignment(VerticalAlignment.MIDDLE);
+        cell.setBorderColor(BorderEdge.top, new Color(0xD7, 0xE3, 0xF7));
+        cell.setBorderColor(BorderEdge.bottom, new Color(0xD7, 0xE3, 0xF7));
+        cell.setBorderColor(BorderEdge.left, new Color(0xD7, 0xE3, 0xF7));
+        cell.setBorderColor(BorderEdge.right, new Color(0xD7, 0xE3, 0xF7));
+        cell.setBorderWidth(BorderEdge.top, 0.75);
+        cell.setBorderWidth(BorderEdge.bottom, 0.75);
+        cell.setBorderWidth(BorderEdge.left, 0.75);
+        cell.setBorderWidth(BorderEdge.right, 0.75);
+    }
+
+    private void setTableCellAlign(XSLFTableCell cell, String align) {
+        TextParagraph.TextAlign textAlign = switch (align) {
+            case "center" -> TextParagraph.TextAlign.CENTER;
+            case "right" -> TextParagraph.TextAlign.RIGHT;
+            default -> TextParagraph.TextAlign.LEFT;
+        };
+        for (XSLFTextParagraph paragraph : cell.getTextParagraphs()) {
+            paragraph.setTextAlign(textAlign);
+        }
+    }
+
+    private void clearTableCell(XSLFTableCell cell) {
+        cell.clearText();
+        cell.setFillColor(new Color(255, 255, 255, 0));
+    }
+
+    private void writeTableCellText(
+            XSLFTableCell cell,
+            String text,
+            ThemeTokens theme,
+            boolean bold,
+            double fontSize
+    ) {
+        cell.clearText();
+        XSLFTextParagraph paragraph = cell.addNewTextParagraph();
+        XSLFTextRun run = paragraph.addNewTextRun();
+        run.setText(text == null ? "" : text);
+        run.setFontFamily(theme.fontPrimary());
+        run.setFontSize(fontSize);
+        run.setBold(bold);
+        run.setFontColor(theme.text());
+    }
+
+    private void applyTableMerges(XSLFTable table, TableModel model) {
+        for (int r = 0; r < model.headerRowCount(); r++) {
+            List<TableCell> row = model.headerRows().get(r);
+            for (int c = 0; c < model.columnCount(); c++) {
+                TableCell cell = row.get(c);
+                if (!cell.hidden() && (cell.rowSpan() > 1 || cell.colSpan() > 1)) {
+                    table.mergeCells(r, r + cell.rowSpan() - 1, c, c + cell.colSpan() - 1);
+                }
+            }
+        }
+        for (int r = 0; r < model.bodyRowCount(); r++) {
+            List<TableCell> row = model.bodyRows().get(r);
+            int baseRow = model.headerRowCount() + r;
+            for (int c = 0; c < model.columnCount(); c++) {
+                TableCell cell = row.get(c);
+                if (!cell.hidden() && (cell.rowSpan() > 1 || cell.colSpan() > 1)) {
+                    table.mergeCells(baseRow, baseRow + cell.rowSpan() - 1, c, c + cell.colSpan() - 1);
+                }
+            }
+        }
+    }
+
+    private void normalizeTableCellTextBodies(XSLFTable table) {
+        int rowCount = table.getNumberOfRows();
+        if (rowCount <= 0) {
+            return;
+        }
+        int colCount = table.getNumberOfColumns();
+        for (int r = 0; r < rowCount; r++) {
+            for (int c = 0; c < colCount; c++) {
+                XSLFTableCell cell = table.getCell(r, c);
+                if (cell == null) {
+                    continue;
+                }
+                XmlObject xml = cell.getXmlObject();
+                if (!(xml instanceof CTTableCell ctCell)) {
+                    continue;
+                }
+                CTTextBody txBody = ctCell.isSetTxBody() ? ctCell.getTxBody() : ctCell.addNewTxBody();
+                if (txBody.getBodyPr() == null) {
+                    txBody.addNewBodyPr();
+                }
+                if (!txBody.isSetLstStyle()) {
+                    txBody.addNewLstStyle();
+                }
+                if (txBody.sizeOfPArray() <= 0) {
+                    txBody.addNewP();
+                }
+            }
         }
     }
 
@@ -550,6 +739,19 @@ public class DeckPptxExporter implements DocumentExporter {
             ChartSpec spec = context.chartSpecParser.parse(node);
             List<Map<String, Object>> rows = chartRowResolver.resolve(context.doc(), node, spec);
             addChartCard(context, spec, node, rows);
+        }
+    }
+
+    private final class TableNodeRenderer implements NodeRenderer<PptxRenderContext> {
+        @Override
+        public String kind() {
+            return "table";
+        }
+
+        @Override
+        public void render(PptxRenderContext context, VNode node) {
+            List<Map<String, Object>> rows = chartRowResolver.resolve(context.doc(), node, null);
+            addTableShape(context, node, rows);
         }
     }
 

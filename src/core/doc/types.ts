@@ -189,6 +189,52 @@ export interface TextProps {
   format?: "plain" | "markdown-lite";
 }
 
+export interface TableColumnSpec {
+  key: string;
+  title?: string;
+  width?: number;
+  align?: "left" | "center" | "right";
+  format?: string;
+}
+
+export interface TableHeaderCellSpec {
+  text?: string;
+  title?: string;
+  colSpan?: number;
+  rowSpan?: number;
+  align?: "left" | "center" | "right";
+}
+
+export interface TableMergeSpec {
+  row: number;
+  col: number;
+  rowSpan?: number;
+  colSpan?: number;
+  scope?: "header" | "body";
+}
+
+export interface TablePivotSpec {
+  enabled?: boolean;
+  rowFields: string[];
+  columnField: string;
+  valueField: string;
+  agg?: "sum" | "avg" | "min" | "max" | "count";
+  fill?: number;
+  valueTitle?: string;
+}
+
+export interface TableSpec {
+  titleText?: string;
+  columns?: TableColumnSpec[];
+  headerRows?: TableHeaderCellSpec[][];
+  mergeCells?: TableMergeSpec[];
+  rows?: Array<Record<string, unknown> | unknown[]>;
+  repeatHeader?: boolean;
+  zebra?: boolean;
+  maxRows?: number;
+  pivot?: TablePivotSpec;
+}
+
 export type NodeProps =
   | ChartSpec
   | DashboardProps
@@ -197,6 +243,7 @@ export type NodeProps =
   | SlideProps
   | SectionProps
   | TextProps
+  | TableSpec
   | Record<string, unknown>;
 
 export interface VNode<TProps extends NodeProps = NodeProps> {

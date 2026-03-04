@@ -1,4 +1,5 @@
 import type { CommandPlan, VDoc } from "./types";
+import { commandPlanSchema, vDocSchema } from "./schema";
 
 export interface ValidationError {
   instancePath: string;
@@ -10,69 +11,103 @@ export interface ValidationResult {
   errors: ValidationError[] | null;
 }
 
-const DOC_TYPES = new Set(["chart", "dashboard", "report", "ppt"]);
-const LAYOUT_MODES = new Set(["flow", "grid", "absolute"]);
-const INTENTS = new Set(["create", "update", "structure", "bulk", "query", "explain"]);
-const COMMAND_TYPES = new Set([
-  "InsertNode",
-  "RemoveNode",
-  "MoveNode",
-  "UpdateDoc",
-  "UpdateProps",
-  "UpdateData",
-  "UpdateLayout",
-  "UpdateStyle",
-  "ResetStyle",
-  "Batch",
-  "Transaction",
-  "Group",
-  "Ungroup",
-  "ApplyTheme",
-  "ApplyTemplate"
-]);
-const CHART_TYPES = new Set([
-  "auto",
-  "line",
-  "bar",
-  "pie",
-  "scatter",
-  "radar",
-  "heatmap",
-  "kline",
-  "boxplot",
-  "sankey",
-  "graph",
-  "treemap",
-  "sunburst",
-  "parallel",
-  "funnel",
-  "gauge",
-  "calendar",
-  "custom"
-]);
-const BINDING_ROLES = new Set([
-  "x",
-  "y",
-  "series",
-  "color",
-  "size",
-  "label",
-  "category",
-  "value",
-  "node",
-  "linkSource",
-  "linkTarget",
-  "linkValue",
-  "geo",
-  "lat",
-  "lng",
-  "tooltip",
-  "facet"
-]);
-const TX_MODES = new Set(["begin", "commit", "rollback"]);
-const TEMPLATE_TARGETS = new Set(["dashboard", "report", "ppt", "slide", "section"]);
-const SCOPE_VALUES = new Set(["doc", "selection"]);
-const RISK_VALUES = new Set(["low", "medium", "high"]);
+const enumSet = (values: readonly string[] | undefined, fallback: readonly string[]): Set<string> =>
+  new Set((values ?? fallback).map((item) => String(item)));
+
+const DOC_TYPES = enumSet(
+  (vDocSchema.properties.docType as { enum?: readonly string[] }).enum,
+  ["chart", "dashboard", "report", "ppt"]
+);
+const LAYOUT_MODES = enumSet(
+  (vDocSchema.$defs.VLayout.properties.mode as { enum?: readonly string[] }).enum,
+  ["flow", "grid", "absolute"]
+);
+const INTENTS = enumSet(
+  (commandPlanSchema.properties.intent as { enum?: readonly string[] }).enum,
+  ["create", "update", "structure", "bulk", "query", "explain"]
+);
+const COMMAND_TYPES = enumSet(
+  (commandPlanSchema.$defs.Command.properties.type as { enum?: readonly string[] }).enum,
+  [
+    "InsertNode",
+    "RemoveNode",
+    "MoveNode",
+    "UpdateDoc",
+    "UpdateProps",
+    "UpdateData",
+    "UpdateLayout",
+    "UpdateStyle",
+    "ResetStyle",
+    "Batch",
+    "Transaction",
+    "Group",
+    "Ungroup",
+    "ApplyTheme",
+    "ApplyTemplate"
+  ]
+);
+const CHART_TYPES = enumSet(
+  (vDocSchema.$defs.ChartSpec.properties.chartType as { enum?: readonly string[] }).enum,
+  [
+    "auto",
+    "line",
+    "bar",
+    "pie",
+    "scatter",
+    "radar",
+    "heatmap",
+    "kline",
+    "boxplot",
+    "sankey",
+    "graph",
+    "treemap",
+    "sunburst",
+    "parallel",
+    "funnel",
+    "gauge",
+    "calendar",
+    "custom"
+  ]
+);
+const BINDING_ROLES = enumSet(
+  (vDocSchema.$defs.FieldBinding.properties.role as { enum?: readonly string[] }).enum,
+  [
+    "x",
+    "y",
+    "series",
+    "color",
+    "size",
+    "label",
+    "category",
+    "value",
+    "node",
+    "linkSource",
+    "linkTarget",
+    "linkValue",
+    "geo",
+    "lat",
+    "lng",
+    "tooltip",
+    "facet"
+  ]
+);
+const TX_MODES = enumSet(
+  (commandPlanSchema.$defs.Command.properties.txMode as { enum?: readonly string[] }).enum,
+  ["begin", "commit", "rollback"]
+);
+const TEMPLATE_TARGETS = enumSet(
+  (commandPlanSchema.$defs.Command.properties.templateTarget as { enum?: readonly string[] }).enum,
+  ["dashboard", "report", "ppt", "slide", "section"]
+);
+const SCOPE_VALUES = enumSet(["doc", "selection"], ["doc", "selection"]);
+const RISK_VALUES = enumSet(
+  (
+    ((commandPlanSchema.properties.preview as { properties?: Record<string, unknown> }).properties?.risk as {
+      enum?: readonly string[];
+    })?.enum
+  ),
+  ["low", "medium", "high"]
+);
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);

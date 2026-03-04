@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
 import { defaultChartSpec } from "../../core/doc/defaults";
-import type { ChartSpec, ReportProps, VDoc, VNode } from "../../core/doc/types";
+import type { ChartSpec, ReportProps, TableSpec, VDoc, VNode } from "../../core/doc/types";
 import { DataEngine } from "../../runtime/data/data-engine";
 import { EChartView } from "../../runtime/chart/EChartView";
+import { TableView } from "../../runtime/table/TableView";
 import { useNodeRows } from "../hooks/use-node-rows";
+import { useDataEngine } from "../hooks/use-data-engine";
 import { useEditorStore } from "../state/editor-context";
 import { useSignalValue } from "../state/use-signal-value";
 import { ChartQuickActions } from "../components/ChartQuickActions";
@@ -71,7 +73,7 @@ type ReportEntry = CoverEntry | TocEntry | SectionHeaderEntry | BlockEntry | Qui
 export function ReportEditor({ doc }: ReportEditorProps): JSX.Element {
   const store = useEditorStore();
   const selection = useSignalValue(store.selection);
-  const engine = useMemo(() => new DataEngine(doc.dataSources ?? [], doc.queries ?? [], { debounceMs: 120 }), [doc.docId]);
+  const { engine, dataVersion } = useDataEngine(doc.dataSources ?? [], doc.queries ?? [], { debounceMs: 120 });
   const sections = (doc.root.children ?? []).filter((n) => n.kind === "section");
   const [showReportConfig, setShowReportConfig] = useState(false);
   const [exportHint, setExportHint] = useState("");
@@ -95,7 +97,9 @@ export function ReportEditor({ doc }: ReportEditorProps): JSX.Element {
     );
   };
 
-  const insertBlock = (section: VNode, blockKind: "text" | "chart"): void => {
+  const insertBlock = (section: VNode, blockKind: "text" | "chart" | "table"): void => {
+    const fallbackSourceId = doc.dataSources?.[0]?.id;
+    const fallbackQueryId = doc.queries?.find((item) => item.sourceId === fallbackSourceId)?.queryId;
     const node: VNode =
       blockKind === "text"
         ? {
@@ -103,10 +107,27 @@ export function ReportEditor({ doc }: ReportEditorProps): JSX.Element {
             kind: "text",
             props: { text: "新段落", format: "plain" }
           }
-        : {
+        : blockKind === "chart"
+          ? {
             id: prefixedId("chart"),
             kind: "chart",
             props: defaultChartSpec("新图表")
+          }
+          : {
+            id: prefixedId("table"),
+            kind: "table",
+            data: fallbackSourceId
+              ? {
+                sourceId: fallbackSourceId,
+                queryId: fallbackQueryId
+              }
+              : undefined,
+            props: {
+              titleText: "新表格",
+              columns: [],
+              repeatHeader: true,
+              zebra: true
+            }
           };
     store.executeCommand(
       {
@@ -433,6 +454,9 @@ export function ReportEditor({ doc }: ReportEditorProps): JSX.Element {
                         <button className="btn" onClick={() => insertBlock(entry.section, "chart")}>
                           +图表
                         </button>
+                        <button className="btn" onClick={() => insertBlock(entry.section, "table")}>
+                          +表格
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -446,6 +470,7 @@ export function ReportEditor({ doc }: ReportEditorProps): JSX.Element {
                   selected={selection.selectedIds.includes(entry.block.id)}
                   onSelect={(multi) => store.setSelection(entry.block.id, multi)}
                   engine={engine}
+                  dataVersion={dataVersion}
                   lazyRootRef={viewportRef}
                   onQuickChartPatch={(patch, summary) =>
                     store.executeCommand(
@@ -467,7 +492,7 @@ export function ReportEditor({ doc }: ReportEditorProps): JSX.Element {
                       className="input"
                       value={quickInsertValue(entry.section.id)}
                       onChange={(event) => setQuickInsertValue(entry.section.id, event.target.value)}
-                      placeholder="输入 /chart 或 /text"
+                      placeholder="输入 /chart /table 或 /text"
                     />
                     <button
                       className="btn"
@@ -475,6 +500,10 @@ export function ReportEditor({ doc }: ReportEditorProps): JSX.Element {
                         const value = quickInsertValue(entry.section.id).trim();
                         if (value === "/chart") {
                           insertBlock(entry.section, "chart");
+                          return;
+                        }
+                        if (value === "/table") {
+                          insertBlock(entry.section, "table");
                           return;
                         }
                         insertBlock(entry.section, "text");
@@ -510,6 +539,7 @@ function ReportBlock({
   selected,
   onSelect,
   engine,
+  dataVersion,
   lazyRootRef,
   onQuickChartPatch
 }: {
@@ -518,16 +548,25 @@ function ReportBlock({
   selected: boolean;
   onSelect: (multi: boolean) => void;
   engine: DataEngine;
+  dataVersion: string;
   lazyRootRef: RefObject<HTMLDivElement>;
   onQuickChartPatch: (patch: Partial<ChartSpec>, summary: string) => void;
 }): JSX.Element {
-  const { rows, loading, error } = useNodeRows(doc, block, engine);
+  const { rows, loading, error } = useNodeRows(doc, block, engine, dataVersion);
   const style = selected ? { borderColor: "#2563eb", boxShadow: "0 0 0 2px rgba(37, 99, 235, .2)" } : undefined;
 
   return (
     <div className="block" style={style} onClick={(event) => onSelect(event.ctrlKey || event.metaKey)}>
       {block.kind === "text" ? (
         <pre style={{ margin: 0, whiteSpace: "pre-wrap" }}>{String((block.props as Record<string, unknown>)?.text ?? "")}</pre>
+      ) : block.kind === "table" ? (
+        loading ? (
+          <div className="muted">loading...</div>
+        ) : error ? (
+          <div className="muted">error: {error}</div>
+        ) : (
+          <TableView spec={block.props as TableSpec} rows={rows} height={260} />
+        )
       ) : block.kind === "chart" ? (
         loading ? (
           <div className="muted">loading...</div>

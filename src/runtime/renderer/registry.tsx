@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
-import type { VNode } from "../../core/doc/types";
+import type { TableSpec, VNode } from "../../core/doc/types";
 import { EChartView } from "../chart/EChartView";
+import { TableView } from "../table/TableView";
 
 export interface RenderContext {
   getRows: (node: VNode) => Array<Record<string, unknown>>;
@@ -37,7 +38,10 @@ export const createDefaultRendererRegistry = (): RendererRegistry => {
     return <EChartView spec={node.props as any} rows={rows} height="100%" />;
   });
 
-  registry.register("table", () => <div className="muted">Table renderer placeholder</div>);
+  registry.register("table", (node, ctx) => {
+    const rows = ctx.getRows(node);
+    return <TableView spec={node.props as TableSpec} rows={rows} height="100%" />;
+  });
   registry.register("image", () => <div className="muted">Image renderer placeholder</div>);
   registry.register("richtext", () => <div className="muted">RichText renderer placeholder</div>);
 

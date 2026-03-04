@@ -1,101 +1,478 @@
 import { useEffect, useMemo, useState } from "react";
-import type { Command, DocType, VNode } from "../core/doc/types";
-import { listBuiltInDocExamples, resolveDocExampleId } from "../core/doc/examples";
+import type { Command, DocType, VDoc, VNode } from "../core/doc/types";
+import { createBuiltInDoc, listBuiltInDocExamples, resolveDocExampleId } from "../core/doc/examples";
 import { CanvasPanel, preloadEditorChunk } from "./components/CanvasPanel";
 import { ChatBridgePanel } from "./components/ChatBridgePanel";
 import { CommandPalette, type PaletteCommand } from "./components/CommandPalette";
+import { DocRuntimeView } from "./components/DocRuntimeView";
 import { InspectorPanel } from "./components/InspectorPanel";
 import { TreePanel } from "./components/TreePanel";
 import { EditorProvider, useEditorStore } from "./state/editor-context";
 import { buildAlignCommands, type AlignKind } from "./utils/alignment";
 import type { Persona } from "./types/persona";
 
-const docTypes: Array<{ label: string; value: DocType }> = [
-  { label: "Dashboard", value: "dashboard" },
-  { label: "Report", value: "report" },
-  { label: "PPT", value: "ppt" }
-];
+type EditorDocType = Extract<DocType, "dashboard" | "report" | "ppt">;
+type WorkspaceStatus = "published" | "draft";
+
+interface WorkspaceDocRecord {
+  id: string;
+  docType: EditorDocType;
+  name: string;
+  description: string;
+  tags: string[];
+  updatedAt: string;
+  status: WorkspaceStatus;
+  publishedDoc: VDoc;
+  draftDoc: VDoc;
+}
+
+interface EditSession {
+  docId: string;
+  seed: VDoc;
+  saved: VDoc;
+  live: VDoc;
+}
+
+type RouteState = { page: "library" } | { page: "detail"; docId: string; mode: "view" | "edit" };
+
+const DOC_TYPES: EditorDocType[] = ["dashboard", "report", "ppt"];
+
+const nowText = (): string => new Date().toLocaleString("zh-CN", { hour12: false });
+const cloneDoc = (doc: VDoc): VDoc => structuredClone(doc);
+
+const createWorkspaceSeed = (): WorkspaceDocRecord[] => {
+  const now = nowText();
+  return DOC_TYPES.flatMap((docType) =>
+    listBuiltInDocExamples(docType).map((example) => {
+      const built = example.build();
+      const id = built.docId;
+      return {
+        id,
+        docType,
+        name: built.title ?? example.name,
+        description: example.description,
+        tags: [docType, "内置样例"],
+        updatedAt: now,
+        status: "published",
+        publishedDoc: cloneDoc(built),
+        draftDoc: cloneDoc(built)
+      };
+    })
+  );
+};
 
 export function App(): JSX.Element {
-  const [docType, setDocType] = useState<DocType>(() => parseRouteFromHash(window.location.hash).docType);
-  const [exampleId, setExampleId] = useState<string>(() => {
-    const route = parseRouteFromHash(window.location.hash);
-    return resolveDocExampleId(route.docType, route.exampleId);
-  });
-  const [persona, setPersona] = useState<Persona>("analyst");
-  const exampleOptions = listBuiltInDocExamples(docType);
+  const [route, setRoute] = useState<RouteState>(() => parseRouteFromHash(window.location.hash));
+  const [docs, setDocs] = useState<WorkspaceDocRecord[]>(() => createWorkspaceSeed());
+  const [advancedMode, setAdvancedMode] = useState(false);
+  const [previewDraft, setPreviewDraft] = useState(false);
+  const [editSession, setEditSession] = useState<EditSession | null>(null);
+
+  const currentRecord = route.page === "detail" ? docs.find((item) => item.id === route.docId) : undefined;
+  const currentDetailDoc = useMemo(() => {
+    if (!currentRecord) {
+      return undefined;
+    }
+    if (route.page === "detail" && route.mode === "edit" && editSession?.docId === currentRecord.id) {
+      return editSession.live;
+    }
+    return previewDraft ? currentRecord.draftDoc : currentRecord.publishedDoc;
+  }, [currentRecord, editSession, previewDraft, route]);
+
+  const isEditDirty = useMemo(() => {
+    if (!editSession) {
+      return false;
+    }
+    return JSON.stringify(editSession.live) !== JSON.stringify(editSession.saved);
+  }, [editSession]);
 
   useEffect(() => {
     const onHashChange = (): void => {
-      const route = parseRouteFromHash(window.location.hash);
-      setDocType(route.docType);
-      setExampleId(resolveDocExampleId(route.docType, route.exampleId));
+      setRoute(parseRouteFromHash(window.location.hash));
     };
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
 
   useEffect(() => {
-    const resolved = resolveDocExampleId(docType, exampleId);
-    if (resolved !== exampleId) {
-      setExampleId(resolved);
-    }
-  }, [docType, exampleId]);
-
-  useEffect(() => {
-    const nextHash = docTypeToHash(docType, exampleId);
+    const nextHash = routeToHash(route);
     if (window.location.hash !== nextHash) {
       window.location.hash = nextHash;
     }
-  }, [docType, exampleId]);
+  }, [route]);
+
+  useEffect(() => {
+    setPreviewDraft(false);
+  }, [route.page === "detail" ? route.docId : "", route.page, route.page === "detail" ? route.mode : ""]);
+
+  useEffect(() => {
+    if (route.page !== "detail") {
+      setEditSession(null);
+      return;
+    }
+    if (route.mode !== "edit" || !currentRecord) {
+      setEditSession(null);
+      return;
+    }
+    if (editSession?.docId === currentRecord.id) {
+      return;
+    }
+    const seed = cloneDoc(currentRecord.draftDoc);
+    setEditSession({
+      docId: currentRecord.id,
+      seed,
+      saved: cloneDoc(seed),
+      live: cloneDoc(seed)
+    });
+    setAdvancedMode(false);
+    preloadEditorChunk(currentRecord.docType);
+  }, [currentRecord, editSession?.docId, route]);
+
+  const createDoc = (docType: EditorDocType): void => {
+    const exampleId = resolveDocExampleId(docType);
+    const example = listBuiltInDocExamples(docType).find((item) => item.id === exampleId);
+    const built = createBuiltInDoc(docType, exampleId);
+    const now = nowText();
+    const record: WorkspaceDocRecord = {
+      id: built.docId,
+      docType,
+      name: built.title ?? example?.name ?? `${docType} 新文档`,
+      description: example?.description ?? "新建文档",
+      tags: [docType, "新建"],
+      updatedAt: now,
+      status: "draft",
+      publishedDoc: cloneDoc(built),
+      draftDoc: cloneDoc(built)
+    };
+    setDocs((prev) => [record, ...prev]);
+    setRoute({ page: "detail", docId: record.id, mode: "edit" });
+  };
+
+  const onEditDocSnapshot = (doc: VDoc): void => {
+    setEditSession((prev) => {
+      if (!prev || route.page !== "detail") {
+        return prev;
+      }
+      if (route.mode !== "edit" || prev.docId !== route.docId) {
+        return prev;
+      }
+      return { ...prev, live: cloneDoc(doc) };
+    });
+  };
+
+  const saveDraft = (): void => {
+    if (!editSession) {
+      return;
+    }
+    const next = cloneDoc(editSession.live);
+    const updatedAt = nowText();
+    setDocs((prev) =>
+      prev.map((item) =>
+        item.id === editSession.docId
+          ? {
+              ...item,
+              draftDoc: next,
+              status: "draft",
+              updatedAt,
+              name: next.title ?? item.name
+            }
+          : item
+      )
+    );
+    setEditSession((prev) => (prev ? { ...prev, saved: cloneDoc(prev.live) } : prev));
+  };
+
+  const publishDraft = (docId: string): void => {
+    const sourceDoc = route.page === "detail" && route.mode === "edit" && editSession?.docId === docId ? editSession.live : currentRecord?.draftDoc;
+    if (!sourceDoc) {
+      return;
+    }
+    const next = cloneDoc(sourceDoc);
+    const updatedAt = nowText();
+    setDocs((prev) =>
+      prev.map((item) =>
+        item.id === docId
+          ? {
+              ...item,
+              publishedDoc: next,
+              draftDoc: next,
+              status: "published",
+              updatedAt,
+              name: next.title ?? item.name
+            }
+          : item
+      )
+    );
+    setEditSession((prev) => (prev && prev.docId === docId ? { ...prev, saved: cloneDoc(prev.live) } : prev));
+    setPreviewDraft(false);
+  };
+
+  const discardDraft = (docId: string): void => {
+    setDocs((prev) =>
+      prev.map((item) =>
+        item.id === docId
+          ? {
+              ...item,
+              draftDoc: cloneDoc(item.publishedDoc),
+              status: "published",
+              updatedAt: nowText()
+            }
+          : item
+      )
+    );
+    if (editSession?.docId === docId) {
+      const published = docs.find((item) => item.id === docId)?.publishedDoc;
+      if (published) {
+        const snapshot = cloneDoc(published);
+        setEditSession({
+          docId,
+          seed: snapshot,
+          saved: cloneDoc(snapshot),
+          live: cloneDoc(snapshot)
+        });
+      }
+    }
+  };
+
+  if (route.page === "library") {
+    return (
+      <div className="app-shell">
+        <div className="topbar">
+          <span className="brand">Visual Document OS</span>
+          <span className="chip">文档中心</span>
+          <div className="row">
+            <button className="btn" onClick={() => createDoc("dashboard")}>
+              新建 Dashboard
+            </button>
+            <button className="btn" onClick={() => createDoc("report")}>
+              新建 Report
+            </button>
+            <button className="btn" onClick={() => createDoc("ppt")}>
+              新建 PPT
+            </button>
+          </div>
+          <span className="chip">总数: {docs.length}</span>
+        </div>
+        <LibraryPage
+          docs={docs}
+          onOpen={(docId) => setRoute({ page: "detail", docId, mode: "view" })}
+          onEdit={(docId, docType) => {
+            preloadEditorChunk(docType);
+            setRoute({ page: "detail", docId, mode: "edit" });
+          }}
+        />
+      </div>
+    );
+  }
+
+  if (!currentRecord || !currentDetailDoc) {
+    return (
+      <div className="app-shell">
+        <div className="topbar">
+          <span className="brand">Visual Document OS</span>
+          <button className="btn" onClick={() => setRoute({ page: "library" })}>
+            返回列表
+          </button>
+        </div>
+        <div className="library-shell">
+          <div className="doc-empty">文档不存在或已被移除。</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (route.mode === "view") {
+    return (
+      <div className="app-shell">
+        <div className="topbar">
+          <span className="brand">{currentRecord.name}</span>
+          <span className="chip">{currentRecord.docType}</span>
+          <span className={`chip status-${currentRecord.status}`}>{currentRecord.status === "published" ? "已发布" : "草稿中"}</span>
+          <span className="chip">更新于 {currentRecord.updatedAt}</span>
+          <div className="row">
+            {currentRecord.status === "draft" ? (
+              <button className="btn" onClick={() => setPreviewDraft((value) => !value)}>
+                {previewDraft ? "查看发布版" : "查看草稿版"}
+              </button>
+            ) : null}
+            {currentRecord.status === "draft" ? (
+              <button className="btn" onClick={() => publishDraft(currentRecord.id)}>
+                发布草稿
+              </button>
+            ) : null}
+            {currentRecord.status === "draft" ? (
+              <button className="btn danger" onClick={() => discardDraft(currentRecord.id)}>
+                放弃草稿
+              </button>
+            ) : null}
+            <button className="btn primary" onClick={() => setRoute({ page: "detail", docId: currentRecord.id, mode: "edit" })}>
+              进入编辑
+            </button>
+            <button className="btn" onClick={() => setRoute({ page: "library" })}>
+              返回列表
+            </button>
+          </div>
+        </div>
+        <DetailPage record={currentRecord} doc={currentDetailDoc} previewDraft={previewDraft} />
+      </div>
+    );
+  }
+
+  if (!editSession) {
+    return (
+      <div className="app-shell">
+        <div className="topbar">
+          <span className="brand">Visual Document OS</span>
+        </div>
+        <div className="library-shell">
+          <div className="doc-empty">正在初始化编辑器...</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="app-shell">
       <div className="topbar">
-        <span className="brand">Visual Document OS</span>
-        <div className="tabs">
-          {docTypes.map((tab) => (
-            <button
-              key={tab.value}
-              className={`tab-btn ${docType === tab.value ? "active" : ""}`}
-              onMouseEnter={() => preloadEditorChunk(tab.value)}
-              onFocus={() => preloadEditorChunk(tab.value)}
-              onClick={() => {
-                setDocType(tab.value);
-                setExampleId(resolveDocExampleId(tab.value));
-              }}
-            >
-              {tab.label}
-            </button>
-          ))}
+        <span className="brand">{currentRecord.name}</span>
+        <span className="chip">{currentRecord.docType}</span>
+        <span className={`chip status-${currentRecord.status}`}>{currentRecord.status === "published" ? "已发布" : "草稿中"}</span>
+        <span className={`chip ${isEditDirty ? "chip-warning" : ""}`}>{isEditDirty ? "有未保存改动" : "已保存"}</span>
+        <div className="row">
+          <button className="btn" onClick={saveDraft}>
+            保存草稿
+          </button>
+          <button className="btn primary" onClick={() => publishDraft(currentRecord.id)}>
+            发布
+          </button>
+          <button className={`btn ${advancedMode ? "primary" : ""}`} onClick={() => setAdvancedMode((value) => !value)}>
+            {advancedMode ? "收起高级设置" : "更多设置"}
+          </button>
+          <button className="btn" onClick={() => setRoute({ page: "detail", docId: currentRecord.id, mode: "view" })}>
+            返回运行态
+          </button>
+          <button className="btn" onClick={() => setRoute({ page: "library" })}>
+            返回列表
+          </button>
         </div>
-        <select className="select" value={exampleId} onChange={(event) => setExampleId(event.target.value)} style={{ minWidth: 220 }}>
-          {exampleOptions.map((item) => (
-            <option key={item.id} value={item.id}>
-              样例: {item.name}
-            </option>
-          ))}
-        </select>
-        <select className="select" value={persona} onChange={(event) => setPersona(event.target.value as Persona)} style={{ maxWidth: 140 }}>
-          <option value="novice">小白模式</option>
-          <option value="analyst">分析模式</option>
-          <option value="designer">设计模式</option>
-          <option value="ai">AI协作模式</option>
-        </select>
-        <span className="chip">React + Signals + ECharts</span>
       </div>
-      <EditorProvider docType={docType} exampleId={exampleId}>
-        <AppLayout persona={persona} />
+      <EditorProvider key={editSession.docId} initialDoc={editSession.seed} onDocChange={onEditDocSnapshot}>
+        <AppLayout advanced={advancedMode} />
       </EditorProvider>
     </div>
   );
 }
 
-function AppLayout({ persona }: { persona: Persona }): JSX.Element {
+function LibraryPage({
+  docs,
+  onOpen,
+  onEdit
+}: {
+  docs: WorkspaceDocRecord[];
+  onOpen: (docId: string) => void;
+  onEdit: (docId: string, docType: EditorDocType) => void;
+}): JSX.Element {
+  const [typeFilter, setTypeFilter] = useState<"all" | EditorDocType>("all");
+  const [keyword, setKeyword] = useState("");
+
+  const visibleDocs = useMemo(() => {
+    const key = keyword.trim().toLowerCase();
+    return docs.filter((item) => {
+      if (typeFilter !== "all" && item.docType !== typeFilter) {
+        return false;
+      }
+      if (!key) {
+        return true;
+      }
+      const haystack = `${item.name} ${item.description} ${item.tags.join(" ")}`.toLowerCase();
+      return haystack.includes(key);
+    });
+  }, [docs, keyword, typeFilter]);
+
+  return (
+    <div className="library-shell">
+      <div className="library-toolbar">
+        <div className="tabs">
+          {["all", ...DOC_TYPES].map((type) => (
+            <button
+              key={type}
+              className={`tab-btn ${typeFilter === type ? "active" : ""}`}
+              onClick={() => setTypeFilter(type as "all" | EditorDocType)}
+            >
+              {type === "all" ? "全部" : type}
+            </button>
+          ))}
+        </div>
+        <input className="input" style={{ maxWidth: 320 }} value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="搜索标题、描述、标签" />
+      </div>
+      <div className="doc-grid">
+        {visibleDocs.length === 0 ? <div className="doc-empty">没有匹配文档</div> : null}
+        {visibleDocs.map((item) => (
+          <article key={item.id} className="doc-card">
+            <div className="row" style={{ justifyContent: "space-between" }}>
+              <strong>{item.name}</strong>
+              <span className={`chip status-${item.status}`}>{item.status === "published" ? "已发布" : "草稿中"}</span>
+            </div>
+            <div className="muted">{item.description}</div>
+            <div className="row">
+              <span className="chip">{item.docType}</span>
+              <span className="chip">更新于 {item.updatedAt}</span>
+            </div>
+            <div className="row">
+              {item.tags.map((tag) => (
+                <span key={`${item.id}_${tag}`} className="chip">
+                  {tag}
+                </span>
+              ))}
+            </div>
+            <div className="row" style={{ justifyContent: "flex-end" }}>
+              <button className="btn" onClick={() => onOpen(item.id)}>
+                查看详情
+              </button>
+              <button className="btn primary" onMouseEnter={() => preloadEditorChunk(item.docType)} onClick={() => onEdit(item.id, item.docType)}>
+                进入编辑
+              </button>
+            </div>
+          </article>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function DetailPage({ record, doc, previewDraft }: { record: WorkspaceDocRecord; doc: VDoc; previewDraft: boolean }): JSX.Element {
+  return (
+    <div className="runtime-shell">
+      <div className="runtime-header">
+        <div className="col" style={{ gap: 4 }}>
+          <strong>{record.name}</strong>
+          <span className="muted">{record.description}</span>
+        </div>
+        <div className="row">
+          {record.status === "draft" ? <span className="chip">当前查看: {previewDraft ? "草稿版" : "发布版"}</span> : null}
+          <span className="chip">类型: {record.docType}</span>
+        </div>
+      </div>
+      <div className="runtime-body">
+        <DocRuntimeView doc={doc} />
+      </div>
+    </div>
+  );
+}
+
+function AppLayout({ advanced }: { advanced: boolean }): JSX.Element {
+  const persona: Persona = advanced ? "analyst" : "novice";
   const store = useEditorStore();
   const [showFilterPanel, setShowFilterPanel] = useState(false);
   const [showBatchPanel, setShowBatchPanel] = useState(false);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
+
+  useEffect(() => {
+    if (!advanced) {
+      setShowFilterPanel(false);
+      setShowBatchPanel(false);
+    }
+  }, [advanced]);
 
   const applyAllChartsLabel = (labelShow: boolean): void => {
     const doc = store.doc.value;
@@ -342,7 +719,7 @@ function AppLayout({ persona }: { persona: Persona }): JSX.Element {
         event.preventDefault();
         store.undo();
       }
-      if ((key === "y") || (key === "z" && event.shiftKey)) {
+      if (key === "y" || (key === "z" && event.shiftKey)) {
         event.preventDefault();
         store.redo();
       }
@@ -430,19 +807,31 @@ const pruneSelectedForRemoval = (root: VNode, selectedIds: string[]): string[] =
   return keep;
 };
 
-const parseRouteFromHash = (hash: string): { docType: DocType; exampleId?: string } => {
+const parseRouteFromHash = (hash: string): RouteState => {
   const cleaned = hash.replace(/^#\/?/, "");
-  const [path = "", query = ""] = cleaned.split("?");
-  const rawType = path.toLowerCase();
-  const docType: DocType = rawType === "dashboard" || rawType === "report" || rawType === "ppt" ? rawType : "dashboard";
-  const params = new URLSearchParams(query);
-  const exampleId = params.get("example") ?? undefined;
-  return { docType, exampleId };
+  const [path = ""] = cleaned.split("?");
+  const parts = path.split("/").filter(Boolean);
+  if (parts[0] !== "docs") {
+    return { page: "library" };
+  }
+  if (parts.length < 2) {
+    return { page: "library" };
+  }
+  const docId = decodeURIComponent(parts[1] ?? "");
+  if (!docId) {
+    return { page: "library" };
+  }
+  const mode = parts[2] === "edit" ? "edit" : "view";
+  return { page: "detail", docId, mode };
 };
 
-const docTypeToHash = (docType: DocType, exampleId?: string): string => {
-  if (!exampleId) {
-    return `#/${docType}`;
+const routeToHash = (route: RouteState): string => {
+  if (route.page === "library") {
+    return "#/docs";
   }
-  return `#/${docType}?example=${encodeURIComponent(exampleId)}`;
+  const encoded = encodeURIComponent(route.docId);
+  if (route.mode === "edit") {
+    return `#/docs/${encoded}/edit`;
+  }
+  return `#/docs/${encoded}`;
 };

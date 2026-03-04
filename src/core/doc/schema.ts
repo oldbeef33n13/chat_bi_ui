@@ -170,6 +170,86 @@ export const vDocSchema = {
         optionPatch: { type: "object", additionalProperties: true }
       }
     },
+    TableSpec: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        titleText: { type: "string" },
+        columns: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: ["key"],
+            properties: {
+              key: { type: "string", minLength: 1 },
+              title: { type: "string" },
+              width: { type: "number", exclusiveMinimum: 0 },
+              align: { type: "string", enum: ["left", "center", "right"] },
+              format: { type: "string" }
+            }
+          }
+        },
+        headerRows: {
+          type: "array",
+          items: {
+            type: "array",
+            items: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                text: { type: "string" },
+                title: { type: "string" },
+                colSpan: { type: "integer", minimum: 1 },
+                rowSpan: { type: "integer", minimum: 1 },
+                align: { type: "string", enum: ["left", "center", "right"] }
+              }
+            }
+          }
+        },
+        mergeCells: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: ["row", "col"],
+            properties: {
+              row: { type: "integer", minimum: 0 },
+              col: { type: "integer", minimum: 0 },
+              rowSpan: { type: "integer", minimum: 1 },
+              colSpan: { type: "integer", minimum: 1 },
+              scope: { type: "string", enum: ["header", "body"] }
+            }
+          }
+        },
+        rows: {
+          type: "array",
+          items: {
+            oneOf: [
+              { type: "object", additionalProperties: true },
+              { type: "array", items: {} }
+            ]
+          }
+        },
+        repeatHeader: { type: "boolean" },
+        zebra: { type: "boolean" },
+        maxRows: { type: "integer", minimum: 1 },
+        pivot: {
+          type: "object",
+          additionalProperties: false,
+          required: ["rowFields", "columnField", "valueField"],
+          properties: {
+            enabled: { type: "boolean" },
+            rowFields: { type: "array", items: { type: "string", minLength: 1 } },
+            columnField: { type: "string", minLength: 1 },
+            valueField: { type: "string", minLength: 1 },
+            agg: { type: "string", enum: ["sum", "avg", "min", "max", "count"] },
+            fill: { type: "number" },
+            valueTitle: { type: "string" }
+          }
+        }
+      }
+    },
     VNode: {
       type: "object",
       additionalProperties: false,
@@ -188,6 +268,10 @@ export const vDocSchema = {
         {
           if: { properties: { kind: { const: "chart" } } },
           then: { properties: { props: { $ref: "#/$defs/ChartSpec" } } }
+        },
+        {
+          if: { properties: { kind: { const: "table" } } },
+          then: { properties: { props: { $ref: "#/$defs/TableSpec" } } }
         }
       ]
     }
