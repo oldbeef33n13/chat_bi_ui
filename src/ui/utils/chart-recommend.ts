@@ -42,6 +42,7 @@ const chartTypes: ChartType[] = [
   "line",
   "bar",
   "pie",
+  "combo",
   "scatter",
   "radar",
   "heatmap",
@@ -159,6 +160,25 @@ export const recommendBindings = (chartType: ChartType, fields: SourceField[]): 
 
   if (chartType === "gauge") {
     return [{ role: "value", field: yField.name, agg: "avg" }];
+  }
+
+  if (chartType === "combo") {
+    const secondary = metrics.find((field) => field.name !== yField.name && field.name !== xField.name);
+    return [
+      { role: "x", field: xField.name },
+      { role: "y", field: yField.name, agg: "sum", axis: "primary" },
+      ...(secondary
+        ? [
+            {
+              role: "y2" as const,
+              field: secondary.name,
+              agg: "avg" as const,
+              axis: "secondary" as const,
+              as: "secondary"
+            }
+          ]
+        : [])
+    ];
   }
 
   if (chartType === "calendar") {

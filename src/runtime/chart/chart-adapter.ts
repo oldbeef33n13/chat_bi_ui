@@ -8,6 +8,49 @@ import type { ChartSpec, ChartType, FieldBinding } from "../../core/doc/types";
 /** 从一行数据中按 binding 安全读取字段。 */
 const valueOf = (row: Record<string, unknown>, binding?: FieldBinding): unknown => (binding ? row[binding.field] : undefined);
 
+/** 判断绑定是否为度量角色。 */
+const isMeasureBindingRole = (role: FieldBinding["role"]): boolean =>
+  role === "y" ||
+  role === "y1" ||
+  role === "y2" ||
+  role === "secondary" ||
+  role === "ysecondary" ||
+  role === "value" ||
+  role === "linkValue";
+
+/** 判断绑定是否显式挂到第二轴。 */
+const isSecondaryBinding = (binding: FieldBinding): boolean => {
+  if (binding.axis === "secondary") {
+    return true;
+  }
+  if (typeof binding.axis === "number") {
+    return binding.axis > 0;
+  }
+  return (
+    binding.role === "y2" ||
+    binding.role === "secondary" ||
+    binding.role === "ysecondary" ||
+    binding.as === "secondary"
+  );
+};
+
+/** 解析绑定的 Y 轴索引，支持 role / axis 双语义。 */
+const yAxisIndexOf = (binding: FieldBinding, fallbackIndex = 0): number => {
+  if (binding.axis === "primary") {
+    return 0;
+  }
+  if (binding.axis === "secondary") {
+    return 1;
+  }
+  if (typeof binding.axis === "number" && Number.isFinite(binding.axis)) {
+    return Math.max(0, Math.floor(binding.axis));
+  }
+  if (isSecondaryBinding(binding)) {
+    return 1;
+  }
+  return Math.max(0, fallbackIndex);
+};
+
 /** 通用分组工具，保持输入顺序。 */
 const groupBy = <T, K extends string | number>(items: T[], toKey: (item: T) => K): Map<K, T[]> => {
   const map = new Map<K, T[]>();
@@ -48,10 +91,14 @@ const inferType = (spec: ChartSpec): ChartType => {
   if (spec.chartType !== "auto") {
     return spec.chartType;
   }
+  const hasSecondary = spec.bindings.some((binding) => isSecondaryBinding(binding));
   const hasX = spec.bindings.some((b) => b.role === "x");
-  const hasY = spec.bindings.some((b) => b.role === "y");
+  const hasY = spec.bindings.some((b) => isMeasureBindingRole(b.role));
   const hasCategory = spec.bindings.some((b) => b.role === "category");
   const hasValue = spec.bindings.some((b) => b.role === "value");
+  if (hasSecondary) {
+    return "combo";
+  }
   if (hasX && hasY) {
     return "line";
   }
@@ -207,7 +254,7 @@ export const chartSpecToOption = (spec: ChartSpec, rows: Array<Record<string, un
   const barLike = chartType === "bar" || chartType === "funnel" || chartType === "heatmap" || chartType === "boxplot" || relationLike;
 
   const xBinding = spec.bindings.find((b) => b.role === "x" || b.role === "category" || b.role === "linkSource" || b.role === "node");
-  const yBindings = spec.bindings.filter((b) => b.role === "y" || b.role === "value" || b.role === "linkValue");
+  const yBindings = spec.bindings.filter((b) => isMeasureBindingRole(b.role));
   const yBinding = yBindings[0];
   const seriesBinding = spec.bindings.find((b) => b.role === "series" || b.role === "color");
 
@@ -426,18 +473,29 @@ export const chartSpecToOption = (spec: ChartSpec, rows: Array<Record<string, un
   }
 
   const seriesType: "line" | "bar" | "scatter" | "radar" =
-    barLike ? "bar" : chartType === "scatter" ? "scatter" : chartType === "radar" ? "radar" : "line";
+    chartType === "combo" ? "bar" : barLike ? "bar" : chartType === "scatter" ? "scatter" : chartType === "radar" ? "radar" : "line";
 
-  const hasSecondAxis = yBindings.length > 1;
+  const yBindingEntries = yBindings.map((binding, index) => ({
+    binding,
+    yAxisIndex: yAxisIndexOf(binding, index)
+  }));
+  const yAxisCount = yBindingEntries.reduce((max, entry) => Math.max(max, entry.yAxisIndex), 0) + 1;
+  const hasSecondAxis = yAxisCount > 1;
+  const axisLabelByIndex = new Map<number, string>();
+  yBindingEntries.forEach((entry) => {
+    if (!axisLabelByIndex.has(entry.yAxisIndex)) {
+      axisLabelByIndex.set(entry.yAxisIndex, entry.binding.as ?? entry.binding.field);
+    }
+  });
   const series = hasSecondAxis
-    ? yBindings.map((binding, idx) => ({
+    ? yBindingEntries.map(({ binding, yAxisIndex }, idx) => ({
         name: binding.as ?? binding.field,
-        type: seriesType,
+        type: chartType === "combo" ? (yAxisIndex === 0 ? "bar" : "line") : seriesType,
         smooth: spec.smooth ?? false,
         stack: undefined,
-        areaStyle: spec.area && idx === 0 ? {} : undefined,
+        areaStyle: chartType === "combo" ? undefined : spec.area && idx === 0 ? {} : undefined,
         label: { show: spec.labelShow ?? false },
-        yAxisIndex: idx,
+        yAxisIndex,
         data: xData.map((x) => {
           const values = rows
             .filter((row) => String(valueOf(row, xBinding) ?? "-") === x)
@@ -469,20 +527,13 @@ export const chartSpecToOption = (spec: ChartSpec, rows: Array<Record<string, un
       data: xData
     },
     yAxis: hasSecondAxis
-      ? [
-          {
-            show: spec.yAxisShow ?? true,
-            type: spec.yAxisType ?? "value",
-            name: spec.yAxisTitle ?? yBindings[0]?.field,
-            position: "left"
-          },
-          {
-            show: spec.yAxisShow ?? true,
-            type: spec.yAxisType ?? "value",
-            name: yBindings[1]?.field ?? "secondary",
-            position: "right"
-          }
-        ]
+      ? Array.from({ length: yAxisCount }, (_, index) => ({
+          show: spec.yAxisShow ?? true,
+          type: spec.yAxisType ?? "value",
+          name: index === 0 ? spec.yAxisTitle ?? axisLabelByIndex.get(0) : axisLabelByIndex.get(index) ?? `y${index + 1}`,
+          position: index % 2 === 0 ? "left" : "right",
+          offset: index > 1 ? Math.floor((index - 1) / 2) * 42 : 0
+        }))
       : {
           show: spec.yAxisShow ?? true,
           type: spec.yAxisType ?? "value",

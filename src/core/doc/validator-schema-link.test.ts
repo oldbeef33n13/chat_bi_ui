@@ -4,6 +4,7 @@ import { validateCommandPlan, validateDoc } from "./validator";
 
 const docTypes = (vDocSchema.properties.docType as { enum: readonly string[] }).enum;
 const chartTypes = (vDocSchema.$defs.ChartSpec.properties.chartType as { enum: readonly string[] }).enum;
+const bindingRoles = (vDocSchema.$defs.FieldBinding.properties.role as { enum: readonly string[] }).enum;
 const commandTypes = (commandPlanSchema.$defs.Command.properties.type as { enum: readonly string[] }).enum;
 
 describe("validator schema linkage", () => {
@@ -57,5 +58,30 @@ describe("validator schema linkage", () => {
       expect(result.ok, `commandType=${commandType}`).toBe(true);
     }
   });
-});
 
+  it("accepts all field binding role enums declared by vDoc schema", () => {
+    for (const role of bindingRoles) {
+      const result = validateDoc({
+        docId: `doc_binding_${role}`,
+        docType: "dashboard",
+        schemaVersion: "1.0.0",
+        root: {
+          id: "root",
+          kind: "container",
+          children: [
+            {
+              id: "chart_1",
+              kind: "chart",
+              data: { sourceId: "ds_1" },
+              props: {
+                chartType: "line",
+                bindings: [{ role: "x", field: "day" }, { role, field: "value", agg: "sum", axis: role === "y2" ? "secondary" : "primary" }]
+              }
+            }
+          ]
+        }
+      } as any);
+      expect(result.ok, `role=${role}`).toBe(true);
+    }
+  });
+});

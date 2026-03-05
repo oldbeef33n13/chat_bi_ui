@@ -309,6 +309,9 @@ const normalizeReportProps = (doc: VDoc): Required<Omit<ReportProps, "pageSize">
     footerShow: raw.footerShow ?? true,
     headerText: raw.headerText ?? reportTitle,
     footerText: raw.footerText ?? "Visual Document OS",
-    showPageNumber: raw.showPageNumber ?? true
+    showPageNumber: raw.showPageNumber ?? true,
+    nativeChartEnabled: raw.nativeChartEnabled ?? true,
+    nativeChartWidthEmu: raw.nativeChartWidthEmu ?? 6_000_000,
+    nativeChartHeightEmu: raw.nativeChartHeightEmu ?? 3_200_000
   };
 };

@@ -103,7 +103,10 @@ const inferPlan = (prompt: string, nodeId: string, spec: ChartSpec, rows: Array<
       const primaryY = yBindings[0]?.field;
       const candidate = numericFields.find((field) => field !== primaryY && field !== xBinding?.field);
       if (candidate) {
-        nextProps.bindings = [...existingBindings, { role: "y", field: candidate, agg: "sum", as: "secondary" }];
+        nextProps.bindings = [
+          ...existingBindings,
+          { role: "y2", field: candidate, agg: "sum", axis: "secondary", as: "secondary" }
+        ];
       }
     }
   }

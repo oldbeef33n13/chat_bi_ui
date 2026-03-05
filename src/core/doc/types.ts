@@ -54,6 +54,10 @@ export interface VDataBinding {
 export type BindingRole =
   | "x"
   | "y"
+  | "y1"
+  | "y2"
+  | "secondary"
+  | "ysecondary"
   | "series"
   | "color"
   | "size"
@@ -74,6 +78,7 @@ export interface FieldBinding {
   role: BindingRole;
   field: string;
   agg?: "sum" | "avg" | "min" | "max" | "count" | "distinctCount" | "p50" | "p95" | "p99";
+  axis?: "primary" | "secondary" | number;
   as?: string;
   sort?: "asc" | "desc";
   topK?: number;
@@ -88,6 +93,7 @@ export type ChartType =
   | "line"
   | "bar"
   | "pie"
+  | "combo"
   | "scatter"
   | "radar"
   | "heatmap"
@@ -167,11 +173,17 @@ export interface ReportProps {
   headerText?: string;
   footerText?: string;
   showPageNumber?: boolean;
+  nativeChartEnabled?: boolean;
+  nativeChartWidthEmu?: number;
+  nativeChartHeightEmu?: number;
 }
 
 export interface DeckProps {
   size?: "16:9" | "4:3" | { w: number; h: number };
   defaultBg?: string;
+  nativeChartEnabled?: boolean;
+  nativeChartWidthEmu?: number;
+  nativeChartHeightEmu?: number;
 }
 
 export interface SlideProps {

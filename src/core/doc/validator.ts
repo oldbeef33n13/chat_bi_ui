@@ -53,6 +53,7 @@ const CHART_TYPES = enumSet(
     "line",
     "bar",
     "pie",
+    "combo",
     "scatter",
     "radar",
     "heatmap",
@@ -74,6 +75,10 @@ const BINDING_ROLES = enumSet(
   [
     "x",
     "y",
+    "y1",
+    "y2",
+    "secondary",
+    "ysecondary",
     "series",
     "color",
     "size",
@@ -113,6 +118,8 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
 const isNonEmptyString = (value: unknown): value is string => typeof value === "string" && value.trim().length > 0;
+
+const isNonNegativeInteger = (value: unknown): value is number => Number.isInteger(value) && Number(value) >= 0;
 
 const pushError = (errors: ValidationError[], instancePath: string, message: string): void => {
   errors.push({ instancePath, message });
@@ -157,8 +164,12 @@ const validateVNode = (value: unknown, path: string, errors: ValidationError[]):
     }
   }
 
-  if (value.kind === "chart" && value.props !== undefined) {
+  if (value.kind === "chart") {
     const propsPath = `${path}/props`;
+    if (value.props === undefined) {
+      pushError(errors, propsPath, "is required for chart node");
+      return;
+    }
     if (!isObject(value.props)) {
       pushError(errors, propsPath, "should be object");
       return;
@@ -182,7 +193,107 @@ const validateVNode = (value: unknown, path: string, errors: ValidationError[]):
       if (!isNonEmptyString(binding.field)) {
         pushError(errors, `${bindingPath}/field`, "should be a non-empty string");
       }
+      if (
+        binding.axis !== undefined &&
+        binding.axis !== "primary" &&
+        binding.axis !== "secondary" &&
+        !isNonNegativeInteger(binding.axis)
+      ) {
+        pushError(errors, `${bindingPath}/axis`, "should be primary|secondary or integer >= 0");
+      }
     });
+  }
+
+  if (value.kind === "table") {
+    const propsPath = `${path}/props`;
+    if (value.props === undefined) {
+      pushError(errors, propsPath, "is required for table node");
+      return;
+    }
+    if (!isObject(value.props)) {
+      pushError(errors, propsPath, "should be object");
+      return;
+    }
+
+    const columns = value.props.columns;
+    if (columns !== undefined) {
+      if (!Array.isArray(columns)) {
+        pushError(errors, `${propsPath}/columns`, "should be array");
+      } else {
+        columns.forEach((column, index) => {
+          const columnPath = `${propsPath}/columns/${index}`;
+          if (!isObject(column)) {
+            pushError(errors, columnPath, "should be object");
+            return;
+          }
+          if (!isNonEmptyString(column.key)) {
+            pushError(errors, `${columnPath}/key`, "should be a non-empty string");
+          }
+          if (column.width !== undefined && (!(typeof column.width === "number") || Number(column.width) <= 0)) {
+            pushError(errors, `${columnPath}/width`, "should be a number > 0");
+          }
+        });
+      }
+    }
+
+    const headerRows = value.props.headerRows;
+    if (headerRows !== undefined) {
+      if (!Array.isArray(headerRows)) {
+        pushError(errors, `${propsPath}/headerRows`, "should be array");
+      } else {
+        headerRows.forEach((row, rowIndex) => {
+          const rowPath = `${propsPath}/headerRows/${rowIndex}`;
+          if (!Array.isArray(row)) {
+            pushError(errors, rowPath, "should be array");
+            return;
+          }
+          row.forEach((cell, cellIndex) => {
+            const cellPath = `${rowPath}/${cellIndex}`;
+            if (!isObject(cell)) {
+              pushError(errors, cellPath, "should be object");
+              return;
+            }
+            if (cell.rowSpan !== undefined && (!Number.isInteger(cell.rowSpan) || Number(cell.rowSpan) < 1)) {
+              pushError(errors, `${cellPath}/rowSpan`, "should be integer >= 1");
+            }
+            if (cell.colSpan !== undefined && (!Number.isInteger(cell.colSpan) || Number(cell.colSpan) < 1)) {
+              pushError(errors, `${cellPath}/colSpan`, "should be integer >= 1");
+            }
+          });
+        });
+      }
+    }
+
+    const mergeCells = value.props.mergeCells;
+    if (mergeCells !== undefined) {
+      if (!Array.isArray(mergeCells)) {
+        pushError(errors, `${propsPath}/mergeCells`, "should be array");
+      } else {
+        mergeCells.forEach((merge, index) => {
+          const mergePath = `${propsPath}/mergeCells/${index}`;
+          if (!isObject(merge)) {
+            pushError(errors, mergePath, "should be object");
+            return;
+          }
+          if (!isNonNegativeInteger(merge.row)) {
+            pushError(errors, `${mergePath}/row`, "should be integer >= 0");
+          }
+          if (!isNonNegativeInteger(merge.col)) {
+            pushError(errors, `${mergePath}/col`, "should be integer >= 0");
+          }
+          if (merge.rowSpan !== undefined && (!Number.isInteger(merge.rowSpan) || Number(merge.rowSpan) < 1)) {
+            pushError(errors, `${mergePath}/rowSpan`, "should be integer >= 1");
+          }
+          if (merge.colSpan !== undefined && (!Number.isInteger(merge.colSpan) || Number(merge.colSpan) < 1)) {
+            pushError(errors, `${mergePath}/colSpan`, "should be integer >= 1");
+          }
+        });
+      }
+    }
+
+    if (value.props.rows !== undefined && !Array.isArray(value.props.rows)) {
+      pushError(errors, `${propsPath}/rows`, "should be array");
+    }
   }
 };
 

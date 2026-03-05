@@ -50,17 +50,13 @@ public final class ChartTypeCatalog {
     }
 
     /**
-     * 标准化 chartType，空值与 auto 统一回退到 line。
+     * 标准化 chartType，空值回退到 line。
      */
     public static String normalize(String chartType) {
         if (chartType == null || chartType.isBlank()) {
             return "line";
         }
-        String normalized = chartType.trim().toLowerCase(Locale.ROOT);
-        if ("auto".equals(normalized)) {
-            return "line";
-        }
-        return normalized;
+        return chartType.trim().toLowerCase(Locale.ROOT);
     }
 
     /**

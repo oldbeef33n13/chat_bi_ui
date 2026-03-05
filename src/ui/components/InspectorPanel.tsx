@@ -11,6 +11,14 @@ import type { Persona } from "../types/persona";
 
 type InspectorMode = "quick" | "standard" | "expert";
 
+const isMeasureRole = (role: FieldBinding["role"]): boolean =>
+  role === "y" ||
+  role === "y1" ||
+  role === "y2" ||
+  role === "secondary" ||
+  role === "ysecondary" ||
+  role === "value";
+
 /**
  * 属性面板：按 persona/模式分层提供图表与表格编辑能力。
  * quick = 快捷调参；standard = 业务分析；expert = 原始 JSON 能力。
@@ -158,7 +166,7 @@ function ChartInspector({ doc, node, mode, persona }: { doc: VDoc; node: VNode; 
   const fields = extractSourceFields(source);
   const recommend = recommendChartConfig((props.chartType ?? "line") as ChartSpec["chartType"], fields);
   const xBinding = bindings.find((binding) => binding.role === "x" || binding.role === "category");
-  const yBindings = bindings.filter((binding) => binding.role === "y" || binding.role === "value");
+  const yBindings = bindings.filter((binding) => isMeasureRole(binding.role));
   const computedFields = props.computedFields ?? [];
   const primaryY = yBindings[0];
   const secondY = yBindings[1];
@@ -231,7 +239,7 @@ function ChartInspector({ doc, node, mode, persona }: { doc: VDoc; node: VNode; 
 
   const setPrimaryYField = (field: string): void => {
     const current = [...bindings];
-    const yIndex = current.findIndex((item) => item.role === "y" || item.role === "value");
+    const yIndex = current.findIndex((item) => isMeasureRole(item.role));
     if (yIndex >= 0) {
       current[yIndex] = { ...current[yIndex], role: "y", field };
       setBindings(current, "change y field");
@@ -243,7 +251,7 @@ function ChartInspector({ doc, node, mode, persona }: { doc: VDoc; node: VNode; 
 
   const setPrimaryAgg = (agg: FieldBinding["agg"]): void => {
     const current = [...bindings];
-    const yIndex = current.findIndex((item) => item.role === "y" || item.role === "value");
+    const yIndex = current.findIndex((item) => isMeasureRole(item.role));
     if (yIndex < 0) {
       return;
     }
@@ -257,10 +265,10 @@ function ChartInspector({ doc, node, mode, persona }: { doc: VDoc; node: VNode; 
 
   const setSecondAxis = (enabled: boolean): void => {
     const current = [...bindings];
-    const yIndices = current
-      .map((item, idx) => ({ item, idx }))
-      .filter((entry) => entry.item.role === "y" || entry.item.role === "value")
-      .map((entry) => entry.idx);
+      const yIndices = current
+        .map((item, idx) => ({ item, idx }))
+        .filter((entry) => isMeasureRole(entry.item.role))
+        .map((entry) => entry.idx);
     if (!enabled) {
       if (yIndices.length <= 1) {
         return;
@@ -276,7 +284,7 @@ function ChartInspector({ doc, node, mode, persona }: { doc: VDoc; node: VNode; 
     if (!candidate) {
       return;
     }
-    current.push({ role: "y", field: candidate, agg: "sum", as: "secondary" });
+    current.push({ role: "y2", field: candidate, agg: "sum", axis: "secondary", as: "secondary" });
     setBindings(current, "add second axis");
   };
 
@@ -284,13 +292,13 @@ function ChartInspector({ doc, node, mode, persona }: { doc: VDoc; node: VNode; 
     const current = [...bindings];
     const yIndices = current
       .map((item, idx) => ({ item, idx }))
-      .filter((entry) => entry.item.role === "y" || entry.item.role === "value")
+      .filter((entry) => isMeasureRole(entry.item.role))
       .map((entry) => entry.idx);
     if (yIndices.length < 2) {
       return;
     }
     const idx = yIndices[1]!;
-    current[idx] = { ...current[idx], role: "y", field, as: "secondary" };
+    current[idx] = { ...current[idx], role: "y2", field, axis: "secondary", as: "secondary" };
     setBindings(current, "change second axis field");
   };
 

@@ -183,7 +183,12 @@ public final class ChartSpecParser {
         }
         for (ChartBinding binding : bindings) {
             String role = binding.role().toLowerCase();
-            if ("y2".equals(role) || "secondary".equals(role) || "ysecondary".equals(role)) {
+            String axis = binding.axis() == null ? "" : binding.axis().trim().toLowerCase();
+            if ("y2".equals(role)
+                    || "secondary".equals(role)
+                    || "ysecondary".equals(role)
+                    || "secondary".equals(axis)
+                    || "1".equals(axis)) {
                 return binding.field();
             }
         }
@@ -207,10 +212,11 @@ public final class ChartSpecParser {
             String role = str(typed.get("role"), "");
             String field = str(typed.get("field"), "");
             String agg = str(typed.get("agg"), "");
+            String axis = str(typed.get("axis"), "");
             if (role.isBlank() || field.isBlank()) {
                 continue;
             }
-            result.add(new ChartBinding(role, field, agg));
+            result.add(new ChartBinding(role, field, agg, axis));
         }
         return result;
     }

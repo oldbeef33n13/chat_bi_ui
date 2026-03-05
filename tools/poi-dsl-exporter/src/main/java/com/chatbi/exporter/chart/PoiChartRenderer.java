@@ -19,6 +19,7 @@ import org.openxmlformats.schemas.drawingml.x2006.chart.STRadarStyle;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -484,24 +485,85 @@ public final class PoiChartRenderer {
 
     /**
      * 解析最终图表类型：
-     * spec.chartType -> optionPatch.series.type 提示 -> line。
+     * spec.chartType（支持 auto 推断） -> optionPatch.series.type 提示 -> line。
      */
     private String resolveType(ChartSpec spec) {
         if (spec == null) {
             return "line";
         }
-        String chartType = ChartTypeCatalog.normalize(spec.chartType());
-        if (ChartTypeCatalog.isWebChartType(chartType) && !"custom".equals(chartType)) {
+        String rawType = spec.chartType() == null ? "" : spec.chartType().trim();
+        if (rawType.isBlank()) {
+            return "line";
+        }
+        String normalizedRaw = rawType.toLowerCase(Locale.ROOT);
+        if ("auto".equals(normalizedRaw)) {
+            return inferAutoType(spec);
+        }
+
+        String chartType = ChartTypeCatalog.normalize(rawType);
+        if (ChartTypeCatalog.isWebChartType(chartType) && !"custom".equals(chartType) && !"auto".equals(chartType)) {
             return chartType;
         }
         String rawHint = optionPatchAdapter.resolveSeriesTypeHint(spec);
         if (rawHint != null && !rawHint.isBlank()) {
             String hint = ChartTypeCatalog.normalize(rawHint);
-            if (ChartTypeCatalog.isWebChartType(hint)) {
+            if (ChartTypeCatalog.isWebChartType(hint) && !"auto".equals(hint)) {
                 return hint;
             }
         }
-        return chartType;
+        return "line";
+    }
+
+    /**
+     * 与 Web 端一致的 auto 推断规则：
+     * - 含第二轴语义 => combo
+     * - 含 x + y => line
+     * - 含 category + value => pie
+     * - 其他 => bar
+     */
+    private String inferAutoType(ChartSpec spec) {
+        boolean hasSecondary = false;
+        boolean hasX = false;
+        boolean hasY = false;
+        boolean hasCategory = false;
+        boolean hasValue = false;
+
+        if (spec.secondAxisField() != null && !spec.secondAxisField().isBlank()) {
+            hasSecondary = true;
+        }
+        for (ChartBinding binding : spec.bindings()) {
+            String role = binding.role() == null ? "" : binding.role().trim().toLowerCase(Locale.ROOT);
+            String axis = binding.axis() == null ? "" : binding.axis().trim().toLowerCase(Locale.ROOT);
+            if ("secondary".equals(axis) || "1".equals(axis)) {
+                hasSecondary = true;
+            }
+            if ("x".equals(role)) {
+                hasX = true;
+            }
+            if ("category".equals(role)) {
+                hasCategory = true;
+            }
+            if ("y".equals(role) || "y1".equals(role) || "y2".equals(role) || "secondary".equals(role) || "ysecondary".equals(role) || "value".equals(role)) {
+                hasY = true;
+            }
+            if ("value".equals(role)) {
+                hasValue = true;
+            }
+            if ("y2".equals(role) || "secondary".equals(role) || "ysecondary".equals(role)) {
+                hasSecondary = true;
+            }
+        }
+
+        if (hasSecondary) {
+            return "combo";
+        }
+        if (hasX && hasY) {
+            return "line";
+        }
+        if (hasCategory && hasValue) {
+            return "pie";
+        }
+        return "bar";
     }
 
     /**

@@ -16,6 +16,7 @@ class ChartTypeCatalogTest {
         assertTrue(ChartTypeCatalog.webTypes().contains("line"));
         assertTrue(ChartTypeCatalog.webTypes().contains("bar"));
         assertTrue(ChartTypeCatalog.webTypes().contains("pie"));
+        assertTrue(ChartTypeCatalog.webTypes().contains("combo"));
         assertTrue(ChartTypeCatalog.webTypes().contains("scatter"));
         assertTrue(ChartTypeCatalog.webTypes().contains("radar"));
         assertTrue(ChartTypeCatalog.webTypes().contains("heatmap"));
@@ -30,5 +31,11 @@ class ChartTypeCatalogTest {
         assertTrue(ChartTypeCatalog.webTypes().contains("gauge"));
         assertTrue(ChartTypeCatalog.webTypes().contains("calendar"));
         assertTrue(ChartTypeCatalog.webTypes().contains("custom"));
+    }
+
+    @Test
+    void keepAutoAsAutoAfterNormalize() {
+        assertTrue("auto".equals(ChartTypeCatalog.normalize("auto")));
+        assertTrue(ChartTypeCatalog.isWebChartType("auto"));
     }
 }

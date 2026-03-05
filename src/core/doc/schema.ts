@@ -77,6 +77,10 @@ export const vDocSchema = {
           enum: [
             "x",
             "y",
+            "y1",
+            "y2",
+            "secondary",
+            "ysecondary",
             "series",
             "color",
             "size",
@@ -96,6 +100,12 @@ export const vDocSchema = {
         },
         field: { type: "string", minLength: 1 },
         agg: { type: "string" },
+        axis: {
+          oneOf: [
+            { type: "string", enum: ["primary", "secondary"] },
+            { type: "integer", minimum: 0 }
+          ]
+        },
         as: { type: "string" },
         sort: { type: "string", enum: ["asc", "desc"] },
         topK: { type: "integer", minimum: 1 },
@@ -117,6 +127,7 @@ export const vDocSchema = {
             "line",
             "bar",
             "pie",
+            "combo",
             "scatter",
             "radar",
             "heatmap",

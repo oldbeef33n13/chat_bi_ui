@@ -13,6 +13,7 @@ export function ChartQuickActions({ spec, compact, onPatch }: ChartQuickActionsP
         <option value="line">line</option>
         <option value="bar">bar</option>
         <option value="pie">pie</option>
+        <option value="combo">combo</option>
         <option value="scatter">scatter</option>
       </select>
       <button className="btn mini-btn" onClick={() => onPatch({ themeRef: "theme.tech.dark", paletteRef: "palette.tech.dark" }, "quick dark theme")}>
