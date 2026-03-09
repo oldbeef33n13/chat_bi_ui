@@ -20,6 +20,12 @@ export interface GridResolveResult {
   strategy: "swap" | "push" | "single";
 }
 
+export interface GridGroupMoveResult extends GridResolveResult {
+  deltaGx: number;
+  deltaGy: number;
+  movedIds: string[];
+}
+
 /** 约束网格参数到合法区间，避免越界与异常尺寸。 */
 export const normalizeGrid = (rect: GridRect, cols: number): GridRect => {
   const gw = Math.max(2, Math.min(cols, Math.round(rect.gw)));
@@ -171,6 +177,78 @@ const collectGridCommands = (before: GridNodeState[], after: GridNodeState[]): C
       nodeId: item.id,
       layout: item.layout
     }));
+};
+
+const applyGridCommands = (nodes: GridNodeState[], commands: Command[], cols: number): GridNodeState[] => {
+  const map = new Map(nodes.map((item) => [item.id, { ...item, layout: { ...item.layout } }]));
+  commands.forEach((command) => {
+    if (command.type !== "UpdateLayout" || !command.nodeId || command.layout?.mode !== "grid") {
+      return;
+    }
+    const current = map.get(command.nodeId);
+    if (!current) {
+      return;
+    }
+    map.set(command.nodeId, {
+      ...current,
+      layout: normalizeGrid(command.layout as GridRect, cols)
+    });
+  });
+  return [...map.values()];
+};
+
+export const resolveGridGroupMove = (
+  nodes: GridNodeState[],
+  movedIds: string[],
+  delta: { gx: number; gy: number },
+  cols: number
+): GridGroupMoveResult => {
+  const originalMap = new Map(nodes.map((item) => [item.id, { ...item, layout: normalizeGrid(item.layout, cols) }]));
+  const orderedMovable = movedIds
+    .map((id) => originalMap.get(id))
+    .filter((item): item is GridNodeState => Boolean(item && !item.lock));
+  if (orderedMovable.length === 0) {
+    return { commands: [], strategy: "single", deltaGx: 0, deltaGy: 0, movedIds: [] };
+  }
+
+  const minDx = Math.max(...orderedMovable.map((item) => -item.layout.gx));
+  const maxDx = Math.min(...orderedMovable.map((item) => cols - item.layout.gw - item.layout.gx));
+  const deltaGx = Math.max(minDx, Math.min(maxDx, Math.round(delta.gx)));
+  const minDy = Math.max(...orderedMovable.map((item) => -item.layout.gy));
+  const deltaGy = Math.max(minDy, Math.round(delta.gy));
+
+  let strategy: GridResolveResult["strategy"] = "single";
+  let currentNodes = nodes.map((item) => ({ ...item, layout: normalizeGrid(item.layout, cols) }));
+
+  orderedMovable.forEach((item) => {
+    const current = currentNodes.find((candidate) => candidate.id === item.id);
+    if (!current) {
+      return;
+    }
+    const nextLayout: GridRect = normalizeGrid(
+      {
+        mode: "grid",
+        gx: item.layout.gx + deltaGx,
+        gy: item.layout.gy + deltaGy,
+        gw: item.layout.gw,
+        gh: item.layout.gh
+      },
+      cols
+    );
+    const result = resolveGridConflict(currentNodes, item.id, nextLayout, current.layout, cols, "move");
+    if (result.strategy === "push" || (strategy === "single" && result.strategy === "swap")) {
+      strategy = result.strategy;
+    }
+    currentNodes = applyGridCommands(currentNodes, result.commands, cols);
+  });
+
+  return {
+    commands: collectGridCommands(nodes, currentNodes),
+    strategy,
+    deltaGx,
+    deltaGy,
+    movedIds: orderedMovable.map((item) => item.id)
+  };
 };
 
 /** 网格矩形完全相等判定。 */

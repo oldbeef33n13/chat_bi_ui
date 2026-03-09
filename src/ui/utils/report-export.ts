@@ -1,6 +1,7 @@
 import type { ChartSpec, ReportProps, VDoc, VNode } from "../../core/doc/types";
 import { applyComputedFields, applyFilters } from "../../runtime/data/transforms";
 import { summarizeChartRows } from "./chart-summary";
+import { flattenReportSections, getTopReportSections } from "./report-sections";
 
 interface NormalizedReportExportProps extends ReportProps {
   reportTitle: string;
@@ -17,6 +18,12 @@ interface NormalizedReportExportProps extends ReportProps {
   headerText: string;
   footerText: string;
   showPageNumber: boolean;
+  paginationStrategy: "section" | "continuous";
+  marginPreset: "narrow" | "normal" | "wide" | "custom";
+  marginTopMm: number;
+  marginRightMm: number;
+  marginBottomMm: number;
+  marginLeftMm: number;
 }
 
 interface ExportSection {
@@ -60,10 +67,23 @@ const resolvePageSize = (pageSize: ReportProps["pageSize"]): ExportPageSize => {
   return { widthMm: 210, heightMm: 297, cssSize: "A4" };
 };
 
+const marginPresetValues = (preset: NormalizedReportExportProps["marginPreset"]): { top: number; right: number; bottom: number; left: number } => {
+  if (preset === "narrow") {
+    return { top: 10, right: 10, bottom: 10, left: 10 };
+  }
+  if (preset === "wide") {
+    return { top: 20, right: 20, bottom: 20, left: 20 };
+  }
+  return { top: 14, right: 14, bottom: 14, left: 14 };
+};
+
 /** 补全运行时导出属性默认值。 */
 const normalizeReportProps = (doc: VDoc): NormalizedReportExportProps => {
   const raw = ((doc.root.props as ReportProps | undefined) ?? {}) as ReportProps;
   const reportTitle = raw.reportTitle ?? doc.title ?? "未命名报告";
+  const preset = raw.marginPreset ?? "normal";
+  const presetMargins = marginPresetValues(preset);
+  const useCustomMargins = preset === "custom";
   return {
     ...raw,
     reportTitle,
@@ -80,7 +100,13 @@ const normalizeReportProps = (doc: VDoc): NormalizedReportExportProps => {
     headerText: raw.headerText ?? reportTitle,
     footerText: raw.footerText ?? "Visual Document OS",
     showPageNumber: raw.showPageNumber ?? true,
-    pageSize: raw.pageSize ?? "A4"
+    pageSize: raw.pageSize ?? "A4",
+    paginationStrategy: raw.paginationStrategy ?? "section",
+    marginPreset: preset,
+    marginTopMm: Math.max(6, Number(useCustomMargins ? (raw.marginTopMm ?? presetMargins.top) : presetMargins.top) || presetMargins.top),
+    marginRightMm: Math.max(6, Number(useCustomMargins ? (raw.marginRightMm ?? presetMargins.right) : presetMargins.right) || presetMargins.right),
+    marginBottomMm: Math.max(6, Number(useCustomMargins ? (raw.marginBottomMm ?? presetMargins.bottom) : presetMargins.bottom) || presetMargins.bottom),
+    marginLeftMm: Math.max(6, Number(useCustomMargins ? (raw.marginLeftMm ?? presetMargins.left) : presetMargins.left) || presetMargins.left)
   };
 };
 
@@ -120,10 +146,10 @@ const chartRowsForExport = (doc: VDoc, node: VNode, spec: ChartSpec): Array<Reco
 
 /** 将报告 DSL 结构转换成导出中间模型。 */
 const buildExportSections = (doc: VDoc): ExportSection[] => {
-  const sections = (doc.root.children ?? []).filter((node) => node.kind === "section");
-  return sections.map((section, index) => {
-    const title = asText((section.props as Record<string, unknown> | undefined)?.title) || `章节 ${index + 1}`;
-    const blocks: ExportBlock[] = (section.children ?? []).map((block) => {
+  const sections = flattenReportSections(getTopReportSections(doc.root));
+  return sections.map((item) => {
+    const title = `${item.orderLabel}. ${item.title}`;
+    const blocks: ExportBlock[] = item.blocks.map((block) => {
       if (block.kind === "text") {
         const text = asText((block.props as Record<string, unknown> | undefined)?.text);
         return { kind: "text", text };
@@ -140,18 +166,20 @@ const buildExportSections = (doc: VDoc): ExportSection[] => {
       }
       return { kind: "other", text: `未导出块类型: ${block.kind}` };
     });
-    return { id: section.id, title, blocks };
+    return { id: item.section.id, title, blocks };
   });
 };
 
 const paginateContentPages = ({
   sections,
   contentHeightMm,
-  startPageNo
+  startPageNo,
+  paginationStrategy
 }: {
   sections: ExportSection[];
   contentHeightMm: number;
   startPageNo: number;
+  paginationStrategy: "section" | "continuous";
 }): { pages: ExportContentPage[]; sectionPageMap: Map<string, number> } => {
   // 基于估算高度分页，确保前端导出时页眉页脚和目录页逻辑可控。
   const pages: ExportContentPage[] = [];
@@ -172,6 +200,9 @@ const paginateContentPages = ({
   };
 
   sections.forEach((section) => {
+    if (paginationStrategy === "section" && current.items.length > 0) {
+      pushPage();
+    }
     const sectionHeight = 12;
     ensureSpace(sectionHeight);
     if (!sectionPageMap.has(section.id)) {
@@ -251,9 +282,12 @@ const renderPageShell = ({
 const buildPrintHtml = (doc: VDoc): string => {
   const props = normalizeReportProps(doc);
   const pageSize = resolvePageSize(props.pageSize);
-  const headerH = props.headerShow ? 10 : 0;
-  const footerH = props.footerShow ? 10 : 0;
-  const contentHeightMm = pageSize.heightMm - 24 - headerH - footerH;
+  const headerH = props.headerShow ? 8 : 0;
+  const footerH = props.footerShow ? 8 : 0;
+  const contentHeightMm = Math.max(
+    80,
+    pageSize.heightMm - props.marginTopMm - props.marginBottomMm - headerH - footerH - 2
+  );
   const sections = buildExportSections(doc);
   const tocRowsPerPage = Math.max(1, Math.floor((contentHeightMm - 20) / 6));
   const tocPages = props.tocShow ? Math.max(1, Math.ceil(sections.length / tocRowsPerPage)) : 0;
@@ -262,7 +296,8 @@ const buildPrintHtml = (doc: VDoc): string => {
   const { pages: contentPages, sectionPageMap } = paginateContentPages({
     sections,
     contentHeightMm,
-    startPageNo: sectionStartPage
+    startPageNo: sectionStartPage,
+    paginationStrategy: props.paginationStrategy
   });
 
   const parts: string[] = [];
@@ -336,7 +371,10 @@ const buildPrintHtml = (doc: VDoc): string => {
       width: ${pageSize.widthMm}mm;
       min-height: ${pageSize.heightMm}mm;
       margin: 8mm auto;
-      padding: 12mm 14mm;
+      padding-top: ${props.marginTopMm}mm;
+      padding-right: ${props.marginRightMm}mm;
+      padding-bottom: ${props.marginBottomMm}mm;
+      padding-left: ${props.marginLeftMm}mm;
       background: #fff;
       box-shadow: 0 8px 18px rgba(15, 23, 42, 0.12);
       page-break-after: always;
@@ -344,8 +382,8 @@ const buildPrintHtml = (doc: VDoc): string => {
     }
     .page-header, .page-footer {
       position: absolute;
-      left: 14mm;
-      right: 14mm;
+      left: ${props.marginLeftMm}mm;
+      right: ${props.marginRightMm}mm;
       font-size: 10pt;
       color: #475569;
       display: flex;
@@ -354,18 +392,18 @@ const buildPrintHtml = (doc: VDoc): string => {
       padding-bottom: 2mm;
     }
     .page-header {
-      top: 6mm;
+      top: ${Math.max(2, props.marginTopMm - 6)}mm;
     }
     .page-footer {
-      bottom: 6mm;
+      bottom: ${Math.max(2, props.marginBottomMm - 6)}mm;
       border-bottom: none;
       border-top: 1px solid #dbe6f7;
       padding-top: 2mm;
       padding-bottom: 0;
     }
     .page-body {
-      margin-top: ${props.headerShow ? "12mm" : "0"};
-      margin-bottom: ${props.footerShow ? "12mm" : "0"};
+      margin-top: ${props.headerShow ? "8mm" : "0"};
+      margin-bottom: ${props.footerShow ? "8mm" : "0"};
     }
     .cover {
       min-height: ${Math.max(140, contentHeightMm - 4)}mm;

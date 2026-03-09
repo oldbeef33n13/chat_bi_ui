@@ -34,4 +34,11 @@ describe("LocalDocRepository", () => {
     expect(page1.items.length).toBeLessThanOrEqual(2);
     page1.items.forEach((item) => expect(item.docType).toBe("dashboard"));
   });
+
+  it("creates dashboard docs with scenario presets", async () => {
+    const repo = new LocalDocRepository();
+    const created = await repo.createDoc({ docType: "dashboard", dashboardPreset: "workbench" });
+    expect((created.draft.doc.root.props as Record<string, unknown>)?.displayMode).toBe("scroll_page");
+    expect((created.draft.doc.root.props as Record<string, unknown>)?.pageWidthPx).toBe(1280);
+  });
 });

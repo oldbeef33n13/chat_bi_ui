@@ -51,12 +51,27 @@ interface VDoc {
 interface DeckProps {
   size?: "16:9" | "4:3" | { w: number; h: number };
   defaultBg?: string;
+  masterShowHeader?: boolean;
+  masterHeaderText?: string;
+  masterShowFooter?: boolean;
+  masterFooterText?: string;
+  masterShowSlideNumber?: boolean;
+  masterAccentColor?: string;
+  masterPaddingXPx?: number;
+  masterHeaderTopPx?: number;
+  masterHeaderHeightPx?: number;
+  masterFooterBottomPx?: number;
+  masterFooterHeightPx?: number;
+  nativeChartEnabled?: boolean;
+  nativeChartWidthEmu?: number;
+  nativeChartHeightEmu?: number;
 }
 ```
 
-常用扩展字段（运行/导出端已使用）：
+目标态说明：
 
-- `nativeChartEnabled?: boolean`：是否启用 POI 原生图表导出（默认 true）
+1. 上述字段为正式 DSL 字段，不属于临时扩展。
+2. Web 运行态与 Java 导出态使用同一默认语义，不做旧版兼容分支。
 
 ## 2.2 Deck 字段级约束
 
@@ -65,7 +80,35 @@ interface DeckProps {
 | `root.kind` | `string` | 是 | - | 推荐固定 `container` |
 | `root.props.size` | `"16:9" \| "4:3" \| {w,h}` | 否 | `16:9` | 画布比例 |
 | `root.props.defaultBg` | `string` | 否 | `#ffffff`（常规） | 默认背景色 |
+| `root.props.masterShowHeader` | `boolean` | 否 | `true` | 母版页眉显示 |
+| `root.props.masterHeaderText` | `string` | 否 | `doc.title` | 母版页眉文案 |
+| `root.props.masterShowFooter` | `boolean` | 否 | `true` | 母版页脚显示 |
+| `root.props.masterFooterText` | `string` | 否 | `"Visual Document OS"` | 母版页脚文案 |
+| `root.props.masterShowSlideNumber` | `boolean` | 否 | `true` | 母版页码显示 |
+| `root.props.masterAccentColor` | `string` | 否 | `#1d4ed8` | 母版分隔线强调色 |
+| `root.props.masterPaddingXPx` | `number` | 否 | `24` | 母版头脚左右内边距（像素） |
+| `root.props.masterHeaderTopPx` | `number` | 否 | `12` | 母版页眉顶部偏移（像素） |
+| `root.props.masterHeaderHeightPx` | `number` | 否 | `26` | 母版页眉最小高度（像素） |
+| `root.props.masterFooterBottomPx` | `number` | 否 | `10` | 母版页脚底部偏移（像素） |
+| `root.props.masterFooterHeightPx` | `number` | 否 | `22` | 母版页脚最小高度（像素） |
+| `root.props.nativeChartEnabled` | `boolean` | 否 | `true` | 原生图表导出开关 |
 | `root.children` | `VNode[]` | 否 | 空 | 子节点应为 `slide` |
+
+取值建议：
+
+1. `masterPaddingXPx` 建议 `12 ~ 48`。
+2. `masterHeaderTopPx` 建议 `0 ~ 36`，`masterHeaderHeightPx` 建议 `18 ~ 40`。
+3. `masterFooterBottomPx` 建议 `0 ~ 24`，`masterFooterHeightPx` 建议 `16 ~ 36`。
+
+## 2.3 母版布局字段映射（Web -> PPTX）
+
+| DSL 字段 | Web 侧含义 | PPTX 导出映射 |
+|---|---|---|
+| `masterPaddingXPx` | 母版头脚左右留白 | header/footer 文本框左右边界 |
+| `masterHeaderTopPx` | 页眉顶部位置 | header 文本框 `y` |
+| `masterHeaderHeightPx` | 页眉高度 | header 文本框 `h` |
+| `masterFooterBottomPx` | 页脚距底部位置 | footer 文本框 `y = pageH - bottom - height` |
+| `masterFooterHeightPx` | 页脚高度 | footer 文本框 `h` |
 
 ---
 
@@ -160,7 +203,22 @@ interface TextProps {
   "root": {
     "id": "root",
     "kind": "container",
-    "props": { "size": "16:9", "defaultBg": "#ffffff", "nativeChartEnabled": true },
+      "props": {
+        "size": "16:9",
+        "defaultBg": "#ffffff",
+        "masterShowHeader": true,
+        "masterHeaderText": "季度运营汇报",
+        "masterShowFooter": true,
+        "masterFooterText": "Visual Document OS",
+        "masterShowSlideNumber": true,
+        "masterAccentColor": "#1d4ed8",
+        "masterPaddingXPx": 24,
+        "masterHeaderTopPx": 12,
+        "masterHeaderHeightPx": 26,
+        "masterFooterBottomPx": 10,
+        "masterFooterHeightPx": 22,
+        "nativeChartEnabled": true
+      },
     "children": [
       {
         "id": "slide_1",
@@ -235,9 +293,12 @@ interface TextProps {
    - `16:9 -> 960x540`
    - `4:3 -> 960x720`
 2. `root.props.nativeChartEnabled` 为 true 时，优先原生图表导出。
-3. `slide.props.bg` 优先级高于 `root.props.defaultBg`。
-4. 表格节点使用原生表格输出，支持多级表头与合并。
-5. 未支持块类型会渲染占位，不会中断整页导出。
+3. `masterShowHeader/masterShowFooter/masterShowSlideNumber` 控制母版头脚与页码渲染。
+4. `masterHeaderText/masterFooterText/masterAccentColor` 会同步映射到 Web 运行态与 Java 导出态。
+5. `masterPaddingXPx/masterHeaderTopPx/masterHeaderHeightPx/masterFooterBottomPx/masterFooterHeightPx` 控制母版头脚位置与尺寸，并与 Java 导出保持一致。
+6. `slide.props.bg` 优先级高于 `root.props.defaultBg`。
+7. 表格节点使用原生表格输出，支持多级表头与合并。
+8. 未支持块类型会渲染占位，不会中断整页导出。
 
 ---
 

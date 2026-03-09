@@ -10,6 +10,15 @@ const clone = <T>(value: T): T => structuredClone(value);
 
 const nowIso = (): string => new Date().toISOString();
 
+interface EditorUiState {
+  dashboardInsertPanelOpen: boolean;
+  dashboardRecentInsertItemIds: string[];
+  reportInsertPanelOpen: boolean;
+  reportRecentInsertItemIds: string[];
+  pptInsertPanelOpen: boolean;
+  pptRecentInsertItemIds: string[];
+}
+
 /**
  * 编辑器状态核心：
  * 1) 管理文档与选区；
@@ -26,6 +35,14 @@ export class EditorStore {
   readonly pendingPlan = signal<CommandPlan | null>(null);
   readonly pendingPlanDryRun = signal<DryRunResult | null>(null);
   readonly lastError = signal<string | null>(null);
+  readonly ui = signal<EditorUiState>({
+    dashboardInsertPanelOpen: false,
+    dashboardRecentInsertItemIds: [],
+    reportInsertPanelOpen: false,
+    reportRecentInsertItemIds: [],
+    pptInsertPanelOpen: false,
+    pptRecentInsertItemIds: []
+  });
 
   constructor(
     initialDoc: VDoc,
@@ -53,6 +70,14 @@ export class EditorStore {
     this.pendingPlan.value = null;
     this.pendingPlanDryRun.value = null;
     this.lastError.value = null;
+    this.ui.value = {
+      dashboardInsertPanelOpen: false,
+      dashboardRecentInsertItemIds: [...this.ui.value.dashboardRecentInsertItemIds],
+      reportInsertPanelOpen: false,
+      reportRecentInsertItemIds: [...this.ui.value.reportRecentInsertItemIds],
+      pptInsertPanelOpen: false,
+      pptRecentInsertItemIds: [...this.ui.value.pptRecentInsertItemIds]
+    };
   }
 
   clearError(): void {
@@ -83,6 +108,16 @@ export class EditorStore {
     };
   }
 
+  setSelectionIds(nodeIds: string[], primaryId?: string): void {
+    const current = this.selection.value;
+    const selectedIds = [...new Set(nodeIds.filter(Boolean))];
+    this.selection.value = {
+      primaryId: selectedIds.length === 0 ? undefined : selectedIds.includes(primaryId ?? "") ? primaryId : selectedIds[selectedIds.length - 1],
+      selectedIds,
+      hoveredId: current.hoveredId
+    };
+  }
+
   setHover(nodeId?: string): void {
     const current = this.selection.value;
     this.selection.value = { ...current, hoveredId: nodeId };
@@ -90,6 +125,45 @@ export class EditorStore {
 
   clearSelection(): void {
     this.selection.value = { selectedIds: [] };
+  }
+
+  setDashboardInsertPanelOpen(open: boolean): void {
+    this.ui.value = { ...this.ui.value, dashboardInsertPanelOpen: open };
+  }
+
+  toggleDashboardInsertPanel(): void {
+    this.setDashboardInsertPanelOpen(!this.ui.value.dashboardInsertPanelOpen);
+  }
+
+  rememberDashboardInsertItem(itemId: string): void {
+    const recentIds = [itemId, ...this.ui.value.dashboardRecentInsertItemIds.filter((id) => id !== itemId)].slice(0, 6);
+    this.ui.value = { ...this.ui.value, dashboardRecentInsertItemIds: recentIds };
+  }
+
+  setReportInsertPanelOpen(open: boolean): void {
+    this.ui.value = { ...this.ui.value, reportInsertPanelOpen: open };
+  }
+
+  toggleReportInsertPanel(): void {
+    this.setReportInsertPanelOpen(!this.ui.value.reportInsertPanelOpen);
+  }
+
+  rememberReportInsertItem(itemId: string): void {
+    const recentIds = [itemId, ...this.ui.value.reportRecentInsertItemIds.filter((id) => id !== itemId)].slice(0, 6);
+    this.ui.value = { ...this.ui.value, reportRecentInsertItemIds: recentIds };
+  }
+
+  setPptInsertPanelOpen(open: boolean): void {
+    this.ui.value = { ...this.ui.value, pptInsertPanelOpen: open };
+  }
+
+  togglePptInsertPanel(): void {
+    this.setPptInsertPanelOpen(!this.ui.value.pptInsertPanelOpen);
+  }
+
+  rememberPptInsertItem(itemId: string): void {
+    const recentIds = [itemId, ...this.ui.value.pptRecentInsertItemIds.filter((id) => id !== itemId)].slice(0, 6);
+    this.ui.value = { ...this.ui.value, pptRecentInsertItemIds: recentIds };
   }
 
   executeCommand(command: Command, options: CommandExecutionOptions = {}): boolean {

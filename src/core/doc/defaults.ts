@@ -1,5 +1,5 @@
 import { prefixedId } from "../utils/id";
-import type { ChartSpec, DocType, VDoc, VNode } from "./types";
+import type { ChartSpec, DashboardPreset, DocType, VDoc, VNode } from "./types";
 
 const makeId = (prefix: string): string => prefixedId(prefix);
 
@@ -28,13 +28,50 @@ const mkChartNode = (title: string, gx: number, gy: number): VNode<ChartSpec> =>
   props: defaultChartSpec(title)
 });
 
-export const createDashboardDoc = (): VDoc => ({
+const buildDashboardRootProps = (preset: DashboardPreset) => {
+  if (preset === "workbench") {
+    return {
+      dashTitle: "网络运维工作台",
+      displayMode: "scroll_page" as const,
+      designWidthPx: 1440,
+      designHeightPx: 960,
+      pageWidthPx: 1280,
+      pageMarginPx: 24,
+      gridCols: 12,
+      rowH: 44,
+      gap: 16,
+      showFilterBar: true,
+      headerShow: true,
+      headerText: "网络运维工作台",
+      footerShow: false,
+      footerText: "Visual Document OS"
+    };
+  }
+  return {
+    dashTitle: "网络运维总览",
+    displayMode: "fit_screen" as const,
+    designWidthPx: 1920,
+    designHeightPx: 1080,
+    pageWidthPx: 1280,
+    pageMarginPx: 28,
+    gridCols: 12,
+    rowH: 56,
+    gap: 16,
+    showFilterBar: true,
+    headerShow: true,
+    headerText: "网络运维总览",
+    footerShow: false,
+    footerText: "Visual Document OS"
+  };
+};
+
+export const createDashboardDoc = (preset: DashboardPreset = "wallboard"): VDoc => ({
   docId: makeId("dash"),
   docType: "dashboard",
   schemaVersion: "1.0.0",
-  title: "网络运维总览",
+  title: preset === "workbench" ? "网络运维工作台" : "网络运维总览",
   locale: "zh-CN",
-  themeId: "theme.tech.light",
+  themeId: preset === "workbench" ? "theme.tech.light" : "theme.tech.dark",
   dataSources: [
     {
       id: "ds_alarm",
@@ -66,13 +103,7 @@ export const createDashboardDoc = (): VDoc => ({
     kind: "container",
     name: "Dashboard Root",
     layout: { mode: "grid" },
-    props: {
-      dashTitle: "网络运维总览",
-      gridCols: 12,
-      rowH: 40,
-      gap: 12,
-      showFilterBar: true
-    },
+    props: buildDashboardRootProps(preset),
     children: [mkChartNode("告警趋势", 0, 0), mkChartNode("丢包趋势", 6, 0)]
   }
 });
@@ -94,6 +125,12 @@ export const createReportDoc = (): VDoc => ({
       headerShow: true,
       footerShow: true,
       pageSize: "A4",
+      paginationStrategy: "section",
+      marginPreset: "normal",
+      marginTopMm: 14,
+      marginRightMm: 14,
+      marginBottomMm: 14,
+      marginLeftMm: 14,
       coverEnabled: true,
       coverTitle: "网络周报",
       coverSubtitle: "Network Weekly Operations Report",
@@ -103,7 +140,10 @@ export const createReportDoc = (): VDoc => ({
       summaryText: "本周告警整体下降 12%，核心链路抖动稳定，建议持续关注华北骨干容量。",
       headerText: "网络周报 · 内部资料",
       footerText: "Visual Document OS",
-      showPageNumber: true
+      showPageNumber: true,
+      bodyPaddingPx: 12,
+      sectionGapPx: 12,
+      blockGapPx: 8
     },
     children: [
       {
@@ -152,7 +192,18 @@ export const createPptDoc = (): VDoc => ({
     kind: "container",
     props: {
       size: "16:9",
-      defaultBg: "#ffffff"
+      defaultBg: "#ffffff",
+      masterShowHeader: true,
+      masterHeaderText: "网络运营汇报",
+      masterShowFooter: true,
+      masterFooterText: "Visual Document OS",
+      masterShowSlideNumber: true,
+      masterAccentColor: "#1d4ed8",
+      masterPaddingXPx: 24,
+      masterHeaderTopPx: 12,
+      masterHeaderHeightPx: 26,
+      masterFooterBottomPx: 10,
+      masterFooterHeightPx: 22
     },
     children: [
       {

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChartSpec, VDoc, VNode } from "../../core/doc/types";
-import { useEditorStore } from "../state/editor-context";
+import { useMaybeEditorStore } from "../state/editor-context";
 import { askChartAssistant, type ChartAssistantResult } from "../utils/chart-assistant";
 import { createAiTimer, createAiTraceId, emitAiTelemetry } from "../telemetry/ai-telemetry";
 
@@ -12,14 +12,16 @@ export function ChartAskAssistant({
   doc,
   node,
   rows,
-  compact = false
+  compact = false,
+  triggerMode = "text"
 }: {
   doc: VDoc;
   node: VNode;
   rows: Array<Record<string, unknown>>;
   compact?: boolean;
+  triggerMode?: "text" | "icon";
 }): JSX.Element {
-  const store = useEditorStore();
+  const store = useMaybeEditorStore();
   const hostRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [prompt, setPrompt] = useState("这个图最近的趋势是什么？");
@@ -101,7 +103,7 @@ export function ChartAskAssistant({
   };
 
   const previewPlan = (): void => {
-    if (!result?.plan) {
+    if (!result?.plan || !store) {
       return;
     }
     // 走统一预览链路，后续可在 ChatBridge 继续 Accept/Reject。
@@ -122,7 +124,7 @@ export function ChartAskAssistant({
   };
 
   const applyPlan = (): void => {
-    if (!result?.plan) {
+    if (!result?.plan || !store) {
       return;
     }
     // 直接应用属于“快捷通道”，但仍保留可撤销能力。
@@ -168,8 +170,13 @@ export function ChartAskAssistant({
       onPointerDown={(event) => event.stopPropagation()}
       onClick={(event) => event.stopPropagation()}
     >
-      <button className="mini-btn chart-ask-trigger" onClick={toggleOpen}>
-        智能追问
+      <button
+        className={`mini-btn chart-ask-trigger ${triggerMode === "icon" ? "icon" : ""}`}
+        title="打开图表智能追问"
+        aria-label="图表智能追问"
+        onClick={toggleOpen}
+      >
+        {triggerMode === "icon" ? "✦" : "智能追问"}
       </button>
       {open ? (
         <div className="chart-ask-pop col">
@@ -190,7 +197,7 @@ export function ChartAskAssistant({
               }}
               placeholder="继续追问数据，或说“改成柱状图并开标签”"
             />
-            <button className="btn primary" onClick={() => runAsk()}>
+            <button className="btn primary" title="发送问题" onClick={() => runAsk()}>
               发送
             </button>
           </div>
@@ -199,7 +206,7 @@ export function ChartAskAssistant({
               <div className="chart-ask-answer">{result.answer}</div>
               <div className="row chart-ask-suggestions">
                 {result.suggestions.map((suggestion) => (
-                  <button key={suggestion} className="btn mini-btn" onClick={() => runAsk(suggestion)}>
+                  <button key={suggestion} className="btn mini-btn" title="使用建议追问" onClick={() => runAsk(suggestion)}>
                     {suggestion}
                   </button>
                 ))}
@@ -207,14 +214,18 @@ export function ChartAskAssistant({
               {result.plan ? (
                 <div className="col" style={{ border: "1px dashed var(--line)", borderRadius: 8, padding: 8 }}>
                   <div className="muted">{result.planSummary ?? "识别到可执行建议"}</div>
-                  <div className="row">
-                    <button className="btn" onClick={previewPlan}>
-                      预览改动
-                    </button>
-                    <button className="btn primary" onClick={applyPlan}>
-                      直接应用
-                    </button>
-                  </div>
+                  {store ? (
+                    <div className="row">
+                      <button className="btn" title="预览建议改动，不立即执行" onClick={previewPlan}>
+                        预览改动
+                      </button>
+                      <button className="btn primary" title="直接应用建议改动（可撤销）" onClick={applyPlan}>
+                        直接应用
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="muted">当前为运行态，仅提供分析问答，不直接修改图表。</div>
+                  )}
                 </div>
               ) : null}
             </>

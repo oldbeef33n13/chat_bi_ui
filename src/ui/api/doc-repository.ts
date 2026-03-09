@@ -54,6 +54,7 @@ export interface CreateDocInput {
   docType: EditorDocType;
   title?: string;
   seedTemplateId?: string;
+  dashboardPreset?: "wallboard" | "workbench";
 }
 
 export interface SaveDraftInput {

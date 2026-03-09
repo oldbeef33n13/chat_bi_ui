@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveGridConflict, type GridNodeState, type GridRect } from "./dashboard-grid";
+import { resolveGridConflict, resolveGridGroupMove, type GridNodeState, type GridRect } from "./dashboard-grid";
 
 /** 构造网格布局节点。 */
 const grid = (gx: number, gy: number, gw: number, gh: number): GridRect => ({
@@ -60,5 +60,22 @@ describe("resolveGridConflict", () => {
     expect(updateLocked).toBeUndefined();
     expect(updateActive).toBeDefined();
     expect((updateActive?.layout as Record<string, unknown>).gy).toBeGreaterThan(0);
+  });
+
+  it("moves a selected grid group together and pushes other nodes", () => {
+    const nodes: GridNodeState[] = [
+      { id: "a", lock: false, layout: grid(0, 0, 4, 4) },
+      { id: "b", lock: false, layout: grid(4, 0, 4, 4) },
+      { id: "c", lock: false, layout: grid(0, 4, 8, 4) }
+    ];
+
+    const result = resolveGridGroupMove(nodes, ["a", "b"], { gx: 0, gy: 2 }, 12);
+
+    expect(result.movedIds).toEqual(["a", "b"]);
+    expect(result.deltaGy).toBe(2);
+    const updateA = result.commands.find((cmd) => cmd.type === "UpdateLayout" && cmd.nodeId === "a");
+    const updateB = result.commands.find((cmd) => cmd.type === "UpdateLayout" && cmd.nodeId === "b");
+    expect((updateA?.layout as Record<string, unknown>).gy).toBeGreaterThan(0);
+    expect((updateB?.layout as Record<string, unknown>).gy).toBeGreaterThan(0);
   });
 });

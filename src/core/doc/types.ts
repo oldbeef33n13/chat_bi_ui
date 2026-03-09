@@ -1,5 +1,7 @@
 export type DocType = "chart" | "dashboard" | "report" | "ppt";
 export type LayoutMode = "flow" | "grid" | "absolute";
+export type DashboardDisplayMode = "fit_screen" | "scroll_page";
+export type DashboardPreset = "wallboard" | "workbench";
 
 export interface AssetRef {
   assetId: string;
@@ -79,6 +81,7 @@ export interface FieldBinding {
   field: string;
   agg?: "sum" | "avg" | "min" | "max" | "count" | "distinctCount" | "p50" | "p95" | "p99";
   axis?: "primary" | "secondary" | number;
+  xAxis?: number;
   as?: string;
   sort?: "asc" | "desc";
   topK?: number;
@@ -143,18 +146,28 @@ export interface ChartSpec {
   labelShow?: boolean;
   valueFormat?: string;
   timeFormat?: string;
+  runtimeAskEnabled?: boolean;
   actions?: ChartAction[];
   optionPatch?: Record<string, unknown>;
 }
 
 export interface DashboardProps {
   dashTitle?: string;
+  displayMode?: DashboardDisplayMode;
+  designWidthPx?: number;
+  designHeightPx?: number;
+  pageWidthPx?: number;
+  pageMarginPx?: number;
   gridCols?: number;
   rowH?: number;
   gap?: number;
   bgMode?: "solid" | "image";
   bgAssetId?: string;
   showFilterBar?: boolean;
+  headerShow?: boolean;
+  headerText?: string;
+  footerShow?: boolean;
+  footerText?: string;
 }
 
 export interface ReportProps {
@@ -163,6 +176,12 @@ export interface ReportProps {
   headerShow?: boolean;
   footerShow?: boolean;
   pageSize?: "A4" | "Letter" | { w: number; h: number };
+  paginationStrategy?: "section" | "continuous";
+  marginPreset?: "narrow" | "normal" | "wide" | "custom";
+  marginTopMm?: number;
+  marginRightMm?: number;
+  marginBottomMm?: number;
+  marginLeftMm?: number;
   coverEnabled?: boolean;
   coverTitle?: string;
   coverSubtitle?: string;
@@ -173,6 +192,18 @@ export interface ReportProps {
   headerText?: string;
   footerText?: string;
   showPageNumber?: boolean;
+  /**
+   * 报告页正文内边距（像素）：用于 Web 预览与导出间距映射。
+   */
+  bodyPaddingPx?: number;
+  /**
+   * 章节标题与正文块之间的垂直间距（像素）。
+   */
+  sectionGapPx?: number;
+  /**
+   * 正文块（图表/表格/文本）之间的垂直间距（像素）。
+   */
+  blockGapPx?: number;
   nativeChartEnabled?: boolean;
   nativeChartWidthEmu?: number;
   nativeChartHeightEmu?: number;
@@ -181,6 +212,20 @@ export interface ReportProps {
 export interface DeckProps {
   size?: "16:9" | "4:3" | { w: number; h: number };
   defaultBg?: string;
+  masterShowHeader?: boolean;
+  masterHeaderText?: string;
+  masterShowFooter?: boolean;
+  masterFooterText?: string;
+  masterShowSlideNumber?: boolean;
+  masterAccentColor?: string;
+  /**
+   * 母版头尾布局参数（像素），用于 Web/PPT 导出统一呈现。
+   */
+  masterPaddingXPx?: number;
+  masterHeaderTopPx?: number;
+  masterHeaderHeightPx?: number;
+  masterFooterBottomPx?: number;
+  masterFooterHeightPx?: number;
   nativeChartEnabled?: boolean;
   nativeChartWidthEmu?: number;
   nativeChartHeightEmu?: number;
@@ -194,11 +239,26 @@ export interface SlideProps {
 
 export interface SectionProps {
   title: string;
+  editorMode?: "canvas";
+  canvasCols?: number;
+  canvasPageHeightPx?: number;
+  canvasSnapPx?: number;
+  canvasGapPx?: number;
+  canvasPaddingPx?: number;
+  canvasOverflow?: "paginate" | "grow";
 }
 
 export interface TextProps {
   text: string;
   format?: "plain" | "markdown-lite";
+}
+
+export interface ImageProps {
+  assetId: string;
+  title?: string;
+  alt?: string;
+  fit?: "contain" | "cover" | "stretch";
+  opacity?: number;
 }
 
 export interface TableColumnSpec {
@@ -255,6 +315,7 @@ export type NodeProps =
   | SlideProps
   | SectionProps
   | TextProps
+  | ImageProps
   | TableSpec
   | Record<string, unknown>;
 

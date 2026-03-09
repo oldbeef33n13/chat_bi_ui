@@ -10,6 +10,21 @@ export const vDocSchema = {
     title: { type: "string" },
     locale: { type: "string" },
     themeId: { type: "string" },
+    assets: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["assetId", "type"],
+        properties: {
+          assetId: { type: "string", minLength: 1 },
+          type: { type: "string", enum: ["image", "icon", "font", "palette", "theme", "file"] },
+          name: { type: "string" },
+          uri: { type: "string" },
+          meta: { type: "object", additionalProperties: true }
+        }
+      }
+    },
     dataSources: { type: "array", items: { type: "object" } },
     queries: { type: "array", items: { type: "object" } },
     filters: { type: "array", items: { type: "object" } },
@@ -106,6 +121,7 @@ export const vDocSchema = {
             { type: "integer", minimum: 0 }
           ]
         },
+        xAxis: { type: "integer", minimum: 0 },
         as: { type: "string" },
         sort: { type: "string", enum: ["asc", "desc"] },
         topK: { type: "integer", minimum: 1 },
@@ -177,6 +193,7 @@ export const vDocSchema = {
         labelShow: { type: "boolean" },
         valueFormat: { type: "string" },
         timeFormat: { type: "string" },
+        runtimeAskEnabled: { type: "boolean" },
         actions: { type: "array", items: { type: "object" } },
         optionPatch: { type: "object", additionalProperties: true }
       }
@@ -261,6 +278,18 @@ export const vDocSchema = {
         }
       }
     },
+    ImageProps: {
+      type: "object",
+      additionalProperties: false,
+      required: ["assetId"],
+      properties: {
+        assetId: { type: "string", minLength: 1 },
+        title: { type: "string" },
+        alt: { type: "string" },
+        fit: { type: "string", enum: ["contain", "cover", "stretch"] },
+        opacity: { type: "number", minimum: 0, maximum: 1 }
+      }
+    },
     VNode: {
       type: "object",
       additionalProperties: false,
@@ -283,6 +312,10 @@ export const vDocSchema = {
         {
           if: { properties: { kind: { const: "table" } } },
           then: { properties: { props: { $ref: "#/$defs/TableSpec" } } }
+        },
+        {
+          if: { properties: { kind: { const: "image" } } },
+          then: { properties: { props: { $ref: "#/$defs/ImageProps" } } }
         }
       ]
     }

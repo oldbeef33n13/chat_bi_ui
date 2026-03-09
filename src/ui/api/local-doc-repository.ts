@@ -1,4 +1,5 @@
 import { createBuiltInDoc, listBuiltInDocExamples, resolveDocExampleId } from "../../core/doc/examples";
+import { createDashboardDoc } from "../../core/doc/defaults";
 import type { VDoc } from "../../core/doc/types";
 import {
   DocApiError,
@@ -120,7 +121,10 @@ export class LocalDocRepository implements DocRepository {
 
   async createDoc(input: CreateDocInput): Promise<{ meta: DocMeta; draft: DocContent; published: DocContent }> {
     const exampleId = input.seedTemplateId ?? resolveDocExampleId(input.docType);
-    const base = createBuiltInDoc(input.docType, exampleId);
+    const base =
+      input.docType === "dashboard" && !input.seedTemplateId
+        ? createDashboardDoc(input.dashboardPreset ?? "wallboard")
+        : createBuiltInDoc(input.docType, exampleId);
     if (input.title && input.title.trim()) {
       base.title = input.title.trim();
     }

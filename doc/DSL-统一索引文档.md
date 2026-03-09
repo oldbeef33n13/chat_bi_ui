@@ -127,6 +127,76 @@
 
 ---
 
+## 6.3 目标态默认语义（无旧版兼容）
+
+本项目当前按“目标态”演进，不做历史 DSL 兼容分支。  
+即：同一字段在 Web 运行态与 Java 导出态必须使用同一默认语义。
+
+### 文档全局头脚字段（统一默认）
+
+| 场景 | 字段 | 默认值 |
+|---|---|---|
+| dashboard | `headerShow` | `true` |
+| dashboard | `headerText` | `dashTitle \|\| doc.title` |
+| dashboard | `footerShow` | `false` |
+| dashboard | `footerText` | `"Visual Document OS"` |
+| report | `headerShow` | `true` |
+| report | `footerShow` | `true` |
+| report | `headerText` | `reportTitle \|\| doc.title` |
+| report | `footerText` | `"Visual Document OS"` |
+| report | `showPageNumber` | `true` |
+| ppt | `masterShowHeader` | `true` |
+| ppt | `masterShowFooter` | `true` |
+| ppt | `masterShowSlideNumber` | `true` |
+| ppt | `masterHeaderText` | `doc.title` |
+| ppt | `masterFooterText` | `"Visual Document OS"` |
+| ppt | `masterAccentColor` | `#1d4ed8` |
+
+### Report 页边距规则（统一默认）
+
+| 字段 | 默认值 |
+|---|---|
+| `marginPreset` | `normal` |
+| `normal` | `14mm` |
+| `narrow` | `10mm` |
+| `wide` | `20mm` |
+| `custom` | 读取 `marginTopMm/rightMm/bottomMm/leftMm`，最小 `6mm` |
+
+说明：
+
+1. Report 导出链路已统一按 `marginPreset + margin*Mm` 计算页边距，不再读取旧 `margin*Twips`。
+2. 若 DSL 缺失上述字段，按本表默认值补齐；不再引入历史版本兼容行为。
+
+### Report 间距规则（统一默认）
+
+| 字段 | 默认值 | 建议范围 | 说明 |
+|---|---|---|---|
+| `bodyPaddingPx` | `12` | `0~64` | 正文区域内边距 |
+| `sectionGapPx` | `12` | `0~32` | 章节标题与正文块间距 |
+| `blockGapPx` | `8` | `0~24` | 正文块之间间距 |
+
+说明：
+
+1. Web 编辑/运行态与 Java 导出都使用该组字段，不再分别维护独立默认值。
+2. Java 导出链路会进行安全钳制（防止极端值导致排版异常）。
+
+### PPT 母版布局规则（统一默认）
+
+| 字段 | 默认值 | 建议范围 | 说明 |
+|---|---|---|---|
+| `masterPaddingXPx` | `24` | `12~48` | 头脚左右留白 |
+| `masterHeaderTopPx` | `12` | `0~36` | 页眉顶部偏移 |
+| `masterHeaderHeightPx` | `26` | `18~40` | 页眉高度 |
+| `masterFooterBottomPx` | `10` | `0~24` | 页脚底部偏移 |
+| `masterFooterHeightPx` | `22` | `16~36` | 页脚高度 |
+
+说明：
+
+1. Web 预览与 PPTX 导出共用这 5 个字段，确保头脚位置一致。
+2. 若字段缺失，按默认值自动补齐。
+
+---
+
 ## 7. 变更影响清单（新增字段/枚举时必看）
 
 当你新增 DSL 字段或枚举值，至少同步以下 8 处：
@@ -155,7 +225,14 @@
     "id": "root",
     "kind": "container",
     "layout": { "mode": "flow" },
-    "props": { "reportTitle": "报告标题", "tocShow": true, "coverEnabled": true },
+    "props": {
+      "reportTitle": "报告标题",
+      "tocShow": true,
+      "coverEnabled": true,
+      "bodyPaddingPx": 12,
+      "sectionGapPx": 12,
+      "blockGapPx": 8
+    },
     "children": []
   }
 }
@@ -171,7 +248,15 @@
   "root": {
     "id": "root",
     "kind": "container",
-    "props": { "size": "16:9", "defaultBg": "#ffffff" },
+    "props": {
+      "size": "16:9",
+      "defaultBg": "#ffffff",
+      "masterPaddingXPx": 24,
+      "masterHeaderTopPx": 12,
+      "masterHeaderHeightPx": 26,
+      "masterFooterBottomPx": 10,
+      "masterFooterHeightPx": 22
+    },
     "children": []
   }
 }

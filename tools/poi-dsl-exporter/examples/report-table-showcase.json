@@ -10,15 +10,69 @@
       "id": "ds_capacity",
       "type": "static",
       "staticData": [
-        { "region": "华东", "month": "2026-01", "capacity_tb": 118, "util_pct": 71.2, "err_qps": 38 },
-        { "region": "华东", "month": "2026-02", "capacity_tb": 122, "util_pct": 72.5, "err_qps": 32 },
-        { "region": "华东", "month": "2026-03", "capacity_tb": 126, "util_pct": 73.1, "err_qps": 28 },
-        { "region": "华北", "month": "2026-01", "capacity_tb": 106, "util_pct": 76.4, "err_qps": 45 },
-        { "region": "华北", "month": "2026-02", "capacity_tb": 108, "util_pct": 77.0, "err_qps": 40 },
-        { "region": "华北", "month": "2026-03", "capacity_tb": 111, "util_pct": 77.8, "err_qps": 35 },
-        { "region": "华南", "month": "2026-01", "capacity_tb": 98, "util_pct": 68.2, "err_qps": 30 },
-        { "region": "华南", "month": "2026-02", "capacity_tb": 102, "util_pct": 69.5, "err_qps": 26 },
-        { "region": "华南", "month": "2026-03", "capacity_tb": 105, "util_pct": 70.3, "err_qps": 22 }
+        {
+          "region": "华东",
+          "month": "2026-01",
+          "capacity_tb": 118,
+          "util_pct": 71.2,
+          "err_qps": 38
+        },
+        {
+          "region": "华东",
+          "month": "2026-02",
+          "capacity_tb": 122,
+          "util_pct": 72.5,
+          "err_qps": 32
+        },
+        {
+          "region": "华东",
+          "month": "2026-03",
+          "capacity_tb": 126,
+          "util_pct": 73.1,
+          "err_qps": 28
+        },
+        {
+          "region": "华北",
+          "month": "2026-01",
+          "capacity_tb": 106,
+          "util_pct": 76.4,
+          "err_qps": 45
+        },
+        {
+          "region": "华北",
+          "month": "2026-02",
+          "capacity_tb": 108,
+          "util_pct": 77,
+          "err_qps": 40
+        },
+        {
+          "region": "华北",
+          "month": "2026-03",
+          "capacity_tb": 111,
+          "util_pct": 77.8,
+          "err_qps": 35
+        },
+        {
+          "region": "华南",
+          "month": "2026-01",
+          "capacity_tb": 98,
+          "util_pct": 68.2,
+          "err_qps": 30
+        },
+        {
+          "region": "华南",
+          "month": "2026-02",
+          "capacity_tb": 102,
+          "util_pct": 69.5,
+          "err_qps": 26
+        },
+        {
+          "region": "华南",
+          "month": "2026-03",
+          "capacity_tb": 105,
+          "util_pct": 70.3,
+          "err_qps": 22
+        }
       ]
     }
   ],
@@ -32,7 +86,9 @@
   "root": {
     "id": "root",
     "kind": "container",
-    "layout": { "mode": "flow" },
+    "layout": {
+      "mode": "flow"
+    },
     "props": {
       "reportTitle": "容量运营明细报告",
       "tocShow": true,
@@ -44,51 +100,149 @@
       "summaryText": "本报告验证 Word 导出中的原生表格、表头合并、数据区合并与透视展开能力。",
       "headerShow": true,
       "footerShow": true,
-      "showPageNumber": true
+      "showPageNumber": true,
+      "paginationStrategy": "section",
+      "marginPreset": "normal",
+      "marginTopMm": 14,
+      "marginRightMm": 14,
+      "marginBottomMm": 14,
+      "marginLeftMm": 14,
+      "bodyPaddingPx": 12,
+      "sectionGapPx": 12,
+      "blockGapPx": 8
     },
     "children": [
       {
         "id": "sec_1",
         "kind": "section",
-        "props": { "title": "1. 容量明细（多级表头）" },
+        "props": {
+          "title": "1. 容量明细（多级表头）"
+        },
         "children": [
           {
             "id": "txt_1",
             "kind": "text",
-            "props": { "text": "以下表格验证 DOC 导出链路的 merge-first 策略。", "format": "plain" }
+            "props": {
+              "text": "以下表格验证 DOC 导出链路的 merge-first 策略。",
+              "format": "plain"
+            }
           },
           {
             "id": "tbl_detail",
             "kind": "table",
-            "data": { "sourceId": "ds_capacity", "queryId": "q_capacity" },
+            "data": {
+              "sourceId": "ds_capacity",
+              "queryId": "q_capacity"
+            },
             "props": {
               "titleText": "区域容量明细",
               "repeatHeader": true,
               "zebra": true,
               "columns": [
-                { "key": "region", "title": "区域", "width": 140, "align": "left" },
-                { "key": "month", "title": "月份", "width": 140, "align": "left" },
-                { "key": "capacity_tb", "title": "容量(TB)", "width": 120, "align": "right", "format": "int" },
-                { "key": "util_pct", "title": "利用率", "width": 120, "align": "right", "format": "pct" },
-                { "key": "err_qps", "title": "错误QPS", "width": 120, "align": "right", "format": "int" }
+                {
+                  "key": "region",
+                  "title": "区域",
+                  "width": 140,
+                  "align": "left"
+                },
+                {
+                  "key": "month",
+                  "title": "月份",
+                  "width": 140,
+                  "align": "left"
+                },
+                {
+                  "key": "capacity_tb",
+                  "title": "容量(TB)",
+                  "width": 120,
+                  "align": "right",
+                  "format": "int"
+                },
+                {
+                  "key": "util_pct",
+                  "title": "利用率",
+                  "width": 120,
+                  "align": "right",
+                  "format": "pct"
+                },
+                {
+                  "key": "err_qps",
+                  "title": "错误QPS",
+                  "width": 120,
+                  "align": "right",
+                  "format": "int"
+                }
               ],
               "headerRows": [
                 [
-                  { "text": "区域信息", "colSpan": 2, "rowSpan": 1, "align": "center" },
-                  { "text": "容量与质量", "colSpan": 3, "rowSpan": 1, "align": "center" }
+                  {
+                    "text": "区域信息",
+                    "colSpan": 2,
+                    "rowSpan": 1,
+                    "align": "center"
+                  },
+                  {
+                    "text": "容量与质量",
+                    "colSpan": 3,
+                    "rowSpan": 1,
+                    "align": "center"
+                  }
                 ],
                 [
-                  { "text": "区域", "colSpan": 1, "rowSpan": 1, "align": "center" },
-                  { "text": "月份", "colSpan": 1, "rowSpan": 1, "align": "center" },
-                  { "text": "容量(TB)", "colSpan": 1, "rowSpan": 1, "align": "center" },
-                  { "text": "利用率", "colSpan": 1, "rowSpan": 1, "align": "center" },
-                  { "text": "错误QPS", "colSpan": 1, "rowSpan": 1, "align": "center" }
+                  {
+                    "text": "区域",
+                    "colSpan": 1,
+                    "rowSpan": 1,
+                    "align": "center"
+                  },
+                  {
+                    "text": "月份",
+                    "colSpan": 1,
+                    "rowSpan": 1,
+                    "align": "center"
+                  },
+                  {
+                    "text": "容量(TB)",
+                    "colSpan": 1,
+                    "rowSpan": 1,
+                    "align": "center"
+                  },
+                  {
+                    "text": "利用率",
+                    "colSpan": 1,
+                    "rowSpan": 1,
+                    "align": "center"
+                  },
+                  {
+                    "text": "错误QPS",
+                    "colSpan": 1,
+                    "rowSpan": 1,
+                    "align": "center"
+                  }
                 ]
               ],
               "mergeCells": [
-                { "scope": "body", "row": 0, "col": 0, "rowSpan": 3, "colSpan": 1 },
-                { "scope": "body", "row": 3, "col": 0, "rowSpan": 3, "colSpan": 1 },
-                { "scope": "body", "row": 6, "col": 0, "rowSpan": 3, "colSpan": 1 }
+                {
+                  "scope": "body",
+                  "row": 0,
+                  "col": 0,
+                  "rowSpan": 3,
+                  "colSpan": 1
+                },
+                {
+                  "scope": "body",
+                  "row": 3,
+                  "col": 0,
+                  "rowSpan": 3,
+                  "colSpan": 1
+                },
+                {
+                  "scope": "body",
+                  "row": 6,
+                  "col": 0,
+                  "rowSpan": 3,
+                  "colSpan": 1
+                }
               ]
             }
           }
@@ -97,22 +251,34 @@
       {
         "id": "sec_2",
         "kind": "section",
-        "props": { "title": "2. 透视结果（按月展开）" },
+        "props": {
+          "title": "2. 透视结果（按月展开）"
+        },
         "children": [
           {
             "id": "tbl_pivot",
             "kind": "table",
-            "data": { "sourceId": "ds_capacity", "queryId": "q_capacity" },
+            "data": {
+              "sourceId": "ds_capacity",
+              "queryId": "q_capacity"
+            },
             "props": {
               "titleText": "区域错误QPS透视",
               "repeatHeader": true,
               "zebra": true,
               "columns": [
-                { "key": "region", "title": "区域", "width": 180, "align": "left" }
+                {
+                  "key": "region",
+                  "title": "区域",
+                  "width": 180,
+                  "align": "left"
+                }
               ],
               "pivot": {
                 "enabled": true,
-                "rowFields": ["region"],
+                "rowFields": [
+                  "region"
+                ],
                 "columnField": "month",
                 "valueField": "err_qps",
                 "agg": "sum",
@@ -126,4 +292,3 @@
     ]
   }
 }
-

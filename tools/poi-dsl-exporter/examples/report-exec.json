@@ -10,12 +10,36 @@
       "id": "ds_biz",
       "type": "static",
       "staticData": [
-        { "week": "W1", "channel": "APP", "revenue": 132 },
-        { "week": "W1", "channel": "Web", "revenue": 98 },
-        { "week": "W2", "channel": "APP", "revenue": 140 },
-        { "week": "W2", "channel": "Web", "revenue": 106 },
-        { "week": "W3", "channel": "APP", "revenue": 156 },
-        { "week": "W3", "channel": "Web", "revenue": 112 }
+        {
+          "week": "W1",
+          "channel": "APP",
+          "revenue": 132
+        },
+        {
+          "week": "W1",
+          "channel": "Web",
+          "revenue": 98
+        },
+        {
+          "week": "W2",
+          "channel": "APP",
+          "revenue": 140
+        },
+        {
+          "week": "W2",
+          "channel": "Web",
+          "revenue": 106
+        },
+        {
+          "week": "W3",
+          "channel": "APP",
+          "revenue": 156
+        },
+        {
+          "week": "W3",
+          "channel": "Web",
+          "revenue": 112
+        }
       ]
     }
   ],
@@ -29,7 +53,9 @@
   "root": {
     "id": "root",
     "kind": "container",
-    "layout": { "mode": "flow" },
+    "layout": {
+      "mode": "flow"
+    },
     "props": {
       "reportTitle": "经营分析简报",
       "tocShow": true,
@@ -46,13 +72,24 @@
       "footerText": "Visual Document OS",
       "showPageNumber": true,
       "pageSize": "A4",
-      "nativeChartEnabled": true
+      "nativeChartEnabled": true,
+      "paginationStrategy": "section",
+      "marginPreset": "normal",
+      "marginTopMm": 14,
+      "marginRightMm": 14,
+      "marginBottomMm": 14,
+      "marginLeftMm": 14,
+      "bodyPaddingPx": 12,
+      "sectionGapPx": 12,
+      "blockGapPx": 8
     },
     "children": [
       {
         "id": "sec_conclusion",
         "kind": "section",
-        "props": { "title": "核心结论" },
+        "props": {
+          "title": "核心结论"
+        },
         "children": [
           {
             "id": "txt_conclusion",
@@ -67,23 +104,43 @@
       {
         "id": "sec_metrics",
         "kind": "section",
-        "props": { "title": "关键指标" },
+        "props": {
+          "title": "关键指标"
+        },
         "children": [
           {
             "id": "chart_weekly_revenue",
             "kind": "chart",
-            "data": { "sourceId": "ds_biz", "queryId": "q_biz" },
+            "data": {
+              "sourceId": "ds_biz",
+              "queryId": "q_biz"
+            },
             "props": {
               "chartType": "line",
               "titleText": "周收入趋势",
               "bindings": [
-                { "role": "x", "field": "week" },
-                { "role": "y", "field": "revenue", "agg": "sum" },
-                { "role": "series", "field": "channel" }
+                {
+                  "role": "x",
+                  "field": "week"
+                },
+                {
+                  "role": "y",
+                  "field": "revenue",
+                  "agg": "sum"
+                },
+                {
+                  "role": "series",
+                  "field": "channel"
+                }
               ],
               "legendShow": true,
               "optionPatch": {
-                "series": [{ "type": "line", "smooth": true }]
+                "series": [
+                  {
+                    "type": "line",
+                    "smooth": true
+                  }
+                ]
               }
             }
           }

@@ -60,6 +60,12 @@ interface ReportProps {
   headerShow?: boolean;
   footerShow?: boolean;
   pageSize?: "A4" | "Letter" | { w: number; h: number };
+  paginationStrategy?: "section" | "continuous";
+  marginPreset?: "narrow" | "normal" | "wide" | "custom";
+  marginTopMm?: number;
+  marginRightMm?: number;
+  marginBottomMm?: number;
+  marginLeftMm?: number;
   coverEnabled?: boolean;
   coverTitle?: string;
   coverSubtitle?: string;
@@ -70,20 +76,31 @@ interface ReportProps {
   headerText?: string;
   footerText?: string;
   showPageNumber?: boolean;
+  bodyPaddingPx?: number;
+  sectionGapPx?: number;
+  blockGapPx?: number;
+  nativeChartEnabled?: boolean;
+  nativeChartWidthEmu?: number;
+  nativeChartHeightEmu?: number;
 }
 ```
 
-## 2.2 Report 扩展字段（导出链路已支持）
+## 2.2 Report 扩展与布局字段（导出链路已支持）
 
 | 字段 | 类型 | 默认值 | 说明 |
 |---|---|---|---|
+| `bodyPaddingPx` | `number` | `12` | 页面正文内边距（Web 预览 + DOC 导出映射） |
+| `sectionGapPx` | `number` | `12` | 章节标题与正文块之间垂直间距 |
+| `blockGapPx` | `number` | `8` | 正文块（文本/图表/表格）之间垂直间距 |
 | `nativeChartEnabled` | `boolean` | `true` | 是否启用原生图表导出 |
 | `nativeChartWidthEmu` | `number` | `6000000` 左右 | DOC 原生图宽 |
 | `nativeChartHeightEmu` | `number` | `3200000` 左右 | DOC 原生图高 |
-| `marginTopTwips` | `number` | `1080` | 页边距（twips） |
-| `marginBottomTwips` | `number` | `1080` | 页边距（twips） |
-| `marginLeftTwips` | `number` | `1080` | 页边距（twips） |
-| `marginRightTwips` | `number` | `1080` | 页边距（twips） |
+
+取值建议：
+
+1. `bodyPaddingPx` 建议 `0 ~ 64`，导出端会钳制到 `0 ~ 120`。
+2. `sectionGapPx` 建议 `0 ~ 32`，导出端会钳制到 `0 ~ 160`。
+3. `blockGapPx` 建议 `0 ~ 24`，导出端会钳制到 `0 ~ 160`。
 
 ## 2.3 ReportProps 默认行为（导出端）
 
@@ -96,6 +113,28 @@ interface ReportProps {
 | `footerShow` | `true` |
 | `showPageNumber` | `true` |
 | `pageSize` | `"A4"` |
+| `paginationStrategy` | `"section"` |
+| `marginPreset` | `"normal"` |
+| `normal` 页边距 | `14mm` |
+| `narrow` 页边距 | `10mm` |
+| `wide` 页边距 | `20mm` |
+| `bodyPaddingPx` | `12` |
+| `sectionGapPx` | `12` |
+| `blockGapPx` | `8` |
+
+目标态说明：
+
+1. 统一采用 `marginPreset + margin*Mm` 表达页边距。
+2. 当 `marginPreset=custom` 时，读取 `marginTopMm/rightMm/bottomMm/leftMm`（最小 6mm）。
+3. 不再支持旧 `margin*Twips` 兼容输入。
+
+## 2.4 布局字段映射（Web -> DOCX）
+
+| DSL 字段 | Web 侧含义 | DOCX 导出映射 |
+|---|---|---|
+| `bodyPaddingPx` | `.report-page-body` 内边距 | 转换为段落前后空白基线（twips） |
+| `sectionGapPx` | 章节标题下方间距 | 标题段落 `spacingAfter` |
+| `blockGapPx` | 相邻 block 的纵向间距 | block 间插入 gap 段落 |
 
 ---
 
@@ -175,6 +214,15 @@ interface TextProps {
       "footerText": "Visual Document OS",
       "showPageNumber": true,
       "pageSize": "A4",
+      "paginationStrategy": "section",
+      "marginPreset": "normal",
+      "marginTopMm": 14,
+      "marginRightMm": 14,
+      "marginBottomMm": 14,
+      "marginLeftMm": 14,
+      "bodyPaddingPx": 12,
+      "sectionGapPx": 12,
+      "blockGapPx": 8,
       "nativeChartEnabled": true
     },
     "children": [
@@ -294,6 +342,7 @@ interface TextProps {
 4. 合并单元格通过原生 `hMerge/vMerge/gridSpan` 输出。
 5. 图表优先原生导出，异常或不满足条件时回退占位卡片，不影响整文档生成。
 6. `pageSize` 推荐只用 `"A4"` 或 `"Letter"`，自定义 `{w,h}` 可作为前端结构字段但 DOC 导出主链路以标准纸型更稳定。
+7. 页边距仅按 `marginPreset + margin*Mm` 生效，不再读取 `margin*Twips`。
 
 ---
 

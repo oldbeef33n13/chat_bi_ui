@@ -9,6 +9,13 @@ npm install
 npm run dev
 ```
 
+### 本地 API Mock（默认开启）
+
+- 开发模式会自动拦截 `/api/v1`，并使用 `localexample/docs.seed.json` 初始化数据。
+- 运行时数据会落盘到 `localexample/docs.db.json`（新建/保存/发布会实时写入）。
+- 关闭本地拦截：
+  - PowerShell: `$env:VITE_LOCAL_API='false'; npm run dev`
+
 ## 已落地模块
 
 - 统一 DSL：

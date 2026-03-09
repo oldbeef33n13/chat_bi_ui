@@ -60,6 +60,11 @@ const applySingleFilter = (rows: Array<Record<string, unknown>>, filter: FilterD
   if (!filter.bindField) {
     return rows;
   }
+  // 多数据源场景下，如果当前数据完全不含该字段，则跳过该过滤器，避免把结果误清空。
+  const fieldExists = rows.some((row) => Object.prototype.hasOwnProperty.call(row, filter.bindField!));
+  if (!fieldExists) {
+    return rows;
+  }
   const value = filter.defaultValue;
   if (value === undefined || value === null || value === "") {
     return rows;

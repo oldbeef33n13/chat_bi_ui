@@ -29,6 +29,8 @@ export function BatchOpsPanel(): JSX.Element {
   const targets = resolveTargets(allNodes, selection.selectedIds, scope, kindFilter, groupFilter);
   const chartTargets = targets.filter((node) => node.kind === "chart");
   const primarySelected = selection.selectedIds.length > 0 ? allNodes.find((node) => node.id === selection.selectedIds[0]) : undefined;
+  const allGridHidden = chartTargets.length > 0 && chartTargets.every((node) => ((node.props ?? {}) as ChartSpec).gridShow === false);
+  const allDarkTheme = chartTargets.length > 0 && chartTargets.every((node) => String(((node.props ?? {}) as ChartSpec).themeRef ?? "").includes("dark"));
 
   const runOnCharts = (summary: string, mapper: (node: VNode) => Record<string, unknown>): void => {
     if (chartTargets.length === 0) {
@@ -130,8 +132,19 @@ export function BatchOpsPanel(): JSX.Element {
           <button className="btn" onClick={() => runOnCharts("batch label off", () => ({ labelShow: false }))}>
             全关标签
           </button>
-          <button className="btn" onClick={() => runOnCharts("batch no grid", () => ({ gridShow: false }))}>
-            全无网格
+          <button className="btn" onClick={() => runOnCharts(allGridHidden ? "batch grid on" : "batch no grid", () => ({ gridShow: allGridHidden }))}>
+            {allGridHidden ? "全开网格" : "全无网格"}
+          </button>
+          <button
+            className="btn"
+            onClick={() =>
+              runOnCharts(
+                allDarkTheme ? "batch reset dark theme" : "batch dark theme",
+                () => (allDarkTheme ? { themeRef: "", paletteRef: "" } : { themeRef: "theme.tech.dark", paletteRef: "palette.tech.dark" })
+              )
+            }
+          >
+            {allDarkTheme ? "全恢复主题" : "全暗色主题"}
           </button>
           <button className="btn" onClick={() => runOnCharts("batch smooth on", () => ({ smooth: true }))}>
             全平滑

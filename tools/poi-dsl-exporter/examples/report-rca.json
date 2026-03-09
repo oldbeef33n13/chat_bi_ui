@@ -10,11 +10,31 @@
       "id": "ds_incident",
       "type": "static",
       "staticData": [
-        { "minute": "10:00", "err_qps": 45, "stage": "detect" },
-        { "minute": "10:05", "err_qps": 90, "stage": "impact" },
-        { "minute": "10:10", "err_qps": 130, "stage": "impact" },
-        { "minute": "10:15", "err_qps": 82, "stage": "mitigate" },
-        { "minute": "10:20", "err_qps": 36, "stage": "recover" }
+        {
+          "minute": "10:00",
+          "err_qps": 45,
+          "stage": "detect"
+        },
+        {
+          "minute": "10:05",
+          "err_qps": 90,
+          "stage": "impact"
+        },
+        {
+          "minute": "10:10",
+          "err_qps": 130,
+          "stage": "impact"
+        },
+        {
+          "minute": "10:15",
+          "err_qps": 82,
+          "stage": "mitigate"
+        },
+        {
+          "minute": "10:20",
+          "err_qps": 36,
+          "stage": "recover"
+        }
       ]
     }
   ],
@@ -28,7 +48,9 @@
   "root": {
     "id": "root",
     "kind": "container",
-    "layout": { "mode": "flow" },
+    "layout": {
+      "mode": "flow"
+    },
     "props": {
       "reportTitle": "故障复盘报告",
       "tocShow": true,
@@ -45,13 +67,24 @@
       "footerText": "Visual Document OS",
       "showPageNumber": true,
       "pageSize": "A4",
-      "nativeChartEnabled": true
+      "nativeChartEnabled": true,
+      "paginationStrategy": "section",
+      "marginPreset": "normal",
+      "marginTopMm": 14,
+      "marginRightMm": 14,
+      "marginBottomMm": 14,
+      "marginLeftMm": 14,
+      "bodyPaddingPx": 12,
+      "sectionGapPx": 12,
+      "blockGapPx": 8
     },
     "children": [
       {
         "id": "sec_bg",
         "kind": "section",
-        "props": { "title": "1. 事件背景" },
+        "props": {
+          "title": "1. 事件背景"
+        },
         "children": [
           {
             "id": "txt_bg",
@@ -66,22 +99,42 @@
       {
         "id": "sec_timeline",
         "kind": "section",
-        "props": { "title": "2. 影响与处置时间线" },
+        "props": {
+          "title": "2. 影响与处置时间线"
+        },
         "children": [
           {
             "id": "chart_err_qps",
             "kind": "chart",
-            "data": { "sourceId": "ds_incident", "queryId": "q_incident" },
+            "data": {
+              "sourceId": "ds_incident",
+              "queryId": "q_incident"
+            },
             "props": {
               "chartType": "line",
               "titleText": "错误QPS变化",
               "bindings": [
-                { "role": "x", "field": "minute" },
-                { "role": "y", "field": "err_qps", "agg": "sum", "unit": "count" }
+                {
+                  "role": "x",
+                  "field": "minute"
+                },
+                {
+                  "role": "y",
+                  "field": "err_qps",
+                  "agg": "sum",
+                  "unit": "count"
+                }
               ],
               "optionPatch": {
-                "legend": { "show": false },
-                "series": [{ "type": "line", "smooth": true }]
+                "legend": {
+                  "show": false
+                },
+                "series": [
+                  {
+                    "type": "line",
+                    "smooth": true
+                  }
+                ]
               }
             }
           },
@@ -98,7 +151,9 @@
       {
         "id": "sec_rca",
         "kind": "section",
-        "props": { "title": "3. 根因与改进" },
+        "props": {
+          "title": "3. 根因与改进"
+        },
         "children": [
           {
             "id": "txt_rca",

@@ -1,0 +1,104 @@
+{
+  "version": 4,
+  "seedDocs": [
+    {
+      "id": "local-dashboard-noc",
+      "docType": "dashboard",
+      "name": "网络运维总览（本地）",
+      "description": "本地 mock 看板样例：告警趋势与处置效率。",
+      "tags": ["dashboard", "localexample"],
+      "status": "published",
+      "templateId": "dashboard.noc"
+    },
+    {
+      "id": "local-dashboard-capacity",
+      "docType": "dashboard",
+      "name": "容量与性能看板（本地）",
+      "description": "本地 mock 看板样例：容量、时延、丢包联动分析。",
+      "tags": ["dashboard", "localexample"],
+      "status": "published",
+      "templateId": "dashboard.capacity"
+    },
+    {
+      "id": "local-dashboard-command",
+      "docType": "dashboard",
+      "name": "运维指挥中心（本地）",
+      "description": "本地 mock 看板样例：趋势、占比、散点、日历与工单表格。",
+      "tags": ["dashboard", "localexample", "rich"],
+      "status": "published",
+      "templateId": "dashboard.command.center"
+    },
+    {
+      "id": "local-report-monthly",
+      "docType": "report",
+      "name": "月度运营报告（本地）",
+      "description": "本地 mock 报告样例：封面、目录、摘要与图文区块。",
+      "tags": ["report", "localexample"],
+      "status": "published",
+      "templateId": "report.monthly.enterprise"
+    },
+    {
+      "id": "local-report-rca",
+      "docType": "report",
+      "name": "故障复盘报告（本地）",
+      "description": "本地 mock 报告样例：时间线、根因和改进闭环。",
+      "tags": ["report", "localexample"],
+      "status": "draft",
+      "templateId": "report.rca"
+    },
+    {
+      "id": "local-report-playbook",
+      "docType": "report",
+      "name": "运维运营报告（本地）",
+      "description": "本地 mock 报告样例：图表、明细表、多级表头与透视矩阵。",
+      "tags": ["report", "localexample", "rich"],
+      "status": "published",
+      "templateId": "report.ops.table.playbook"
+    },
+    {
+      "id": "local-report-multi-chapter",
+      "docType": "report",
+      "name": "运维专题报告（章节多图）（本地）",
+      "description": "本地 mock 报告样例：单章节内多图表并列分析。",
+      "tags": ["report", "localexample", "rich", "multichart"],
+      "status": "published",
+      "templateId": "report.ops.multi.chapter"
+    },
+    {
+      "id": "local-report-subchapter",
+      "docType": "report",
+      "name": "运维深度分析（子章节多图）（本地）",
+      "description": "本地 mock 报告样例：2.1/2.2/2.3 子章节多图编排。",
+      "tags": ["report", "localexample", "rich", "multichart"],
+      "status": "published",
+      "templateId": "report.ops.subchapter.multichart"
+    },
+    {
+      "id": "local-ppt-board",
+      "docType": "ppt",
+      "name": "季度复盘（本地）",
+      "description": "本地 mock PPT 样例：封面、图表页、结论页。",
+      "tags": ["ppt", "localexample"],
+      "status": "published",
+      "templateId": "ppt.quarterly.board"
+    },
+    {
+      "id": "local-ppt-ops",
+      "docType": "ppt",
+      "name": "运营评审（本地）",
+      "description": "本地 mock PPT 样例：趋势、异常、行动计划。",
+      "tags": ["ppt", "localexample"],
+      "status": "draft",
+      "templateId": "ppt.ops.review"
+    },
+    {
+      "id": "local-ppt-story",
+      "docType": "ppt",
+      "name": "运维汇报（本地）",
+      "description": "本地 mock PPT 样例：封面、趋势、图表+表格与行动页。",
+      "tags": ["ppt", "localexample", "rich"],
+      "status": "published",
+      "templateId": "ppt.ops.table.story"
+    }
+  ]
+}

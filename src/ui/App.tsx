@@ -1,16 +1,26 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import type { Command, DocType, VDoc, VNode } from "../core/doc/types";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { MouseEvent as ReactMouseEvent } from "react";
+import type { Command, CommandPlan, DocType, VDoc, VNode } from "../core/doc/types";
 import { CanvasPanel, preloadEditorChunk } from "./components/CanvasPanel";
 import { ChatBridgePanel } from "./components/ChatBridgePanel";
 import { CommandPalette, type PaletteCommand } from "./components/CommandPalette";
+import { DocOutlinePanel } from "./components/DocOutlinePanel";
 import { DocRuntimeView } from "./components/DocRuntimeView";
+import { EditorTopToolbar } from "./components/EditorTopToolbar";
 import { InspectorPanel } from "./components/InspectorPanel";
-import { TreePanel } from "./components/TreePanel";
 import { DocApiError, type DocContent, type DocMeta, type EditorDocType } from "./api/doc-repository";
 import { useDocLibrary } from "./hooks/use-doc-library";
 import { EditorProvider, useEditorStore } from "./state/editor-context";
-import { setAiTelemetryContext } from "./telemetry/ai-telemetry";
-import { buildAlignCommands, type AlignKind } from "./utils/alignment";
+import { useSignalValue } from "./state/use-signal-value";
+import { setEditorTelemetryContext } from "./telemetry/editor-telemetry";
+import { createAiTraceId, emitAiTelemetry, setAiTelemetryContext } from "./telemetry/ai-telemetry";
+import { explainPlan, inferCommandPlan } from "./utils/ai-command-plan";
+import { buildAlignCommands, buildAlignToContainerCommandResult, type AlignKind } from "./utils/alignment";
+import {
+  loadPresentationRuntimeSettings,
+  savePresentationRuntimeSettings,
+  type PresentationRuntimeSettings
+} from "./utils/presentation-settings";
 import type { Persona } from "./types/persona";
 
 interface EditSession {
@@ -27,7 +37,7 @@ interface DocDetailState {
   draft: DocContent;
 }
 
-type RouteState = { page: "library" } | { page: "detail"; docId: string; mode: "view" | "edit" };
+export type RouteState = { page: "library" } | { page: "detail"; docId: string; mode: "view" | "edit" | "present" };
 
 const DOC_TYPES: EditorDocType[] = ["dashboard", "report", "ppt"];
 const cloneDoc = (doc: VDoc): VDoc => structuredClone(doc);
@@ -42,6 +52,7 @@ export function App(): JSX.Element {
   const docs = page.items;
   const [advancedMode, setAdvancedMode] = useState(false);
   const [previewDraft, setPreviewDraft] = useState(false);
+  const [dashboardPresetOpen, setDashboardPresetOpen] = useState(false);
   const [editSession, setEditSession] = useState<EditSession | null>(null);
   const [detail, setDetail] = useState<DocDetailState | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -115,9 +126,27 @@ export function App(): JSX.Element {
         sourceId: undefined,
         trigger: undefined
       });
+      setEditorTelemetryContext({
+        docId: undefined,
+        docType: undefined,
+        routeMode: undefined,
+        sectionId: undefined,
+        slideId: undefined,
+        rowId: undefined,
+        nodeId: undefined,
+        anchorId: undefined,
+        presetId: undefined,
+        selectionCount: undefined,
+        trigger: undefined
+      });
       return;
     }
     setAiTelemetryContext({
+      docId: route.docId,
+      docType: detail?.meta.docType,
+      routeMode: route.mode
+    });
+    setEditorTelemetryContext({
       docId: route.docId,
       docType: detail?.meta.docType,
       routeMode: route.mode
@@ -167,18 +196,24 @@ export function App(): JSX.Element {
     preloadEditorChunk(detail.meta.docType);
   }, [detail, editSession?.docId, route]);
 
-  const createDocByType = async (docType: EditorDocType): Promise<void> => {
+  const createDocByType = async (
+    docType: EditorDocType,
+    options?: {
+      dashboardPreset?: "wallboard" | "workbench";
+    }
+  ): Promise<void> => {
     setActionError(undefined);
     try {
-      const created = await createDoc({ docType });
+      const created = await createDoc({ docType, dashboardPreset: options?.dashboardPreset });
       preloadEditorChunk(docType);
+      setDashboardPresetOpen(false);
       setRoute({ page: "detail", docId: created.id, mode: "edit" });
     } catch (error) {
       setActionError(`新建失败: ${toErrorText(error)}`);
     }
   };
 
-  const onEditDocSnapshot = (doc: VDoc): void => {
+  const onEditDocSnapshot = useCallback((doc: VDoc): void => {
     setEditSession((prev) => {
       if (!prev || route.page !== "detail") {
         return prev;
@@ -188,7 +223,7 @@ export function App(): JSX.Element {
       }
       return { ...prev, live: cloneDoc(doc) };
     });
-  };
+  }, [route]);
 
   const saveDraft = async (): Promise<void> => {
     if (!editSession) {
@@ -290,9 +325,34 @@ export function App(): JSX.Element {
           <span className="chip">数据源: {source === "api" ? "后端 API" : "本地兜底"}</span>
           {actionError ? <span className="chip" style={{ color: "#b91c1c" }}>{actionError}</span> : null}
           <div className="row">
-            <button className="btn" onClick={() => void createDocByType("dashboard")}>
-              新建 Dashboard
-            </button>
+            <div className="tool-group tool-group-menu">
+              <button className={`btn ${dashboardPresetOpen ? "primary" : ""}`} onClick={() => setDashboardPresetOpen((value) => !value)}>
+                新建 Dashboard ▾
+              </button>
+              {dashboardPresetOpen ? (
+                <div className="toolbar-pop" style={{ minWidth: 260 }}>
+                  <div className="toolbar-pop-title">选择展示模式</div>
+                  <button className="toolbar-menu-item" onClick={() => void createDocByType("dashboard", { dashboardPreset: "wallboard" })}>
+                    <span className="toolbar-menu-icon">⛶</span>
+                    <span className="toolbar-menu-label">
+                      <strong>监控大屏</strong>
+                      <span className="muted" style={{ display: "block" }}>
+                        全屏适配，适合值班大屏和电视墙
+                      </span>
+                    </span>
+                  </button>
+                  <button className="toolbar-menu-item" onClick={() => void createDocByType("dashboard", { dashboardPreset: "workbench" })}>
+                    <span className="toolbar-menu-icon">▤</span>
+                    <span className="toolbar-menu-label">
+                      <strong>PC 工作台</strong>
+                      <span className="muted" style={{ display: "block" }}>
+                        页面滚动，适合首页和运营工作台
+                      </span>
+                    </span>
+                  </button>
+                </div>
+              ) : null}
+            </div>
             <button className="btn" onClick={() => void createDocByType("report")}>
               新建 Report
             </button>
@@ -409,6 +469,9 @@ export function App(): JSX.Element {
             <button className="btn" onClick={() => void loadDetail(currentRecord.id)}>
               刷新
             </button>
+            <button className="btn" onClick={() => setRoute({ page: "detail", docId: currentRecord.id, mode: "present" })}>
+              沉浸预览
+            </button>
             <button className="btn primary" disabled={!canEdit} onClick={() => setRoute({ page: "detail", docId: currentRecord.id, mode: "edit" })}>
               进入编辑
             </button>
@@ -419,6 +482,18 @@ export function App(): JSX.Element {
         </div>
         <DetailPage record={currentRecord} doc={currentDetailDoc} previewDraft={previewDraft} />
       </div>
+    );
+  }
+
+  if (route.mode === "present") {
+    return (
+      <PresentationPage
+        record={currentRecord}
+        doc={currentDetailDoc}
+        previewDraft={previewDraft}
+        onBack={() => setRoute({ page: "detail", docId: currentRecord.id, mode: "view" })}
+        onTogglePreviewDraft={() => setPreviewDraft((value) => !value)}
+      />
     );
   }
 
@@ -644,7 +719,356 @@ function DetailPage({ record, doc, previewDraft }: { record: DocMeta; doc: VDoc;
   );
 }
 
+function PresentationPage({
+  record,
+  doc,
+  previewDraft,
+  onBack,
+  onTogglePreviewDraft
+}: {
+  record: DocMeta;
+  doc: VDoc;
+  previewDraft: boolean;
+  onBack: () => void;
+  onTogglePreviewDraft: () => void;
+}): JSX.Element {
+  const hostRef = useRef<HTMLDivElement>(null);
+  const [fullscreen, setFullscreen] = useState(false);
+  const [toolbarVisible, setToolbarVisible] = useState(false);
+  const [presentationSettings, setPresentationSettings] = useState<PresentationRuntimeSettings>(() => loadPresentationRuntimeSettings());
+  const [tenFootMode, setTenFootMode] = useState<boolean>(() =>
+    shouldUseTenFootLayout(typeof window === "undefined" ? 0 : window.innerWidth, typeof window === "undefined" ? 0 : window.innerHeight)
+  );
+  const hideTimerRef = useRef<number | null>(null);
+
+  const clearToolbarTimer = useCallback((): void => {
+    if (hideTimerRef.current !== null) {
+      window.clearTimeout(hideTimerRef.current);
+      hideTimerRef.current = null;
+    }
+  }, []);
+
+  const armToolbarAutoHide = useCallback(
+    (delayMs = 2600): void => {
+      clearToolbarTimer();
+      hideTimerRef.current = window.setTimeout(() => setToolbarVisible(false), delayMs);
+    },
+    [clearToolbarTimer]
+  );
+
+  const wakeToolbar = useCallback(
+    (delayMs = 2600): void => {
+      setToolbarVisible(true);
+      armToolbarAutoHide(delayMs);
+    },
+    [armToolbarAutoHide]
+  );
+
+  const syncFullscreenState = useCallback((): void => {
+    const host = hostRef.current;
+    const element = typeof document !== "undefined" ? document.fullscreenElement : null;
+    setFullscreen(!!host && element === host);
+  }, []);
+
+  useEffect(() => {
+    syncFullscreenState();
+    const onFullscreenChange = (): void => {
+      syncFullscreenState();
+      wakeToolbar(2600);
+    };
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
+  }, [syncFullscreenState, wakeToolbar]);
+
+  useEffect(() => {
+    const onResize = (): void => {
+      setTenFootMode(shouldUseTenFootLayout(window.innerWidth, window.innerHeight));
+    };
+    onResize();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  useEffect(() => clearToolbarTimer, [clearToolbarTimer]);
+
+  useEffect(() => {
+    savePresentationRuntimeSettings(presentationSettings);
+  }, [presentationSettings]);
+
+  const toggleFullscreen = useCallback(async (): Promise<void> => {
+    const host = hostRef.current;
+    if (!host || typeof document === "undefined") {
+      return;
+    }
+    try {
+      if (document.fullscreenElement === host) {
+        await document.exitFullscreen();
+      } else {
+        await host.requestFullscreen();
+      }
+    } catch (error) {
+      // 失败时只提示，不中断沉浸预览。
+      console.warn(`[present] fullscreen 切换失败: ${toErrorText(error)}`);
+    }
+  }, []);
+
+  const onTopPointerMove = useCallback(
+    (event: ReactMouseEvent<HTMLDivElement>): void => {
+      if (event.clientY <= 24) {
+        wakeToolbar(2600);
+      }
+    },
+    [wakeToolbar]
+  );
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== "Shift" && event.key !== "Control" && event.key !== "Alt" && event.key !== "Meta") {
+        wakeToolbar(3200);
+      }
+      if (isTypingTarget(event.target as HTMLElement | null)) {
+        return;
+      }
+      const key = event.key.toLowerCase();
+      if (key === "f") {
+        event.preventDefault();
+        void toggleFullscreen();
+        return;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        if (document.fullscreenElement) {
+          void document.exitFullscreen();
+          return;
+        }
+        onBack();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onBack, toggleFullscreen, wakeToolbar]);
+
+  return (
+    <div
+      ref={hostRef}
+      className={`presentation-shell doc-${doc.docType} fit-${presentationSettings.fitMode} pad-${presentationSettings.paddingMode} ${toolbarVisible ? "toolbar-visible" : "toolbar-hidden"} ${tenFootMode ? "ten-foot" : ""}`}
+      onMouseMove={onTopPointerMove}
+      onMouseLeave={() => armToolbarAutoHide(800)}
+    >
+      <div className="presentation-top-hitarea" onMouseEnter={() => wakeToolbar(2600)} onTouchStart={() => wakeToolbar(2600)} />
+      <div className={`presentation-toolbar ${toolbarVisible ? "show" : "hide"}`} onMouseEnter={() => wakeToolbar(3400)} onMouseLeave={() => armToolbarAutoHide(1200)}>
+        <div className="row">
+          <strong>{record.name}</strong>
+          <span className="chip">{record.docType}</span>
+          <span className="chip">{tenFootMode ? "10ft 大屏模式" : "标准模式"}</span>
+          {record.status === "draft" ? <span className="chip">当前查看: {previewDraft ? "草稿版" : "发布版"}</span> : null}
+        </div>
+        <div className="row">
+          {record.status === "draft" ? (
+            <button className="btn" onClick={onTogglePreviewDraft}>
+              {previewDraft ? "查看发布版" : "查看草稿版"}
+            </button>
+          ) : null}
+          <button className="btn" onClick={() => setPresentationSettings((current) => ({ ...current, fitMode: current.fitMode === "fill" ? "contain" : "fill" }))}>
+            {presentationSettings.fitMode === "fill" ? "铺满优先" : "完整显示"}
+          </button>
+          <button className="btn" onClick={() => setPresentationSettings((current) => ({ ...current, paddingMode: current.paddingMode === "edge" ? "comfortable" : "edge" }))}>
+            {presentationSettings.paddingMode === "edge" ? "贴边显示" : "标准边距"}
+          </button>
+          <button className="btn" onClick={() => void toggleFullscreen()}>
+            {fullscreen ? "退出全屏(F)" : "全屏(F)"}
+          </button>
+          <button className="btn primary" onClick={onBack}>
+            退出沉浸(Esc)
+          </button>
+        </div>
+      </div>
+      <div className="presentation-stage">
+        <DocRuntimeView doc={doc} immersive presentationSettings={presentationSettings} />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * 编辑态沉浸预览：
+ * - 不切换路由，直接复用当前编辑中的文档快照；
+ * - 复用运行态渲染链路，确保“所见即所得”。
+ */
+function EditorPresentationOverlay({
+  doc,
+  onClose
+}: {
+  doc: VDoc;
+  onClose: () => void;
+}): JSX.Element {
+  const hostRef = useRef<HTMLDivElement>(null);
+  const [fullscreen, setFullscreen] = useState(false);
+  const [toolbarVisible, setToolbarVisible] = useState(true);
+  const [presentationSettings, setPresentationSettings] = useState<PresentationRuntimeSettings>(() => loadPresentationRuntimeSettings());
+  const [tenFootMode, setTenFootMode] = useState<boolean>(() =>
+    shouldUseTenFootLayout(typeof window === "undefined" ? 0 : window.innerWidth, typeof window === "undefined" ? 0 : window.innerHeight)
+  );
+  const hideTimerRef = useRef<number | null>(null);
+
+  const clearToolbarTimer = useCallback((): void => {
+    if (hideTimerRef.current !== null) {
+      window.clearTimeout(hideTimerRef.current);
+      hideTimerRef.current = null;
+    }
+  }, []);
+
+  const armToolbarAutoHide = useCallback(
+    (delayMs = 2600): void => {
+      clearToolbarTimer();
+      hideTimerRef.current = window.setTimeout(() => setToolbarVisible(false), delayMs);
+    },
+    [clearToolbarTimer]
+  );
+
+  const wakeToolbar = useCallback(
+    (delayMs = 2600): void => {
+      setToolbarVisible(true);
+      armToolbarAutoHide(delayMs);
+    },
+    [armToolbarAutoHide]
+  );
+
+  const syncFullscreenState = useCallback((): void => {
+    const host = hostRef.current;
+    const element = typeof document !== "undefined" ? document.fullscreenElement : null;
+    setFullscreen(!!host && element === host);
+  }, []);
+
+  useEffect(() => {
+    syncFullscreenState();
+    const onFullscreenChange = (): void => {
+      syncFullscreenState();
+      wakeToolbar(2600);
+    };
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
+  }, [syncFullscreenState, wakeToolbar]);
+
+  useEffect(() => {
+    const onResize = (): void => {
+      setTenFootMode(shouldUseTenFootLayout(window.innerWidth, window.innerHeight));
+    };
+    onResize();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  useEffect(() => clearToolbarTimer, [clearToolbarTimer]);
+
+  useEffect(() => {
+    savePresentationRuntimeSettings(presentationSettings);
+  }, [presentationSettings]);
+
+  const toggleFullscreen = useCallback(async (): Promise<void> => {
+    const host = hostRef.current;
+    if (!host || typeof document === "undefined") {
+      return;
+    }
+    try {
+      if (document.fullscreenElement === host) {
+        await document.exitFullscreen();
+      } else {
+        await host.requestFullscreen();
+      }
+    } catch (error) {
+      console.warn(`[editor-present] fullscreen 切换失败: ${toErrorText(error)}`);
+    }
+  }, []);
+
+  const onTopPointerMove = useCallback(
+    (event: ReactMouseEvent<HTMLDivElement>): void => {
+      if (event.clientY <= 24) {
+        wakeToolbar(2600);
+      }
+    },
+    [wakeToolbar]
+  );
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== "Shift" && event.key !== "Control" && event.key !== "Alt" && event.key !== "Meta") {
+        wakeToolbar(3200);
+      }
+      if (isTypingTarget(event.target as HTMLElement | null)) {
+        return;
+      }
+      const key = event.key.toLowerCase();
+      if (key === "f") {
+        event.preventDefault();
+        void toggleFullscreen();
+        return;
+      }
+      if (key === "p" && event.shiftKey) {
+        event.preventDefault();
+        if (document.fullscreenElement) {
+          void document.exitFullscreen();
+        }
+        onClose();
+        return;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        if (document.fullscreenElement) {
+          void document.exitFullscreen();
+          return;
+        }
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose, toggleFullscreen, wakeToolbar]);
+
+  return (
+    <div
+      ref={hostRef}
+      className={`presentation-shell doc-${doc.docType} fit-${presentationSettings.fitMode} pad-${presentationSettings.paddingMode} ${toolbarVisible ? "toolbar-visible" : "toolbar-hidden"} ${tenFootMode ? "ten-foot" : ""}`}
+      onMouseMove={onTopPointerMove}
+      onMouseLeave={() => armToolbarAutoHide(800)}
+    >
+      <div className="presentation-top-hitarea" onMouseEnter={() => wakeToolbar(2600)} onTouchStart={() => wakeToolbar(2600)} />
+      <div className={`presentation-toolbar ${toolbarVisible ? "show" : "hide"}`} onMouseEnter={() => wakeToolbar(3400)} onMouseLeave={() => armToolbarAutoHide(1200)}>
+        <div className="row">
+          <strong>{doc.title || "沉浸预览"}</strong>
+          <span className="chip">{doc.docType}</span>
+          <span className="chip">编辑态实时预览</span>
+          <span className="chip">{tenFootMode ? "10ft 大屏模式" : "标准模式"}</span>
+        </div>
+        <div className="row">
+          <button className="btn" onClick={() => setPresentationSettings((current) => ({ ...current, fitMode: current.fitMode === "fill" ? "contain" : "fill" }))}>
+            {presentationSettings.fitMode === "fill" ? "铺满优先" : "完整显示"}
+          </button>
+          <button className="btn" onClick={() => setPresentationSettings((current) => ({ ...current, paddingMode: current.paddingMode === "edge" ? "comfortable" : "edge" }))}>
+            {presentationSettings.paddingMode === "edge" ? "贴边显示" : "标准边距"}
+          </button>
+          <button className="btn" onClick={() => void toggleFullscreen()}>
+            {fullscreen ? "退出全屏(F)" : "全屏(F)"}
+          </button>
+          <button className="btn primary" onClick={onClose}>
+            返回编辑(Shift+P / Esc)
+          </button>
+        </div>
+      </div>
+      <div className="presentation-stage">
+        <DocRuntimeView doc={doc} immersive presentationSettings={presentationSettings} />
+      </div>
+    </div>
+  );
+}
+
 const toErrorText = (error: unknown): string => (error instanceof Error ? error.message : String(error));
+
+/**
+ * 10ft 体验判定：宽屏或高分辨率时自动放大交互控件与间距。
+ * 这里使用保守阈值，避免普通笔记本误进入大屏模式。
+ */
+export const shouldUseTenFootLayout = (width: number, height: number): boolean => width >= 1700 || (width >= 1440 && height >= 900);
 
 const formatUiTime = (iso: string): string => {
   const dt = new Date(iso);
@@ -660,13 +1084,27 @@ const resolveActionError = (action: string, error: unknown): string => {
   }
   return `${action}失败：${toErrorText(error)}`;
 };
+
+const isTypingTarget = (target: HTMLElement | null): boolean =>
+  !!target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT" || target.isContentEditable);
+
 function AppLayout({ advanced }: { advanced: boolean }): JSX.Element {
   // 产品策略：默认简化模式，开启“更多设置”后进入 analyst 能力层。
   const persona: Persona = advanced ? "analyst" : "novice";
   const store = useEditorStore();
+  const doc = useSignalValue(store.doc);
+  const selection = useSignalValue(store.selection);
+  const pendingPlan = useSignalValue(store.pendingPlan);
+  const preview = useSignalValue(store.pendingPlanDryRun);
   const [showFilterPanel, setShowFilterPanel] = useState(false);
   const [showBatchPanel, setShowBatchPanel] = useState(false);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
+  const [rightPanelTab, setRightPanelTab] = useState<"inspector" | "ai">("inspector");
+  const [aiQuickDockOpen, setAiQuickDockOpen] = useState(false);
+  const [aiQuickPrompt, setAiQuickPrompt] = useState("将当前图表改为折线并开启平滑与标签");
+  const [aiQuickPlan, setAiQuickPlan] = useState("");
+  const [aiQuickExplain, setAiQuickExplain] = useState("");
+  const [presentPreviewOpen, setPresentPreviewOpen] = useState(false);
 
   useEffect(() => {
     if (!advanced) {
@@ -674,6 +1112,125 @@ function AppLayout({ advanced }: { advanced: boolean }): JSX.Element {
       setShowBatchPanel(false);
     }
   }, [advanced]);
+
+  useEffect(() => {
+    setRightPanelTab("inspector");
+    setAiQuickDockOpen(false);
+    setAiQuickPlan("");
+    setAiQuickExplain("");
+    setPresentPreviewOpen(false);
+  }, [doc?.docType, doc?.docId]);
+
+  useEffect(() => {
+    if (rightPanelTab === "ai") {
+      setAiQuickDockOpen(false);
+    }
+  }, [rightPanelTab]);
+
+  const inferredQuickPlan = useMemo(
+    () => inferCommandPlan(aiQuickPrompt, selection.primaryId, doc?.root),
+    [aiQuickPrompt, doc?.root, selection.primaryId]
+  );
+
+  const aiQuickTelemetryContext = {
+    docType: doc?.docType,
+    nodeId: selection.primaryId
+  };
+
+  const generateQuickPlan = (): void => {
+    setAiQuickPlan(JSON.stringify(inferredQuickPlan, null, 2));
+    setAiQuickExplain(explainPlan(inferredQuickPlan));
+    emitAiTelemetry({
+      traceId: createAiTraceId(),
+      stage: "success",
+      surface: "ai_quick_dock",
+      action: "generate_plan",
+      source: "rule",
+      context: aiQuickTelemetryContext,
+      meta: {
+        promptLength: aiQuickPrompt.trim().length,
+        commandCount: inferredQuickPlan.commands.length
+      }
+    });
+  };
+
+  const previewQuickPlan = (): void => {
+    const sourcePlan = aiQuickPlan || inferredQuickPlan;
+    const ok = store.previewPlan(sourcePlan);
+    emitAiTelemetry({
+      traceId: createAiTraceId(),
+      stage: "preview",
+      surface: "ai_quick_dock",
+      action: "preview_plan",
+      source: "rule",
+      context: aiQuickTelemetryContext,
+      meta: {
+        ok,
+        promptLength: aiQuickPrompt.trim().length
+      }
+    });
+  };
+
+  const explainQuickPlan = (): void => {
+    try {
+      const plan = aiQuickPlan.trim() ? (JSON.parse(aiQuickPlan) as CommandPlan) : inferredQuickPlan;
+      setAiQuickExplain(explainPlan(plan));
+      emitAiTelemetry({
+        traceId: createAiTraceId(),
+        stage: "success",
+        surface: "ai_quick_dock",
+        action: "explain_plan",
+        source: "rule",
+        context: aiQuickTelemetryContext,
+        meta: {
+          fromRawPlan: Boolean(aiQuickPlan.trim()),
+          commandCount: plan.commands.length
+        }
+      });
+    } catch {
+      setAiQuickExplain("命令解释失败：CommandPlan JSON 不合法。");
+      emitAiTelemetry({
+        traceId: createAiTraceId(),
+        stage: "error",
+        surface: "ai_quick_dock",
+        action: "explain_plan",
+        source: "rule",
+        context: aiQuickTelemetryContext,
+        errorCode: "invalid_plan_json",
+        errorMessage: "CommandPlan JSON parse failed"
+      });
+    }
+  };
+
+  const acceptQuickPreview = (): void => {
+    const ok = store.acceptPreview("ai");
+    emitAiTelemetry({
+      traceId: createAiTraceId(),
+      stage: "accept",
+      surface: "ai_quick_dock",
+      action: "accept_preview",
+      source: "rule",
+      context: aiQuickTelemetryContext,
+      meta: { ok }
+    });
+    if (ok) {
+      setAiQuickDockOpen(false);
+    }
+  };
+
+  const rejectQuickPreview = (): void => {
+    const hadPending = Boolean(store.pendingPlan.value);
+    store.rejectPreview();
+    emitAiTelemetry({
+      traceId: createAiTraceId(),
+      stage: "reject",
+      surface: "ai_quick_dock",
+      action: "reject_preview",
+      source: "rule",
+      context: aiQuickTelemetryContext,
+      meta: { hadPending }
+    });
+  };
 
   const applyAllChartsLabel = (labelShow: boolean): void => {
     const doc = store.doc.value;
@@ -715,6 +1272,24 @@ function AppLayout({ advanced }: { advanced: boolean }): JSX.Element {
       return;
     }
     const commands = buildAlignCommands(doc.root, store.selection.value.selectedIds, kind);
+    if (commands.length === 0) {
+      return;
+    }
+    store.executeCommand(
+      {
+        type: "Transaction",
+        commands
+      },
+      { summary }
+    );
+  };
+
+  const applyContainerAlign = (kind: AlignKind, summary: string): void => {
+    const doc = store.doc.value;
+    if (!doc) {
+      return;
+    }
+    const { commands } = buildAlignToContainerCommandResult(doc.root, store.selection.value.selectedIds, kind);
     if (commands.length === 0) {
       return;
     }
@@ -881,6 +1456,60 @@ function AppLayout({ advanced }: { advanced: boolean }): JSX.Element {
         run: () => applyAlign("vdistribute", "distribute vertical")
       },
       {
+        id: "align.container.left",
+        label: "贴左(容器)",
+        shortcut: "Ctrl/Cmd+K → 容器贴左",
+        keywords: ["container", "align", "left", "贴左", "容器"],
+        group: "Layout",
+        personas: ["designer", "analyst"],
+        run: () => applyContainerAlign("left", "align container left")
+      },
+      {
+        id: "align.container.hcenter",
+        label: "水平居中(容器)",
+        shortcut: "Ctrl/Cmd+K → 容器水平居中",
+        keywords: ["container", "align", "center", "居中", "容器"],
+        group: "Layout",
+        personas: ["designer", "analyst"],
+        run: () => applyContainerAlign("hcenter", "align container hcenter")
+      },
+      {
+        id: "align.container.right",
+        label: "贴右(容器)",
+        shortcut: "Ctrl/Cmd+K → 容器贴右",
+        keywords: ["container", "align", "right", "贴右", "容器"],
+        group: "Layout",
+        personas: ["designer", "analyst"],
+        run: () => applyContainerAlign("right", "align container right")
+      },
+      {
+        id: "align.container.top",
+        label: "贴顶(容器)",
+        shortcut: "Ctrl/Cmd+K → 容器贴顶",
+        keywords: ["container", "align", "top", "贴顶", "容器"],
+        group: "Layout",
+        personas: ["designer", "analyst"],
+        run: () => applyContainerAlign("top", "align container top")
+      },
+      {
+        id: "align.container.vcenter",
+        label: "垂直居中(容器)",
+        shortcut: "Ctrl/Cmd+K → 容器垂直居中",
+        keywords: ["container", "align", "middle", "垂直居中", "容器"],
+        group: "Layout",
+        personas: ["designer", "analyst"],
+        run: () => applyContainerAlign("vcenter", "align container vcenter")
+      },
+      {
+        id: "align.container.bottom",
+        label: "贴底(容器)",
+        shortcut: "Ctrl/Cmd+K → 容器贴底",
+        keywords: ["container", "align", "bottom", "贴底", "容器"],
+        group: "Layout",
+        personas: ["designer", "analyst"],
+        run: () => applyContainerAlign("bottom", "align container bottom")
+      },
+      {
         id: "remove",
         label: "删除选中节点",
         shortcut: "Delete",
@@ -907,6 +1536,11 @@ function AppLayout({ advanced }: { advanced: boolean }): JSX.Element {
         return;
       }
       if (!withCtrl) {
+        if (!isTyping && key === "p" && event.shiftKey) {
+          event.preventDefault();
+          setPresentPreviewOpen(true);
+          return;
+        }
         if (!isTyping && event.key === "Delete") {
           event.preventDefault();
           removeSelection();
@@ -955,29 +1589,132 @@ function AppLayout({ advanced }: { advanced: boolean }): JSX.Element {
 
   return (
     <>
-      <div className="layout">
-        <section className="panel">
-          <TreePanel persona={persona} />
-        </section>
-        <section className="panel">
-          <CanvasPanel
-            persona={persona}
-            showFilterPanel={showFilterPanel}
-            onToggleFilterPanel={() => setShowFilterPanel((value) => !value)}
-            showBatchPanel={showBatchPanel}
-            onToggleBatchPanel={() => setShowBatchPanel((value) => !value)}
-          />
-        </section>
-        <section className="panel">
-          <div style={{ height: "58%" }}>
-            <InspectorPanel persona={persona} />
-          </div>
-          <div style={{ height: "42%", borderTop: "1px solid var(--line)" }}>
-            <ChatBridgePanel persona={persona} />
-          </div>
+      <div className="editor-shell">
+        <EditorTopToolbar
+          persona={persona}
+          showFilterPanel={showFilterPanel}
+          onToggleFilterPanel={() => setShowFilterPanel((value) => !value)}
+          showBatchPanel={showBatchPanel}
+          onToggleBatchPanel={() => setShowBatchPanel((value) => !value)}
+          onOpenCommandPalette={() => setShowCommandPalette(true)}
+          onOpenPresentPreview={() => setPresentPreviewOpen(true)}
+        />
+        <section className={`editor-workspace doc-${doc?.docType ?? "unknown"}`}>
+          {doc?.docType === "dashboard" ? null : (
+            <aside className="panel editor-side-left">
+              <DocOutlinePanel />
+            </aside>
+          )}
+          <section className="panel editor-main-stage">
+            <CanvasPanel
+              persona={persona}
+              showFilterPanel={showFilterPanel}
+              onToggleFilterPanel={() => setShowFilterPanel((value) => !value)}
+              showBatchPanel={showBatchPanel}
+              onToggleBatchPanel={() => setShowBatchPanel((value) => !value)}
+              showInlineNavigator={doc?.docType !== "ppt"}
+            />
+          </section>
+          <aside className="panel editor-side-right ai-side-panel">
+            <div className="panel-header">
+              <div className="tabs">
+                <button className={`tab-btn ${rightPanelTab === "inspector" ? "active" : ""}`} onClick={() => setRightPanelTab("inspector")}>
+                  属性
+                </button>
+                <button className={`tab-btn ${rightPanelTab === "ai" ? "active" : ""}`} onClick={() => setRightPanelTab("ai")}>
+                  AI
+                </button>
+              </div>
+            </div>
+            <div className="right-panel-body">
+              {rightPanelTab === "inspector" ? <InspectorPanel persona={persona} /> : <ChatBridgePanel persona={persona} />}
+            </div>
+            {rightPanelTab === "inspector" ? (
+              <>
+                <button
+                  className={`ai-quick-fab ${aiQuickDockOpen ? "active" : ""}`}
+                  title="AI 快捷入口"
+                  onClick={() => setAiQuickDockOpen((value) => !value)}
+                >
+                  AI
+                </button>
+                {aiQuickDockOpen ? (
+                  <div className="ai-quick-dock">
+                    <div className="row" style={{ justifyContent: "space-between" }}>
+                      <strong>AI 快捷入口</strong>
+                      <button className="btn mini-btn" onClick={() => setAiQuickDockOpen(false)}>
+                        收起
+                      </button>
+                    </div>
+                    <div className="row">
+                      <input className="input" value={aiQuickPrompt} onChange={(event) => setAiQuickPrompt(event.target.value)} placeholder="例如：把当前图表改成柱状图并开启标签" />
+                    </div>
+                    <div className="row">
+                      <button className="btn" onClick={generateQuickPlan}>
+                        生成
+                      </button>
+                      <button className="btn primary" onClick={previewQuickPlan}>
+                        预览
+                      </button>
+                      <button className="btn" onClick={explainQuickPlan}>
+                        解释
+                      </button>
+                    </div>
+                    <label className="col">
+                      <span className="muted" style={{ fontSize: 12 }}>
+                        CommandPlan JSON
+                      </span>
+                      <textarea className="textarea ai-quick-plan-textarea" value={aiQuickPlan} onChange={(event) => setAiQuickPlan(event.target.value)} />
+                    </label>
+                    {preview ? (
+                      <div className="col ai-quick-preview">
+                        <strong>Diff Preview</strong>
+                        <span className="muted">{preview.summary}</span>
+                        <span className="muted">patches: {preview.patches.length}</span>
+                        <span className="muted">risk: {pendingPlan?.preview?.risk ?? "low"}</span>
+                        <ul className="diff-list">
+                          {preview.changedPaths.slice(0, 12).map((path) => (
+                            <li key={path}>{path}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+                    {aiQuickExplain ? (
+                      <div className="col ai-quick-preview">
+                        <strong>命令解释</strong>
+                        <pre style={{ margin: 0, whiteSpace: "pre-wrap", fontFamily: "inherit" }}>{aiQuickExplain}</pre>
+                      </div>
+                    ) : null}
+                    <div className="row" style={{ justifyContent: "space-between" }}>
+                      <div className="row">
+                        <button className="btn primary" disabled={!pendingPlan} onClick={acceptQuickPreview}>
+                          应用
+                        </button>
+                        <button className="btn" disabled={!pendingPlan} onClick={rejectQuickPreview}>
+                          取消
+                        </button>
+                      </div>
+                      <button
+                        className="btn"
+                        onClick={() => {
+                          setRightPanelTab("ai");
+                          setAiQuickDockOpen(false);
+                        }}
+                      >
+                        打开完整 AI
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+              </>
+            ) : null}
+          </aside>
         </section>
       </div>
       <CommandPalette open={showCommandPalette} onClose={() => setShowCommandPalette(false)} persona={persona} commands={commands} />
+      {presentPreviewOpen && doc ? (
+        <EditorPresentationOverlay doc={doc} onClose={() => setPresentPreviewOpen(false)} />
+      ) : null}
     </>
   );
 }
@@ -1008,8 +1745,8 @@ const pruneSelectedForRemoval = (root: VNode, selectedIds: string[]): string[] =
   return keep;
 };
 
-const parseRouteFromHash = (hash: string): RouteState => {
-  // 支持 #/docs -> 列表；#/docs/{id} -> 运行态；#/docs/{id}/edit -> 编辑态
+export const parseRouteFromHash = (hash: string): RouteState => {
+  // 支持 #/docs -> 列表；#/docs/{id} -> 运行态；#/docs/{id}/edit -> 编辑态；#/docs/{id}/present -> 沉浸态
   const cleaned = hash.replace(/^#\/?/, "");
   const [path = ""] = cleaned.split("?");
   const parts = path.split("/").filter(Boolean);
@@ -1023,17 +1760,20 @@ const parseRouteFromHash = (hash: string): RouteState => {
   if (!docId) {
     return { page: "library" };
   }
-  const mode = parts[2] === "edit" ? "edit" : "view";
+  const mode = parts[2] === "edit" ? "edit" : parts[2] === "present" ? "present" : "view";
   return { page: "detail", docId, mode };
 };
 
-const routeToHash = (route: RouteState): string => {
+export const routeToHash = (route: RouteState): string => {
   if (route.page === "library") {
     return "#/docs";
   }
   const encoded = encodeURIComponent(route.docId);
   if (route.mode === "edit") {
     return `#/docs/${encoded}/edit`;
+  }
+  if (route.mode === "present") {
+    return `#/docs/${encoded}/present`;
   }
   return `#/docs/${encoded}`;
 };

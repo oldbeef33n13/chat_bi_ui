@@ -68,6 +68,38 @@ java -jar tools/poi-dsl-exporter/target/poi-dsl-exporter-0.1.0.jar \
 
 PPT 原生图表会按节点 `layout(x,y,w,h)` 进行锚点定位（兼容不同 POI 版本 API）。
 
+### 全局属性默认语义（目标态）
+
+为保证与 Web 运行态一致，导出器默认语义如下：
+
+- Report:
+  - `headerShow=true`
+  - `footerShow=true`
+  - `showPageNumber=true`
+  - `marginPreset=normal`（`14mm`）
+  - `paginationStrategy=section`
+  - `bodyPaddingPx=12`
+  - `sectionGapPx=12`
+  - `blockGapPx=8`
+- PPT:
+  - `masterShowHeader=true`
+  - `masterShowFooter=true`
+  - `masterShowSlideNumber=true`
+  - `masterHeaderText=doc.title`
+  - `masterFooterText=Visual Document OS`
+  - `masterAccentColor=#1d4ed8`
+  - `masterPaddingXPx=24`
+  - `masterHeaderTopPx=12`
+  - `masterHeaderHeightPx=26`
+  - `masterFooterBottomPx=10`
+  - `masterFooterHeightPx=22`
+
+说明：
+
+1. 当前版本按目标态执行，不做旧 DSL 兼容分支。
+2. Report 页边距统一采用 `marginPreset + margin*Mm`，不再支持 `margin*Twips`。
+3. Report 间距与 PPT 母版布局字段会同时影响 Web 运行态与 Java 导出。
+
 ### 图表类型覆盖（与前端 DSL 对齐）
 
 - `line`: 原生线图

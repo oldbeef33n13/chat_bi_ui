@@ -51,6 +51,17 @@
     "props": {
       "size": "16:9",
       "defaultBg": "#ffffff",
+      "masterShowHeader": true,
+      "masterHeaderText": "数字化转型季度复盘（管理层汇报）",
+      "masterShowFooter": true,
+      "masterFooterText": "Visual Document OS",
+      "masterShowSlideNumber": true,
+      "masterAccentColor": "#1d4ed8",
+      "masterPaddingXPx": 24,
+      "masterHeaderTopPx": 12,
+      "masterHeaderHeightPx": 26,
+      "masterFooterBottomPx": 10,
+      "masterFooterHeightPx": 22,
       "nativeChartEnabled": true
     },
     "children": [

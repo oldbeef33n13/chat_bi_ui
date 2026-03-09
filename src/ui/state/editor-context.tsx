@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef } from "react";
 import { EditorStore } from "../../core/kernel/editor-store";
 import type { DocType, VDoc } from "../../core/doc/types";
 import { resolveTemplate } from "../../runtime/template/templates";
@@ -46,14 +46,22 @@ export const useEditorStore = (): EditorStore => {
   return ctx;
 };
 
+export const useMaybeEditorStore = (): EditorStore | null => useContext(EditorContext);
+
 function EditorDocSync({ onDocChange }: { onDocChange: (doc: VDoc) => void }): null {
   const store = useEditorStore();
   const doc = useSignalValue(store.doc);
+  const onDocChangeRef = useRef(onDocChange);
+
+  useEffect(() => {
+    onDocChangeRef.current = onDocChange;
+  }, [onDocChange]);
+
   useEffect(() => {
     if (doc) {
       // 外层持久化会话依赖这个同步回调（编辑态实时快照）。
-      onDocChange(doc);
+      onDocChangeRef.current(doc);
     }
-  }, [doc, onDocChange]);
+  }, [doc]);
   return null;
 }

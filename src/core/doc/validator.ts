@@ -201,6 +201,9 @@ const validateVNode = (value: unknown, path: string, errors: ValidationError[]):
       ) {
         pushError(errors, `${bindingPath}/axis`, "should be primary|secondary or integer >= 0");
       }
+      if (binding.xAxis !== undefined && !isNonNegativeInteger(binding.xAxis)) {
+        pushError(errors, `${bindingPath}/xAxis`, "should be integer >= 0");
+      }
     });
   }
 

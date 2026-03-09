@@ -4,12 +4,13 @@ import { useEditorStore } from "../state/editor-context";
 import { useSignalValue } from "../state/use-signal-value";
 import type { Persona } from "../types/persona";
 import { createAiTraceId, emitAiTelemetry } from "../telemetry/ai-telemetry";
+import { explainPlan, inferCommandPlan } from "../utils/ai-command-plan";
 
 /**
  * 通用 Chat Bridge：
  * - 支持自然语言 -> CommandPlan
  * - 支持计划预览/解释/Accept/Reject
- * - 与审计日志联动，保证可追溯
+ * - 与预览态/执行态联动，保证可回退可确认
  */
 export function ChatBridgePanel({ persona = "analyst" }: { persona?: Persona }): JSX.Element {
   const store = useEditorStore();
@@ -17,7 +18,6 @@ export function ChatBridgePanel({ persona = "analyst" }: { persona?: Persona }):
   const selection = useSignalValue(store.selection);
   const pendingPlan = useSignalValue(store.pendingPlan);
   const preview = useSignalValue(store.pendingPlanDryRun);
-  const auditLogs = useSignalValue(store.auditLogs);
   const [prompt, setPrompt] = useState("将当前图表改为折线并开启平滑与标签");
   const [rawPlan, setRawPlan] = useState("");
   const [explainText, setExplainText] = useState("");
@@ -181,115 +181,9 @@ export function ChatBridgePanel({ persona = "analyst" }: { persona?: Persona }):
             <pre style={{ margin: 0, whiteSpace: "pre-wrap", fontFamily: "inherit" }}>{explainText}</pre>
           </div>
         ) : null}
-
-        <div className="col" style={{ borderTop: "1px dashed var(--line)", paddingTop: 8 }}>
-          <strong>Audit Log</strong>
-          <div style={{ maxHeight: 220, overflow: "auto" }}>
-            {auditLogs.slice(0, 20).map((item) => (
-              <div key={item.id} className="block" style={{ margin: "6px 0" }}>
-                <div className="row" style={{ justifyContent: "space-between" }}>
-                  <span className="chip">{item.actor}</span>
-                  <span className="muted">{item.at}</span>
-                </div>
-                <div>{item.summary}</div>
-                {item.changedPaths.length > 0 ? <div className="muted">{item.changedPaths.slice(0, 2).join(" | ")}</div> : null}
-              </div>
-            ))}
-          </div>
-        </div>
       </div>
     </>
   );
 }
 
-const inferCommandPlan = (input: string, currentNodeId?: string, root?: { id: string; kind: string; children?: any[] }): CommandPlan => {
-  const nodeId = currentNodeId ?? "node_123";
-  const commands: CommandPlan["commands"] = [];
-
-  if (/折线|line/i.test(input)) {
-    commands.push({ type: "UpdateProps", nodeId, props: { chartType: "line" } });
-  }
-  if (/柱状|bar/i.test(input)) {
-    commands.push({ type: "UpdateProps", nodeId, props: { chartType: "bar" } });
-  }
-  if (/饼图|pie/i.test(input)) {
-    commands.push({ type: "UpdateProps", nodeId, props: { chartType: "pie" } });
-  }
-  if (/平滑|smooth/i.test(input)) {
-    commands.push({ type: "UpdateProps", nodeId, props: { smooth: true } });
-  }
-  if (/标签|label/i.test(input)) {
-    commands.push({ type: "UpdateProps", nodeId, props: { labelShow: true } });
-  }
-  if (/暗色|dark/i.test(input)) {
-    commands.push({ type: "ApplyTheme", scope: "doc", themeId: "theme.tech.dark" });
-  }
-  if (/所有图表.*标签|全部图表.*标签/i.test(input)) {
-    const chartIds = collectChartIds(root);
-    commands.push({
-      type: "Transaction",
-      commands: (chartIds.length > 0 ? chartIds : [nodeId]).map((id) => ({ type: "UpdateProps", nodeId: id, props: { labelShow: true } }))
-    });
-  }
-
-  // 没识别出意图时给一个保守默认，避免空计划。
-  if (commands.length === 0) {
-    commands.push({ type: "UpdateProps", nodeId, props: { smooth: true } });
-  }
-
-  return {
-    intent: "update",
-    targets: [nodeId],
-    commands,
-    explain: input
-  };
-};
-
-const explainPlan = (plan: CommandPlan): string => {
-  const lines: string[] = [];
-  lines.push(`意图: ${plan.intent}`);
-  if (plan.explain) {
-    lines.push(`描述: ${plan.explain}`);
-  }
-  lines.push(`命令数: ${plan.commands.length}`);
-  plan.commands.forEach((command, index) => {
-    const i = index + 1;
-    if (command.type === "UpdateProps") {
-      lines.push(`${i}. UpdateProps -> node=${command.nodeId ?? "-"} fields=${Object.keys(command.props ?? {}).join(", ") || "-"}`);
-      return;
-    }
-    if (command.type === "UpdateLayout") {
-      lines.push(`${i}. UpdateLayout -> node=${command.nodeId ?? "-"} fields=${Object.keys(command.layout ?? {}).join(", ") || "-"}`);
-      return;
-    }
-    if (command.type === "UpdateStyle") {
-      lines.push(`${i}. UpdateStyle -> node=${command.nodeId ?? "-"} fields=${Object.keys(command.style ?? {}).join(", ") || "-"}`);
-      return;
-    }
-    if (command.type === "ApplyTheme") {
-      lines.push(`${i}. ApplyTheme -> scope=${typeof command.scope === "string" ? command.scope : command.scope?.nodeId ?? "doc"} theme=${command.themeId ?? "-"}`);
-      return;
-    }
-    if (command.type === "Transaction") {
-      lines.push(`${i}. Transaction -> 子命令 ${command.commands?.length ?? 0} 条`);
-      return;
-    }
-    lines.push(`${i}. ${command.type}`);
-  });
-  return lines.join("\n");
-};
-
-const collectChartIds = (root?: { id: string; kind: string; children?: any[] }): string[] => {
-  if (!root) {
-    return [];
-  }
-  const ids: string[] = [];
-  const walk = (node: { id: string; kind: string; children?: any[] }): void => {
-    if (node.kind === "chart") {
-      ids.push(node.id);
-    }
-    node.children?.forEach((child) => walk(child));
-  };
-  walk(root);
-  return ids;
-};
+// infer/explain 逻辑已抽到 utils/ai-command-plan，保证多个 AI 入口行为一致。

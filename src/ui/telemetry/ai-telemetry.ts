@@ -4,14 +4,14 @@ import { randomUUID } from "../../core/utils/id";
 /** 浏览器侧统一 AI 事件总线名称，可被宿主系统监听并转发到后端。 */
 export const AI_TELEMETRY_EVENT = "chat-bi:ai-telemetry";
 
-export type AiTelemetrySurface = "chart_recommend" | "chart_assistant" | "chat_bridge" | "runtime_qa";
+export type AiTelemetrySurface = "chart_recommend" | "chart_assistant" | "chat_bridge" | "runtime_qa" | "ai_quick_dock";
 
 export type AiTelemetryStage = "start" | "success" | "fallback" | "error" | "preview" | "apply" | "accept" | "reject" | "click";
 
 export interface AiTelemetryContext {
   docId?: string;
   docType?: DocType;
-  routeMode?: "view" | "edit";
+  routeMode?: "view" | "edit" | "present";
   nodeId?: string;
   sourceId?: string;
   trigger?: string;

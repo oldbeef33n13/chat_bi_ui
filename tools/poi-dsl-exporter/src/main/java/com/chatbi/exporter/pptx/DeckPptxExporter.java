@@ -172,9 +172,10 @@ public class DeckPptxExporter implements DocumentExporter {
                 XSLFSlide slide = slideShow.createSlide();
                 addSimpleTitle(slide, doc.title == null ? "PPT 导出" : doc.title, theme);
             } else {
-                for (VNode slideNode : slides) {
+                for (int i = 0; i < slides.size(); i++) {
+                    VNode slideNode = slides.get(i);
                     XSLFSlide slide = slideShow.createSlide();
-                    drawSlide(slideShow, slide, slideNode, doc, theme, rootProps);
+                    drawSlide(slideShow, slide, slideNode, doc, theme, rootProps, i + 1, slides.size());
                 }
             }
 
@@ -193,17 +194,25 @@ public class DeckPptxExporter implements DocumentExporter {
             VNode slideNode,
             VDoc doc,
             ThemeTokens theme,
-            Map<String, Object> rootProps
+            Map<String, Object> rootProps,
+            int slideIndex,
+            int slideCount
     ) throws IOException {
+        Dimension pageSize = slideShow.getPageSize();
+        int pageWidth = pageSize == null ? 960 : pageSize.width;
+        int pageHeight = pageSize == null ? 540 : pageSize.height;
         Color bgColor = resolveSlideBg(slideNode, doc, theme);
         XSLFAutoShape bg = slide.createAutoShape();
         bg.setShapeType(ShapeType.RECT);
-        bg.setAnchor(new Rectangle(0, 0, 960, 540));
+        bg.setAnchor(new Rectangle(0, 0, pageWidth, pageHeight));
         bg.setFillColor(bgColor);
         bg.setLineColor(bgColor);
 
         String slideTitle = slideNode.propString("title", "Slide");
-        addSlideHeader(slide, slideTitle, theme);
+        MasterSpec masterSpec = resolveMasterSpec(rootProps, doc, theme);
+        MasterLayoutMetrics masterLayout = resolveMasterLayoutMetrics(rootProps, pageWidth, pageHeight);
+        addMasterHeader(slide, slideTitle, masterSpec, masterLayout, theme, slideIndex, slideCount, pageWidth, pageHeight);
+        addMasterFooter(slide, masterSpec, masterLayout, theme, slideIndex, slideCount, pageWidth, pageHeight);
 
         PptxRenderContext context = new PptxRenderContext(slideShow, slide, theme, chartSpecParser, rootProps, doc);
         for (VNode child : slideNode.childrenOrEmpty()) {
@@ -225,21 +234,121 @@ public class DeckPptxExporter implements DocumentExporter {
         }
     }
 
-    /**
-     * 输出页眉标题条。
-     */
-    private void addSlideHeader(XSLFSlide slide, String title, ThemeTokens theme) {
+    private MasterSpec resolveMasterSpec(Map<String, Object> rootProps, VDoc doc, ThemeTokens theme) {
+        boolean showHeader = VNode.asBoolean(rootProps.get("masterShowHeader"), true);
+        boolean showFooter = VNode.asBoolean(rootProps.get("masterShowFooter"), true);
+        boolean showSlideNo = VNode.asBoolean(rootProps.get("masterShowSlideNumber"), true);
+        String headerText = VNode.asString(rootProps.get("masterHeaderText"), doc.title == null ? "" : doc.title);
+        String footerText = VNode.asString(rootProps.get("masterFooterText"), "Visual Document OS");
+        Color accent = parseStyleColor(rootProps.get("masterAccentColor"), theme.primary());
+        return new MasterSpec(showHeader, showFooter, showSlideNo, headerText, footerText, accent);
+    }
+
+    private MasterLayoutMetrics resolveMasterLayoutMetrics(Map<String, Object> rootProps, int pageWidth, int pageHeight) {
+        int defaultPaddingX = Math.max(16, Math.round(pageWidth * 0.025f));
+        int defaultHeaderTop = Math.max(10, Math.round(pageHeight * 0.02f));
+        int defaultHeaderHeight = Math.max(26, Math.round(pageHeight * 0.05f));
+        int defaultFooterHeight = Math.max(22, Math.round(pageHeight * 0.045f));
+        int defaultFooterBottom = Math.max(8, Math.round(pageHeight * 0.018f));
+
+        int paddingX = clampInt(VNode.asDouble(rootProps.get("masterPaddingXPx"), defaultPaddingX), 0, Math.max(0, pageWidth / 2 - 20));
+        int headerTop = clampInt(VNode.asDouble(rootProps.get("masterHeaderTopPx"), defaultHeaderTop), 0, Math.max(0, pageHeight - 24));
+        int headerHeight = clampInt(VNode.asDouble(rootProps.get("masterHeaderHeightPx"), defaultHeaderHeight), 12, Math.max(12, pageHeight));
+        int footerHeight = clampInt(VNode.asDouble(rootProps.get("masterFooterHeightPx"), defaultFooterHeight), 12, Math.max(12, pageHeight));
+        int footerBottom = clampInt(VNode.asDouble(rootProps.get("masterFooterBottomPx"), defaultFooterBottom), 0, Math.max(0, pageHeight - 24));
+        return new MasterLayoutMetrics(paddingX, headerTop, headerHeight, footerBottom, footerHeight);
+    }
+
+    private void addMasterHeader(
+            XSLFSlide slide,
+            String slideTitle,
+            MasterSpec masterSpec,
+            MasterLayoutMetrics masterLayout,
+            ThemeTokens theme,
+            int slideIndex,
+            int slideCount,
+            int pageWidth,
+            int pageHeight
+    ) {
+        if (!masterSpec.showHeader()) {
+            return;
+        }
+        int horizontalPadding = masterLayout.paddingX();
+        int top = masterLayout.headerTop();
+        int headerHeight = masterLayout.headerHeight();
+        int lineTop = top + headerHeight + 1;
+
+        XSLFAutoShape line = slide.createAutoShape();
+        line.setShapeType(ShapeType.RECT);
+        line.setAnchor(new Rectangle(horizontalPadding, lineTop, Math.max(10, pageWidth - horizontalPadding * 2), 1));
+        line.setFillColor(masterSpec.accentColor());
+        line.setLineColor(masterSpec.accentColor());
+
         XSLFTextBox box = slide.createTextBox();
-        box.setAnchor(new Rectangle(24, 12, 860, 40));
+        box.setAnchor(new Rectangle(horizontalPadding, top, Math.max(100, pageWidth - horizontalPadding * 2), headerHeight));
         box.setFillColor(new Color(255, 255, 255, 0));
         XSLFTextParagraph p = box.addNewTextParagraph();
         p.setTextAlign(TextParagraph.TextAlign.LEFT);
         XSLFTextRun run = p.addNewTextRun();
-        run.setText(title);
-        run.setFontSize(14.0);
+        String leftText = masterSpec.headerText().isBlank() ? slideTitle : masterSpec.headerText() + " · " + slideTitle;
+        run.setText(leftText);
+        run.setFontSize(Math.max(11.0, pageHeight / 42.0));
         run.setFontFamily(theme.fontPrimary());
         run.setBold(true);
         run.setFontColor(theme.muted());
+
+        if (masterSpec.showSlideNumber() && !masterSpec.showFooter()) {
+            XSLFTextRun rightRun = p.addNewTextRun();
+            rightRun.setText("    " + slideIndex + "/" + slideCount);
+            rightRun.setFontSize(Math.max(10.0, pageHeight / 48.0));
+            rightRun.setFontFamily(theme.fontPrimary());
+            rightRun.setBold(false);
+            rightRun.setFontColor(theme.muted());
+        }
+    }
+
+    private void addMasterFooter(
+            XSLFSlide slide,
+            MasterSpec masterSpec,
+            MasterLayoutMetrics masterLayout,
+            ThemeTokens theme,
+            int slideIndex,
+            int slideCount,
+            int pageWidth,
+            int pageHeight
+    ) {
+        if (!masterSpec.showFooter()) {
+            return;
+        }
+        int horizontalPadding = masterLayout.paddingX();
+        int footerHeight = masterLayout.footerHeight();
+        int top = Math.max(0, pageHeight - footerHeight - masterLayout.footerBottom());
+        int lineTop = Math.max(0, top - 2);
+
+        XSLFAutoShape line = slide.createAutoShape();
+        line.setShapeType(ShapeType.RECT);
+        line.setAnchor(new Rectangle(horizontalPadding, lineTop, Math.max(10, pageWidth - horizontalPadding * 2), 1));
+        line.setFillColor(masterSpec.accentColor());
+        line.setLineColor(masterSpec.accentColor());
+
+        XSLFTextBox box = slide.createTextBox();
+        box.setAnchor(new Rectangle(horizontalPadding, top, Math.max(100, pageWidth - horizontalPadding * 2), footerHeight));
+        box.setFillColor(new Color(255, 255, 255, 0));
+        XSLFTextParagraph p = box.addNewTextParagraph();
+        p.setTextAlign(TextParagraph.TextAlign.LEFT);
+        XSLFTextRun run = p.addNewTextRun();
+        run.setText(masterSpec.footerText());
+        run.setFontFamily(theme.fontPrimary());
+        run.setFontSize(Math.max(10.0, pageHeight / 50.0));
+        run.setFontColor(theme.muted());
+
+        if (masterSpec.showSlideNumber()) {
+            XSLFTextRun rightRun = p.addNewTextRun();
+            rightRun.setText("    #" + slideIndex + "/" + slideCount);
+            rightRun.setFontFamily(theme.fontPrimary());
+            rightRun.setFontSize(Math.max(9.5, pageHeight / 54.0));
+            rightRun.setFontColor(theme.muted());
+        }
     }
 
     /**
@@ -725,6 +834,11 @@ public class DeckPptxExporter implements DocumentExporter {
         return Math.max(10.0, node.styleDouble("fontSize", fallback));
     }
 
+    private int clampInt(double value, int min, int max) {
+        int rounded = (int) Math.round(value);
+        return Math.max(min, Math.min(max, rounded));
+    }
+
     private Color parseStyleColor(Object raw, Color fallback) {
         if (raw == null) {
             return fallback;
@@ -738,6 +852,25 @@ public class DeckPptxExporter implements DocumentExporter {
 
     private String toHex(Color color) {
         return "#" + VisualStyle.toHexNoHash(color);
+    }
+
+    private record MasterSpec(
+            boolean showHeader,
+            boolean showFooter,
+            boolean showSlideNumber,
+            String headerText,
+            String footerText,
+            Color accentColor
+    ) {
+    }
+
+    private record MasterLayoutMetrics(
+            int paddingX,
+            int headerTop,
+            int headerHeight,
+            int footerBottom,
+            int footerHeight
+    ) {
     }
 
     /**

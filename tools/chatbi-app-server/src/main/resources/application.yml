@@ -1,0 +1,17 @@
+server:
+  port: 18080
+
+spring:
+  datasource:
+    driver-class-name: org.sqlite.JDBC
+    url: jdbc:sqlite:${app.storage.base-dir}/app.db
+    hikari:
+      maximum-pool-size: 1
+      connection-init-sql: PRAGMA foreign_keys = ON;
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+app:
+  storage:
+    base-dir: storage

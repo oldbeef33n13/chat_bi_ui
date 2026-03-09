@@ -51,6 +51,20 @@ const yAxisIndexOf = (binding: FieldBinding, fallbackIndex = 0): number => {
   return Math.max(0, fallbackIndex);
 };
 
+/** 解析绑定的 X 轴键，支持 axis(primary/secondary/number) 与兜底序号。 */
+const xAxisKeyOf = (binding: FieldBinding, fallbackIndex = 0): number => {
+  if (binding.axis === "primary") {
+    return 0;
+  }
+  if (binding.axis === "secondary") {
+    return 1;
+  }
+  if (typeof binding.axis === "number" && Number.isFinite(binding.axis)) {
+    return Math.max(0, Math.floor(binding.axis));
+  }
+  return Math.max(0, fallbackIndex);
+};
+
 /** 通用分组工具，保持输入顺序。 */
 const groupBy = <T, K extends string | number>(items: T[], toKey: (item: T) => K): Map<K, T[]> => {
   const map = new Map<K, T[]>();
@@ -240,6 +254,65 @@ const resolveChartBg = (spec: ChartSpec): string | undefined => {
   return spec.themeRef.includes("dark") ? "#0f172a" : "#ffffff";
 };
 
+const hasField = (rows: Array<Record<string, unknown>>, field?: string): boolean => {
+  if (!field) {
+    return false;
+  }
+  return rows.some((row) => Object.prototype.hasOwnProperty.call(row, field));
+};
+
+/** 判断绑定是否为系列分组维度。 */
+const isSeriesBindingRole = (role: FieldBinding["role"]): boolean => role === "series" || role === "color" || role === "facet";
+
+/** 判断绑定是否为 X 轴维度。 */
+const isXAxisBindingRole = (role: FieldBinding["role"]): boolean => role === "x" || role === "category";
+
+/** 多维系列键：将多个系列维度拼接为唯一分组键。 */
+const seriesKeyOf = (row: Record<string, unknown>, bindings: FieldBinding[]): string => {
+  if (bindings.length === 0) {
+    return "Series";
+  }
+  return bindings.map((binding) => String(valueOf(row, binding) ?? "-")).join(" / ");
+};
+
+const collectFields = (rows: Array<Record<string, unknown>>): string[] =>
+  uniq(
+    rows.flatMap((row) => {
+      if (!row || typeof row !== "object") {
+        return [];
+      }
+      return Object.keys(row);
+    })
+  );
+
+const isNumberLike = (value: unknown): boolean => {
+  if (typeof value === "number") {
+    return Number.isFinite(value);
+  }
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed);
+  }
+  return false;
+};
+
+const numericFieldsFromRows = (rows: Array<Record<string, unknown>>, fields: string[]): string[] =>
+  fields.filter((field) => rows.some((row) => isNumberLike(row[field])));
+
+const preferTimeLikeField = (fields: string[]): string | undefined =>
+  fields.find((field) => {
+    const lower = field.toLowerCase();
+    return (
+      lower.includes("time") ||
+      lower.includes("date") ||
+      lower.includes("day") ||
+      lower.includes("week") ||
+      lower.includes("month") ||
+      lower.includes("minute") ||
+      lower.includes("hour")
+    );
+  });
+
 /** 主入口：将图表 DSL + 数据行映射为 ECharts option。 */
 export const chartSpecToOption = (spec: ChartSpec, rows: Array<Record<string, unknown>>): EChartsOption => {
   // 先归一化图表族，后续分支共用同一套绑定提取逻辑。
@@ -253,10 +326,83 @@ export const chartSpecToOption = (spec: ChartSpec, rows: Array<Record<string, un
   const pieLike = chartType === "pie" || hierarchyLike;
   const barLike = chartType === "bar" || chartType === "funnel" || chartType === "heatmap" || chartType === "boxplot" || relationLike;
 
-  const xBinding = spec.bindings.find((b) => b.role === "x" || b.role === "category" || b.role === "linkSource" || b.role === "node");
-  const yBindings = spec.bindings.filter((b) => isMeasureBindingRole(b.role));
-  const yBinding = yBindings[0];
-  const seriesBinding = spec.bindings.find((b) => b.role === "series" || b.role === "color");
+  let xBindings = spec.bindings.filter((b) => isXAxisBindingRole(b.role));
+  if (xBindings.length === 0) {
+    const fallbackXBinding = spec.bindings.find((b) => b.role === "x" || b.role === "category" || b.role === "linkSource" || b.role === "node");
+    if (fallbackXBinding) {
+      xBindings = [fallbackXBinding];
+    }
+  }
+  let xBinding = xBindings[0];
+  let yBindings = spec.bindings.filter((b) => isMeasureBindingRole(b.role));
+  let yBinding = yBindings[0];
+  let seriesBindings = spec.bindings.filter((b) => isSeriesBindingRole(b.role));
+
+  // 常见故障兜底：绑定字段在数据中不存在时，自动回退到可用字段并给出控制台提示。
+  if (!nativeSankey && !nativeTreemap && !nativeGauge && !nativeCalendar && !pieLike && rows.length > 0) {
+    const allFields = collectFields(rows);
+    const numericFields = numericFieldsFromRows(rows, allFields);
+    const dimensionFields = allFields.filter((field) => !numericFields.includes(field));
+    const fallbackX = preferTimeLikeField(dimensionFields) ?? dimensionFields[0] ?? allFields[0];
+    const fallbackY =
+      numericFields.find((field) => field !== fallbackX) ??
+      numericFields[0] ??
+      allFields.find((field) => field !== fallbackX);
+
+    const warnings: string[] = [];
+    const validXBindings = xBindings.filter((binding) => hasField(rows, binding.field));
+    if (validXBindings.length === 0 && fallbackX) {
+      warnings.push(`x:${xBindings.map((item) => item.field).join(",") || "-"}->${fallbackX}`);
+      xBindings = [
+        {
+          ...(xBindings[0] ?? { role: "x", field: fallbackX }),
+          role: xBindings[0]?.role ?? "x",
+          field: fallbackX
+        }
+      ];
+    } else {
+      if (validXBindings.length !== xBindings.length) {
+        const invalid = xBindings.filter((binding) => !hasField(rows, binding.field)).map((binding) => binding.field);
+        warnings.push(`x:${invalid.join(",")}->(disabled)`);
+      }
+      xBindings = validXBindings;
+    }
+    xBinding = xBindings[0];
+
+    const validYBindings = yBindings.filter((binding) => hasField(rows, binding.field));
+    if (validYBindings.length === 0 && fallbackY) {
+      warnings.push(`y:${yBindings.map((item) => item.field).join(",") || "-"}->${fallbackY}`);
+      yBindings = [
+        {
+          role: yBindings[0]?.role ?? "y",
+          field: fallbackY,
+          agg: yBindings[0]?.agg ?? "sum",
+          axis: yBindings[0]?.axis,
+          as: yBindings[0]?.as
+        }
+      ];
+    } else {
+      yBindings = validYBindings;
+    }
+    yBinding = yBindings[0];
+
+    if (seriesBindings.length > 0) {
+      const validSeriesBindings = seriesBindings.filter((binding) => hasField(rows, binding.field));
+      if (validSeriesBindings.length !== seriesBindings.length) {
+        const invalid = seriesBindings
+          .filter((binding) => !hasField(rows, binding.field))
+          .map((binding) => binding.field);
+        warnings.push(`series:${invalid.join(",")}->(disabled)`);
+      }
+      seriesBindings = validSeriesBindings;
+    }
+
+    if (warnings.length > 0) {
+      console.warn(
+        `[chart-adapter] 图表字段绑定与数据不匹配，已自动回退。title=${spec.titleText ?? "-"}，调整=${warnings.join(" | ")}`
+      );
+    }
+  }
 
   const base: EChartsOption = {
     backgroundColor: resolveChartBg(spec),
@@ -275,7 +421,8 @@ export const chartSpecToOption = (spec: ChartSpec, rows: Array<Record<string, un
       left: spec.legendPos === "left" ? 0 : spec.legendPos === "right" ? undefined : "center",
       right: spec.legendPos === "right" ? 0 : undefined
     },
-    grid: { show: spec.gridShow ?? false, top: 60, left: 46, right: 20, bottom: 40 }
+    // 仅保留布局网格边距；网格线显示由 x/yAxis.splitLine 控制，避免与主题样式冲突。
+    grid: { top: 60, left: 46, right: 20, bottom: 40 }
   };
 
   if (nativeSankey) {
@@ -449,22 +596,115 @@ export const chartSpecToOption = (spec: ChartSpec, rows: Array<Record<string, un
     return deepMerge(option, spec.optionPatch ?? {}) as EChartsOption;
   }
 
-  let xData = uniq(rows.map((row) => String(valueOf(row, xBinding) ?? "-")));
-  const grouped = seriesBinding
-    ? groupBy(rows, (row) => String(valueOf(row, seriesBinding) ?? "Series"))
+  const xBindingByKey = new Map<number, FieldBinding>();
+  xBindings.forEach((binding, index) => {
+    const key = xAxisKeyOf(binding, index);
+    if (!xBindingByKey.has(key)) {
+      xBindingByKey.set(key, binding);
+    }
+  });
+  if (xBindingByKey.size === 0) {
+    xBindingByKey.set(0, xBinding ?? { role: "x", field: "" });
+  }
+  const xAxisEntries = [...xBindingByKey.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([axisKey, binding], index) => ({ axisKey, binding, index }));
+  const xAxisIndexByKey = new Map<number, number>(xAxisEntries.map((entry) => [entry.axisKey, entry.index]));
+  const xDataByAxisIndex = new Map<number, string[]>();
+  xAxisEntries.forEach((entry) => {
+    xDataByAxisIndex.set(entry.index, uniq(rows.map((row) => String(valueOf(row, entry.binding) ?? "-"))));
+  });
+  const primaryXAxis = xAxisEntries[0];
+  const primaryXBinding = primaryXAxis?.binding ?? xBinding;
+  let xData = xDataByAxisIndex.get(0) ?? uniq(rows.map((row) => String(valueOf(row, primaryXBinding) ?? "-")));
+  const grouped = seriesBindings.length > 0
+    ? groupBy(rows, (row) => seriesKeyOf(row, seriesBindings))
     : new Map<string, Array<Record<string, unknown>>>([["Series", rows]]);
+  const groupedEntries = [...grouped.entries()];
+
+  if (chartType === "radar") {
+    // Radar 必须显式声明 indicator，且不能混用 xAxis/yAxis（否则 ECharts 内部会异常）。
+    const indicators = (xData.length > 0 ? xData : ["-"]).map((name) => ({ name }));
+    const radarXBinding = primaryXBinding;
+    const valuesByBinding = (binding: FieldBinding, sourceRows: Array<Record<string, unknown>>): number[] =>
+      indicators.map((indicator) => {
+        const values = sourceRows
+          .filter((row) => String(valueOf(row, radarXBinding) ?? "-") === indicator.name)
+          .map((row) => asNumber(valueOf(row, binding)));
+        return aggregateValues(values, binding.agg);
+      });
+
+    let radarData: Array<{ name: string; value: number[] }> = [];
+    if (yBindings.length > 1) {
+      if (seriesBindings.length > 0) {
+        radarData = yBindings.flatMap((binding) =>
+          groupedEntries.map(([name, groupRows]) => ({
+            name: `${name} · ${binding.as ?? binding.field}`,
+            value: valuesByBinding(binding, groupRows)
+          }))
+        );
+      } else {
+        radarData = yBindings.map((binding) => ({
+          name: binding.as ?? binding.field,
+          value: valuesByBinding(binding, rows)
+        }));
+      }
+    } else if (seriesBindings.length > 0 && yBinding) {
+      radarData = groupedEntries.map(([name, groupRows]) => ({
+        name,
+        value: valuesByBinding(yBinding, groupRows)
+      }));
+    } else if (yBinding) {
+      radarData = [
+        {
+          name: yBinding.as ?? yBinding.field,
+          value: valuesByBinding(yBinding, rows)
+        }
+      ];
+    }
+    if (radarData.length === 0) {
+      radarData = [{ name: "Series", value: indicators.map(() => 0) }];
+    }
+
+    const maxValue = Math.max(0, ...radarData.flatMap((item) => item.value));
+    const indicatorMax = maxValue > 0 ? Math.ceil(maxValue * 1.2) : 1;
+    const option: EChartsOption = {
+      ...base,
+      tooltip: { show: spec.tooltipShow ?? true, trigger: "item" },
+      legend: {
+        ...(base.legend as Record<string, unknown>),
+        show: spec.legendShow ?? true,
+        data: radarData.map((item) => item.name)
+      },
+      radar: {
+        radius: "58%",
+        splitNumber: 5,
+        indicator: indicators.map((item) => ({ name: item.name, max: indicatorMax }))
+      },
+      series: [
+        {
+          type: "radar",
+          data: radarData,
+          symbol: "circle",
+          areaStyle: spec.area ? {} : undefined,
+          label: { show: spec.labelShow ?? false }
+        }
+      ]
+    };
+    return deepMerge(option, spec.optionPatch ?? {}) as EChartsOption;
+  }
 
   if (chartType === "funnel" && yBinding) {
     xData = [...xData].sort((a, b) => {
       const sumA = aggregateValues(
         rows
-          .filter((row) => String(valueOf(row, xBinding) ?? "-") === a)
+          .filter((row) => String(valueOf(row, primaryXBinding) ?? "-") === a)
           .map((row) => asNumber(valueOf(row, yBinding))),
         yBinding.agg
       );
       const sumB = aggregateValues(
         rows
-          .filter((row) => String(valueOf(row, xBinding) ?? "-") === b)
+          .filter((row) => String(valueOf(row, primaryXBinding) ?? "-") === b)
           .map((row) => asNumber(valueOf(row, yBinding))),
         yBinding.agg
       );
@@ -472,8 +712,8 @@ export const chartSpecToOption = (spec: ChartSpec, rows: Array<Record<string, un
     });
   }
 
-  const seriesType: "line" | "bar" | "scatter" | "radar" =
-    chartType === "combo" ? "bar" : barLike ? "bar" : chartType === "scatter" ? "scatter" : chartType === "radar" ? "radar" : "line";
+  const seriesType: "line" | "bar" | "scatter" =
+    chartType === "combo" ? "bar" : barLike ? "bar" : chartType === "scatter" ? "scatter" : "line";
 
   const yBindingEntries = yBindings.map((binding, index) => ({
     binding,
@@ -487,57 +727,90 @@ export const chartSpecToOption = (spec: ChartSpec, rows: Array<Record<string, un
       axisLabelByIndex.set(entry.yAxisIndex, entry.binding.as ?? entry.binding.field);
     }
   });
-  const series = hasSecondAxis
-    ? yBindingEntries.map(({ binding, yAxisIndex }, idx) => ({
-        name: binding.as ?? binding.field,
+  const groupEntries = seriesBindings.length > 0 ? groupedEntries : ([["Series", rows]] as Array<[string, Array<Record<string, unknown>>]>);
+  const includeGroupInSeriesName = seriesBindings.length > 0;
+  const includeBindingInSeriesName = yBindingEntries.length > 1;
+  const resolveXAxisKeyForMeasure = (binding: FieldBinding, measureIndex: number): number => {
+    if (typeof binding.xAxis === "number" && Number.isFinite(binding.xAxis)) {
+      return Math.max(0, Math.floor(binding.xAxis));
+    }
+    const fallback = xAxisEntries[Math.min(measureIndex, Math.max(0, xAxisEntries.length - 1))];
+    return fallback?.axisKey ?? 0;
+  };
+  const series = yBindingEntries.flatMap(({ binding, yAxisIndex }, idx) =>
+    groupEntries.map(([groupName, groupRows]) => {
+      const xAxisKey = resolveXAxisKeyForMeasure(binding, idx);
+      const xAxisIndex = xAxisIndexByKey.get(xAxisKey) ?? 0;
+      const xAxisBinding = xAxisEntries[xAxisIndex]?.binding ?? primaryXBinding;
+      const xAxisData = xDataByAxisIndex.get(xAxisIndex) ?? xData;
+      const nameParts: string[] = [];
+      if (includeGroupInSeriesName) {
+        nameParts.push(groupName);
+      }
+      if (includeBindingInSeriesName || !includeGroupInSeriesName) {
+        nameParts.push(binding.as ?? binding.field);
+      }
+      const name = nameParts.filter(Boolean).join(" · ") || binding.as || binding.field || groupName;
+      const item = {
+        name,
         type: chartType === "combo" ? (yAxisIndex === 0 ? "bar" : "line") : seriesType,
         smooth: spec.smooth ?? false,
-        stack: undefined,
-        areaStyle: chartType === "combo" ? undefined : spec.area && idx === 0 ? {} : undefined,
+        stack: hasSecondAxis ? undefined : spec.stack ? "total" : undefined,
+        areaStyle: chartType === "combo" ? undefined : spec.area && (!hasSecondAxis || idx === 0) ? {} : undefined,
         label: { show: spec.labelShow ?? false },
-        yAxisIndex,
-        data: xData.map((x) => {
-          const values = rows
-            .filter((row) => String(valueOf(row, xBinding) ?? "-") === x)
+        data: xAxisData.map((x) => {
+          const values = groupRows
+            .filter((row) => String(valueOf(row, xAxisBinding) ?? "-") === x)
             .map((row) => asNumber(valueOf(row, binding)));
           return aggregateValues(values, binding.agg);
         })
-      }))
-    : [...grouped.entries()].map(([name, groupRows]) => ({
-        name,
-        type: seriesType,
-        smooth: spec.smooth ?? false,
-        stack: spec.stack ? "total" : undefined,
-        areaStyle: spec.area ? {} : undefined,
-        label: { show: spec.labelShow ?? false },
-        data: xData.map((x) => {
-          const values = groupRows
-            .filter((row) => String(valueOf(row, xBinding) ?? "-") === x)
-            .map((row) => asNumber(valueOf(row, yBinding)));
-          return aggregateValues(values, yBinding?.agg);
-        })
-      }));
+      } as Record<string, unknown>;
+      if (xAxisEntries.length > 1) {
+        item.xAxisIndex = xAxisIndex;
+      }
+      if (hasSecondAxis) {
+        item.yAxisIndex = yAxisIndex;
+      }
+      return item;
+    })
+  );
 
   const option: EChartsOption = {
     ...base,
-    xAxis: {
-      show: spec.xAxisShow ?? true,
-      type: spec.xAxisType ?? "category",
-      name: spec.xAxisTitle,
-      data: xData
-    },
+    // 网格开关同时映射到坐标轴 splitLine，避免与主题默认轴线冲突造成“看似未切换”。
+    // undefined 表示保持 ECharts 默认行为；true/false 则显式强制。
+    xAxis:
+      xAxisEntries.length > 1
+        ? xAxisEntries.map((entry, index) => ({
+            show: spec.xAxisShow ?? true,
+            type: spec.xAxisType ?? "category",
+            name: spec.xAxisTitle ? `${spec.xAxisTitle} · ${entry.binding.as ?? entry.binding.field}` : entry.binding.as ?? entry.binding.field,
+            data: xDataByAxisIndex.get(index) ?? [],
+            position: index % 2 === 0 ? "bottom" : "top",
+            offset: index > 1 ? Math.floor((index - 1) / 2) * 28 : 0,
+            splitLine: spec.gridShow === undefined ? undefined : { show: spec.gridShow }
+          }))
+        : {
+            show: spec.xAxisShow ?? true,
+            type: spec.xAxisType ?? "category",
+            name: spec.xAxisTitle,
+            data: xData,
+            splitLine: spec.gridShow === undefined ? undefined : { show: spec.gridShow }
+          },
     yAxis: hasSecondAxis
       ? Array.from({ length: yAxisCount }, (_, index) => ({
           show: spec.yAxisShow ?? true,
           type: spec.yAxisType ?? "value",
           name: index === 0 ? spec.yAxisTitle ?? axisLabelByIndex.get(0) : axisLabelByIndex.get(index) ?? `y${index + 1}`,
           position: index % 2 === 0 ? "left" : "right",
-          offset: index > 1 ? Math.floor((index - 1) / 2) * 42 : 0
+          offset: index > 1 ? Math.floor((index - 1) / 2) * 42 : 0,
+          splitLine: spec.gridShow === undefined ? undefined : { show: spec.gridShow }
         }))
       : {
           show: spec.yAxisShow ?? true,
           type: spec.yAxisType ?? "value",
-          name: spec.yAxisTitle
+          name: spec.yAxisTitle,
+          splitLine: spec.gridShow === undefined ? undefined : { show: spec.gridShow }
         },
     series: series as any
   };

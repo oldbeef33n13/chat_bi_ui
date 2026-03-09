@@ -310,7 +310,20 @@ const executeOne = (doc: VDoc, command: Command, ctx: ExecutorContext): CommandR
         if (!loc) {
           continue;
         }
-        const path = `${loc.path}/style/tokenId`;
+        const stylePath = `${loc.path}/style`;
+        const styleValue = getAtPath(doc, stylePath);
+        if (styleValue === undefined) {
+          // 兜底：节点未定义 style 时先一次性创建，避免 patch 写入深层路径时报错。
+          patches.push({ op: "add", path: stylePath, value: { tokenId: command.themeId } });
+          inverse.unshift({ op: "remove", path: stylePath });
+          continue;
+        }
+        if (styleValue === null || typeof styleValue !== "object" || Array.isArray(styleValue)) {
+          patches.push({ op: "replace", path: stylePath, value: { tokenId: command.themeId } });
+          inverse.unshift({ op: "replace", path: stylePath, value: clone(styleValue) });
+          continue;
+        }
+        const path = `${stylePath}/tokenId`;
         const prev = getAtPath(doc, path);
         if (prev === undefined) {
           patches.push({ op: "add", path, value: command.themeId });

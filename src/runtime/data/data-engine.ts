@@ -17,6 +17,11 @@ interface CacheEntry {
   value: unknown;
 }
 
+interface DebounceEntry {
+  timer: ReturnType<typeof setTimeout>;
+  resolve: (ready: boolean) => void;
+}
+
 /** 简单异步等待，用于重试退避。 */
 const wait = (ms: number): Promise<void> =>
   new Promise((resolve) => {
@@ -32,7 +37,8 @@ export class DataEngine {
   private readonly queries = new Map<string, QueryDef>();
   private readonly cache = new Map<string, CacheEntry>();
   private readonly inFlight = new Map<string, AbortController>();
-  private readonly pendingTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private readonly pendingExecutions = new Map<string, Promise<unknown>>();
+  private readonly pendingDebounces = new Map<string, DebounceEntry>();
   private defsSignature = "";
 
   constructor(
@@ -51,8 +57,7 @@ export class DataEngine {
     }
     this.defsSignature = nextSignature;
     this.cancel();
-    this.pendingTimers.forEach((timer) => clearTimeout(timer));
-    this.pendingTimers.clear();
+    this.clearPendingDebounces();
     this.cache.clear();
     this.sources.clear();
     this.queries.clear();
@@ -65,10 +70,12 @@ export class DataEngine {
     if (requestKey) {
       this.inFlight.get(requestKey)?.abort();
       this.inFlight.delete(requestKey);
+      this.cancelDebounce(requestKey);
       return;
     }
     this.inFlight.forEach((ctrl) => ctrl.abort());
     this.inFlight.clear();
+    this.clearPendingDebounces();
   }
 
   /** 执行查询：缓存命中 -> 防抖 -> 发起请求 -> 重试 -> 回填缓存。 */
@@ -86,24 +93,52 @@ export class DataEngine {
         return cached.value;
       }
     }
-
-    if (this.options.debounceMs && this.options.debounceMs > 0) {
-      await this.debounce(key, this.options.debounceMs);
+    const pending = this.pendingExecutions.get(key);
+    if (pending) {
+      // 同 key 请求复用同一执行链，避免多个图表互相取消/防抖打架。
+      return pending;
     }
 
-    this.cancel(key);
-    const controller = new AbortController();
-    this.inFlight.set(key, controller);
-
-    try {
-      const value = await this.fetchWithRetry(source, query, request.params, controller.signal);
-      if (source.cacheEnabled) {
-        this.cache.set(key, { at: Date.now(), value });
+    const run = (async (): Promise<unknown> => {
+      if (source.type === "static") {
+        // 静态源无需防抖，直接返回，避免纯本地数据也被“debounced”。
+        const value = source.staticData ?? [];
+        if (source.cacheEnabled) {
+          this.cache.set(key, { at: Date.now(), value });
+        }
+        return value;
       }
-      return value;
-    } finally {
-      this.inFlight.delete(key);
-    }
+
+      if (this.options.debounceMs && this.options.debounceMs > 0) {
+        const ready = await this.debounce(key, this.options.debounceMs);
+        if (!ready) {
+          throw new Error("request debounced");
+        }
+      }
+
+      this.cancel(key);
+      const controller = new AbortController();
+      this.inFlight.set(key, controller);
+
+      try {
+        const value = await this.fetchWithRetry(source, query, request.params, controller.signal);
+        if (source.cacheEnabled) {
+          this.cache.set(key, { at: Date.now(), value });
+        }
+        return value;
+      } finally {
+        this.inFlight.delete(key);
+      }
+    })();
+
+    this.pendingExecutions.set(
+      key,
+      run.finally(() => {
+        this.pendingExecutions.delete(key);
+      })
+    );
+
+    return this.pendingExecutions.get(key)!;
   }
 
   /** 请求执行器：静态源直接返回；远端源按重试策略请求。 */
@@ -185,18 +220,41 @@ export class DataEngine {
     return JSON.stringify({ sources, queries });
   }
 
-  private debounce(key: string, ms: number): Promise<void> {
+  private debounce(key: string, ms: number): Promise<boolean> {
     // 同 key 只保留最后一次触发，避免高频请求抖动。
     return new Promise((resolve) => {
-      const lastTimer = this.pendingTimers.get(key);
-      if (lastTimer) {
-        clearTimeout(lastTimer);
+      const last = this.pendingDebounces.get(key);
+      if (last) {
+        clearTimeout(last.timer);
+        // 旧请求让位给新请求，避免 Promise 永久 pending。
+        last.resolve(false);
       }
       const timer = setTimeout(() => {
-        this.pendingTimers.delete(key);
-        resolve();
+        const latest = this.pendingDebounces.get(key);
+        if (latest?.timer === timer) {
+          this.pendingDebounces.delete(key);
+        }
+        resolve(true);
       }, ms);
-      this.pendingTimers.set(key, timer);
+      this.pendingDebounces.set(key, { timer, resolve });
     });
+  }
+
+  private cancelDebounce(key: string): void {
+    const pending = this.pendingDebounces.get(key);
+    if (!pending) {
+      return;
+    }
+    clearTimeout(pending.timer);
+    pending.resolve(false);
+    this.pendingDebounces.delete(key);
+  }
+
+  private clearPendingDebounces(): void {
+    this.pendingDebounces.forEach((entry) => {
+      clearTimeout(entry.timer);
+      entry.resolve(false);
+    });
+    this.pendingDebounces.clear();
   }
 }

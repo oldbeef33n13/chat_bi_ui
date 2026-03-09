@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BarChart, GaugeChart, HeatmapChart, LineChart, PieChart, RadarChart, SankeyChart, ScatterChart, TreemapChart } from "echarts/charts";
 import { CalendarComponent, GridComponent, LegendComponent, RadarComponent, TitleComponent, TooltipComponent, VisualMapComponent } from "echarts/components";
 import { init, type ECharts, use } from "echarts/core";
@@ -37,6 +37,7 @@ interface EChartViewProps {
 export function EChartView({ spec, rows, height = 240 }: EChartViewProps): JSX.Element {
   const rootRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<ECharts | null>(null);
+  const [renderError, setRenderError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!rootRef.current) {
@@ -60,9 +61,42 @@ export function EChartView({ spec, rows, height = 240 }: EChartViewProps): JSX.E
       return;
     }
     // spec 或数据变化时全量覆盖 option，保证和编辑器 DSL 同步。
-    const option = chartSpecToOption(spec, rows);
-    chartRef.current.setOption(option, true);
+    try {
+      const option = chartSpecToOption(spec, rows);
+      chartRef.current.setOption(option, true);
+      setRenderError(null);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(`[EChartView] 图表渲染失败：${spec.titleText ?? spec.chartType} -> ${message}`);
+      try {
+        chartRef.current.clear();
+      } catch {
+        // clear 失败不影响页面主流程。
+      }
+      setRenderError(message);
+    }
   }, [rows, spec]);
 
-  return <div ref={rootRef} style={{ width: "100%", height }} />;
+  return (
+    <div style={{ width: "100%", height, position: "relative" }}>
+      <div ref={rootRef} style={{ width: "100%", height: "100%" }} />
+      {renderError ? (
+        <div
+          className="muted"
+          style={{
+            position: "absolute",
+            inset: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            textAlign: "center",
+            padding: 12,
+            background: "rgba(255,255,255,0.86)"
+          }}
+        >
+          图表渲染失败，请检查字段绑定或图表类型
+        </div>
+      ) : null}
+    </div>
+  );
 }

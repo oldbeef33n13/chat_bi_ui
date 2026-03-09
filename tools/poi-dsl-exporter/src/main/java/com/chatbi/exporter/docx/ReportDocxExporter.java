@@ -173,7 +173,7 @@ public class ReportDocxExporter implements DocumentExporter {
             if (tocShow) {
                 addTocPage(context, sections);
             }
-            addContentPages(context, sections);
+            addContentPages(context, sections, props);
             if (summaryEnabled) {
                 addSummaryPage(context, props, sections);
             }
@@ -203,10 +203,11 @@ public class ReportDocxExporter implements DocumentExporter {
             sz.setH(BigInteger.valueOf(16838));
         }
 
-        mar.setTop(BigInteger.valueOf((long) VNode.asDouble(props.get("marginTopTwips"), 1080)));
-        mar.setBottom(BigInteger.valueOf((long) VNode.asDouble(props.get("marginBottomTwips"), 1080)));
-        mar.setLeft(BigInteger.valueOf((long) VNode.asDouble(props.get("marginLeftTwips"), 1080)));
-        mar.setRight(BigInteger.valueOf((long) VNode.asDouble(props.get("marginRightTwips"), 1080)));
+        PageMargins margins = resolvePageMargins(props);
+        mar.setTop(BigInteger.valueOf(margins.topTwips()));
+        mar.setBottom(BigInteger.valueOf(margins.bottomTwips()));
+        mar.setLeft(BigInteger.valueOf(margins.leftTwips()));
+        mar.setRight(BigInteger.valueOf(margins.rightTwips()));
     }
 
     /**
@@ -314,18 +315,76 @@ public class ReportDocxExporter implements DocumentExporter {
     /**
      * 渲染正文章节与其子块。
      */
-    private void addContentPages(DocxRenderContext context, List<VNode> sections) throws IOException {
+    private void addContentPages(DocxRenderContext context, List<VNode> sections, Map<String, Object> props) throws IOException {
+        String paginationStrategy = str(props.get("paginationStrategy"), "section");
+        boolean sectionBreak = !"continuous".equalsIgnoreCase(paginationStrategy);
+        int blockGapTwips = resolveBlockGapTwips(props);
         for (int i = 0; i < sections.size(); i++) {
             VNode section = sections.get(i);
             String title = section.propString("title", "章节 " + (i + 1));
             addHeading(context, title, 1);
-            for (VNode block : section.childrenOrEmpty()) {
+            List<VNode> blocks = section.childrenOrEmpty();
+            for (int blockIndex = 0; blockIndex < blocks.size(); blockIndex++) {
+                VNode block = blocks.get(blockIndex);
                 nodeRenderers.render(context, block);
+                if (blockIndex < blocks.size() - 1) {
+                    appendGapParagraph(context.document, blockGapTwips);
+                }
             }
-            if (i < sections.size() - 1) {
+            if (sectionBreak && i < sections.size() - 1) {
                 pageBreak(context.document);
             }
         }
+    }
+
+    private PageMargins resolvePageMargins(Map<String, Object> props) {
+        String preset = str(props.get("marginPreset"), "normal").toLowerCase();
+        double presetMm = switch (preset) {
+            case "narrow" -> 10.0;
+            case "wide" -> 20.0;
+            default -> 14.0;
+        };
+        boolean custom = "custom".equals(preset);
+        double topMm = custom ? VNode.asDouble(props.get("marginTopMm"), presetMm) : presetMm;
+        double rightMm = custom ? VNode.asDouble(props.get("marginRightMm"), presetMm) : presetMm;
+        double bottomMm = custom ? VNode.asDouble(props.get("marginBottomMm"), presetMm) : presetMm;
+        double leftMm = custom ? VNode.asDouble(props.get("marginLeftMm"), presetMm) : presetMm;
+
+        return new PageMargins(mmToTwips(topMm), mmToTwips(rightMm), mmToTwips(bottomMm), mmToTwips(leftMm));
+    }
+
+    private long mmToTwips(double mm) {
+        double safeMm = Math.max(6.0, mm);
+        return Math.round(safeMm * 56.6929133858);
+    }
+
+    private int resolveBodyPaddingTwips(Map<String, Object> props) {
+        int px = clampInt(VNode.asDouble(props.get("bodyPaddingPx"), 12.0), 0, 120);
+        return pxToTwips(px);
+    }
+
+    private int resolveSectionGapTwips(Map<String, Object> props) {
+        int px = clampInt(VNode.asDouble(props.get("sectionGapPx"), 12.0), 0, 160);
+        return pxToTwips(px);
+    }
+
+    private int resolveBlockGapTwips(Map<String, Object> props) {
+        int px = clampInt(VNode.asDouble(props.get("blockGapPx"), 8.0), 0, 160);
+        return pxToTwips(px);
+    }
+
+    private int pxToTwips(int px) {
+        return Math.max(0, px) * 15;
+    }
+
+    private int clampInt(double value, int min, int max) {
+        int rounded = (int) Math.round(value);
+        return Math.max(min, Math.min(max, rounded));
+    }
+
+    private void appendGapParagraph(XWPFDocument document, int gapTwips) {
+        XWPFParagraph gap = document.createParagraph();
+        gap.setSpacingAfter(Math.max(0, gapTwips));
     }
 
     /**
@@ -343,10 +402,12 @@ public class ReportDocxExporter implements DocumentExporter {
      * 输出标准标题段落（章节标题/小节标题）。
      */
     private void addHeading(DocxRenderContext context, String text, int level) {
+        int sectionGapTwips = resolveSectionGapTwips(context.rootProps());
+        int bodyPaddingTwips = resolveBodyPaddingTwips(context.rootProps());
         XWPFParagraph p = context.document.createParagraph();
         p.setAlignment(ParagraphAlignment.LEFT);
-        p.setSpacingBefore(level <= 1 ? 100 : 60);
-        p.setSpacingAfter(120);
+        p.setSpacingBefore(level <= 1 ? Math.max(100, bodyPaddingTwips / 2) : Math.max(60, bodyPaddingTwips / 3));
+        p.setSpacingAfter(Math.max(80, sectionGapTwips));
         XWPFRun run = p.createRun();
         run.setText(text);
         run.setBold(true);
@@ -380,8 +441,6 @@ public class ReportDocxExporter implements DocumentExporter {
     private void addChartCard(DocxRenderContext context, ChartSpec spec, List<Map<String, Object>> rows) {
         boolean nativeRendered = renderNativeChartIfNeeded(context, spec, rows);
         if (nativeRendered) {
-            XWPFParagraph gap = context.document.createParagraph();
-            gap.setSpacingAfter(80);
             return;
         }
 
@@ -396,9 +455,6 @@ public class ReportDocxExporter implements DocumentExporter {
             writeCellText(table.getRow(1).getCell(0), "当前图表未生成原生图表，已输出占位信息。", context.theme, false, 10, context.theme.muted());
         }
         addSampleRowPreview(context, rows);
-
-        XWPFParagraph gap = context.document.createParagraph();
-        gap.setSpacingAfter(80);
     }
 
     /**
@@ -463,9 +519,6 @@ public class ReportDocxExporter implements DocumentExporter {
         if (model.repeatHeader()) {
             markHeaderRowsRepeat(table, model.headerRowCount());
         }
-
-        XWPFParagraph gap = context.document.createParagraph();
-        gap.setSpacingAfter(80);
     }
 
     /**
@@ -901,6 +954,9 @@ public class ReportDocxExporter implements DocumentExporter {
             List<Map<String, Object>> rows = chartRowResolver.resolve(context.doc(), node, spec);
             addChartCard(context, spec, rows);
         }
+    }
+
+    private record PageMargins(long topTwips, long rightTwips, long bottomTwips, long leftTwips) {
     }
 
     /**

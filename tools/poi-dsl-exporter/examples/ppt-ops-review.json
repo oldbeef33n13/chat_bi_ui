@@ -10,11 +10,31 @@
       "id": "ds_ops",
       "type": "static",
       "staticData": [
-        { "day": "Mon", "alarm_count": 34, "latency_ms": 22 },
-        { "day": "Tue", "alarm_count": 23, "latency_ms": 24 },
-        { "day": "Wed", "alarm_count": 27, "latency_ms": 27 },
-        { "day": "Thu", "alarm_count": 18, "latency_ms": 23 },
-        { "day": "Fri", "alarm_count": 30, "latency_ms": 29 }
+        {
+          "day": "Mon",
+          "alarm_count": 34,
+          "latency_ms": 22
+        },
+        {
+          "day": "Tue",
+          "alarm_count": 23,
+          "latency_ms": 24
+        },
+        {
+          "day": "Wed",
+          "alarm_count": 27,
+          "latency_ms": 27
+        },
+        {
+          "day": "Thu",
+          "alarm_count": 18,
+          "latency_ms": 23
+        },
+        {
+          "day": "Fri",
+          "alarm_count": 30,
+          "latency_ms": 29
+        }
       ]
     }
   ],
@@ -31,52 +51,128 @@
     "props": {
       "size": "16:9",
       "defaultBg": "#ffffff",
-      "nativeChartEnabled": true
+      "nativeChartEnabled": true,
+      "masterShowHeader": true,
+      "masterHeaderText": "运维复盘汇报",
+      "masterShowFooter": true,
+      "masterFooterText": "Visual Document OS",
+      "masterShowSlideNumber": true,
+      "masterAccentColor": "#1d4ed8",
+      "masterPaddingXPx": 24,
+      "masterHeaderTopPx": 12,
+      "masterHeaderHeightPx": 26,
+      "masterFooterBottomPx": 10,
+      "masterFooterHeightPx": 22
     },
     "children": [
       {
         "id": "slide_overview",
         "kind": "slide",
-        "props": { "title": "运维总览" },
-        "layout": { "mode": "absolute", "x": 0, "y": 0, "w": 960, "h": 540 },
+        "props": {
+          "title": "运维总览"
+        },
+        "layout": {
+          "mode": "absolute",
+          "x": 0,
+          "y": 0,
+          "w": 960,
+          "h": 540
+        },
         "children": [
           {
             "id": "txt_t1",
             "kind": "text",
-            "layout": { "mode": "absolute", "x": 36, "y": 26, "w": 320, "h": 48, "z": 2 },
-            "props": { "text": "运维复盘汇报", "format": "plain" },
-            "style": { "fontSize": 28, "bold": true }
+            "layout": {
+              "mode": "absolute",
+              "x": 36,
+              "y": 26,
+              "w": 320,
+              "h": 48,
+              "z": 2
+            },
+            "props": {
+              "text": "运维复盘汇报",
+              "format": "plain"
+            },
+            "style": {
+              "fontSize": 28,
+              "bold": true
+            }
           },
           {
             "id": "chart_alarm",
             "kind": "chart",
-            "layout": { "mode": "absolute", "x": 36, "y": 96, "w": 430, "h": 250, "z": 1 },
-            "data": { "sourceId": "ds_ops", "queryId": "q_ops" },
+            "layout": {
+              "mode": "absolute",
+              "x": 36,
+              "y": 96,
+              "w": 430,
+              "h": 250,
+              "z": 1
+            },
+            "data": {
+              "sourceId": "ds_ops",
+              "queryId": "q_ops"
+            },
             "props": {
               "chartType": "line",
               "titleText": "告警趋势",
               "bindings": [
-                { "role": "x", "field": "day" },
-                { "role": "y", "field": "alarm_count", "agg": "sum", "unit": "count" }
+                {
+                  "role": "x",
+                  "field": "day"
+                },
+                {
+                  "role": "y",
+                  "field": "alarm_count",
+                  "agg": "sum",
+                  "unit": "count"
+                }
               ]
             }
           },
           {
             "id": "chart_latency",
             "kind": "chart",
-            "layout": { "mode": "absolute", "x": 492, "y": 96, "w": 430, "h": 250, "z": 1 },
-            "data": { "sourceId": "ds_ops", "queryId": "q_ops" },
+            "layout": {
+              "mode": "absolute",
+              "x": 492,
+              "y": 96,
+              "w": 430,
+              "h": 250,
+              "z": 1
+            },
+            "data": {
+              "sourceId": "ds_ops",
+              "queryId": "q_ops"
+            },
             "props": {
               "chartType": "bar",
               "titleText": "时延趋势",
               "bindings": [
-                { "role": "x", "field": "day" },
-                { "role": "y", "field": "latency_ms", "agg": "avg", "unit": "ms" }
+                {
+                  "role": "x",
+                  "field": "day"
+                },
+                {
+                  "role": "y",
+                  "field": "latency_ms",
+                  "agg": "avg",
+                  "unit": "ms"
+                }
               ],
               "optionPatch": {
-                "series": [{ "type": "bar" }],
-                "xAxis": { "name": "Day" },
-                "yAxis": { "name": "Latency(ms)" }
+                "series": [
+                  {
+                    "type": "bar"
+                  }
+                ],
+                "xAxis": {
+                  "name": "Day"
+                },
+                "yAxis": {
+                  "name": "Latency(ms)"
+                }
               }
             }
           }
@@ -85,22 +181,59 @@
       {
         "id": "slide_action",
         "kind": "slide",
-        "props": { "title": "行动项" },
-        "layout": { "mode": "absolute", "x": 0, "y": 0, "w": 960, "h": 540 },
+        "props": {
+          "title": "行动项"
+        },
+        "layout": {
+          "mode": "absolute",
+          "x": 0,
+          "y": 0,
+          "w": 960,
+          "h": 540
+        },
         "children": [
           {
             "id": "txt_action_t",
             "kind": "text",
-            "layout": { "mode": "absolute", "x": 40, "y": 26, "w": 320, "h": 48, "z": 2 },
-            "props": { "text": "下周行动项", "format": "plain" },
-            "style": { "fontSize": 26, "bold": true }
+            "layout": {
+              "mode": "absolute",
+              "x": 40,
+              "y": 26,
+              "w": 320,
+              "h": 48,
+              "z": 2
+            },
+            "props": {
+              "text": "下周行动项",
+              "format": "plain"
+            },
+            "style": {
+              "fontSize": 26,
+              "bold": true
+            }
           },
           {
             "id": "txt_action_list",
             "kind": "text",
-            "layout": { "mode": "absolute", "x": 40, "y": 100, "w": 880, "h": 260, "z": 1 },
-            "props": { "text": "1) 关键链路补容\n2) 统一告警降噪策略\n3) 增加回滚演练", "format": "plain" },
-            "style": { "bg": "#f8fbff", "pad": 12, "borderW": 1, "borderC": "#dbeafe", "radius": 8 }
+            "layout": {
+              "mode": "absolute",
+              "x": 40,
+              "y": 100,
+              "w": 880,
+              "h": 260,
+              "z": 1
+            },
+            "props": {
+              "text": "1) 关键链路补容\n2) 统一告警降噪策略\n3) 增加回滚演练",
+              "format": "plain"
+            },
+            "style": {
+              "bg": "#f8fbff",
+              "pad": 12,
+              "borderW": 1,
+              "borderC": "#dbeafe",
+              "radius": 8
+            }
           }
         ]
       }
