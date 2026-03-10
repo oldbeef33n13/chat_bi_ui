@@ -1,0 +1,19 @@
+.runtime/
+playwright-report/
+test-results/
+
+# Frontend build and local dependencies
+dist/
+node_modules/
+
+# Java build and local runtime data
+tools/**/target/
+tools/**/showcase-out/
+tools/chatbi-app-server/storage/
+tools/chatbi-app-server/logs/
+
+# Local editor and runtime noise
+*.log
+*.tmp
+*.temp
+tsconfig.tsbuildinfo
