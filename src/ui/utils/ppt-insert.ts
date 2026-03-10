@@ -1,8 +1,9 @@
-import type { ChartType, TableSpec, VDoc, VNode } from "../../core/doc/types";
+import type { ChartType, ImageProps, TableSpec, VDoc, VNode } from "../../core/doc/types";
 import { prefixedId } from "../../core/utils/id";
 import { buildChartNode, extractSourceFields } from "./chart-recommend";
+import { buildImageNode } from "./image-assets";
 
-export type PptInsertKind = "chart" | "table" | "text";
+export type PptInsertKind = "chart" | "table" | "text" | "image";
 export type PptTablePreset = "basic" | "multi-header" | "pivot";
 export type PptTextTemplate = "title" | "body" | "note";
 
@@ -11,7 +12,7 @@ export interface PptInsertItem {
   kind: PptInsertKind;
   label: string;
   description: string;
-  groupId: "chart" | "table" | "text";
+  groupId: "chart" | "table" | "text" | "media";
   icon: string;
   badge: string;
   chartType?: ChartType;
@@ -52,10 +53,15 @@ const textItems: PptInsertItem[] = [
   { id: "text.note", kind: "text", label: "注释", description: "补充备注", groupId: "text", icon: "※", badge: "画布元素", textTemplate: "note", size: { w: 260, h: 96 } }
 ];
 
+const mediaItems: PptInsertItem[] = [
+  { id: "media.image", kind: "image", label: "图片", description: "上传后插入", groupId: "media", icon: "▣", badge: "上传后插入", size: { w: 360, h: 220 } }
+];
+
 export const pptInsertGroups: PptInsertGroup[] = [
   { id: "chart", label: "图表", items: chartItems },
   { id: "table", label: "表格", items: tableItems },
-  { id: "text", label: "文本", items: textItems }
+  { id: "text", label: "文本", items: textItems },
+  { id: "media", label: "媒体", items: mediaItems }
 ];
 
 const pptInsertItemMap = new Map(pptInsertGroups.flatMap((group) => group.items.map((item) => [item.id, item])));
@@ -216,6 +222,48 @@ export const buildPptInsertNode = ({
   };
 };
 
+export const buildPptImageNode = ({
+  slide,
+  item,
+  assetId,
+  title,
+  point,
+  width,
+  height
+}: {
+  slide: VNode;
+  item: PptInsertItem;
+  assetId: string;
+  title?: string;
+  point?: { x: number; y: number };
+  width?: number;
+  height?: number;
+}): VNode<ImageProps> => {
+  const rect = resolvePptInsertRect({
+    slide,
+    item: {
+      ...item,
+      size: {
+        w: Math.max(180, Math.round(width ?? item.size.w)),
+        h: Math.max(120, Math.round(height ?? item.size.h))
+      }
+    },
+    point
+  });
+  return buildImageNode({
+    assetId,
+    title,
+    layout: {
+      mode: "absolute",
+      x: rect.x,
+      y: rect.y,
+      w: rect.w,
+      h: rect.h,
+      z: 1
+    }
+  });
+};
+
 export const resolvePptRecentInsertItems = (recentItemIds: string[], limit = 4): PptInsertItem[] =>
   [...new Set(recentItemIds)]
     .map((itemId) => getPptInsertItem(itemId))
@@ -234,6 +282,7 @@ export const resolvePptRecommendedItems = ({
   const nodes = slide?.children ?? [];
   const chartCount = nodes.filter((node) => node.kind === "chart").length;
   const tableCount = nodes.filter((node) => node.kind === "table").length;
+  const imageCount = nodes.filter((node) => node.kind === "image").length;
   const textNodes = nodes.filter((node) => node.kind === "text");
   const hasTitle = textNodes.some((node) => Number(node.style?.fontSize ?? 0) >= 20);
   const hasBody = textNodes.some((node) => Number(node.style?.fontSize ?? 0) < 20);
@@ -256,6 +305,9 @@ export const resolvePptRecommendedItems = ({
   }
   if (tableCount === 0) {
     push("table.basic");
+  }
+  if (imageCount === 0) {
+    push("media.image");
   }
   ["chart.combo", "table.multi-header", "text.note"].forEach(push);
   return itemIds

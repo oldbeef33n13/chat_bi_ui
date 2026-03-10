@@ -5,8 +5,32 @@ import { createAiTimer, createAiTraceId, emitAiTelemetry, emitAiTelemetryError }
 
 export interface SourceField {
   name: string;
+  label?: string;
   type: "string" | "number" | "boolean" | "time" | "json";
+  unit?: string | null;
 }
+
+export const formatSourceFieldLabel = (field: Pick<SourceField, "name" | "label">): string =>
+  field.label && field.label.trim() && field.label.trim() !== field.name ? `${field.label} (${field.name})` : field.name;
+
+export const inferRecommendedAgg = (
+  field?: Pick<SourceField, "name" | "type" | "label" | "unit">
+): FieldBinding["agg"] => {
+  if (!field) {
+    return "sum";
+  }
+  if (field.type !== "number") {
+    return "count";
+  }
+  const hint = `${field.name} ${field.label ?? ""} ${field.unit ?? ""}`.toLowerCase();
+  if (/(pct|percent|ratio|rate|utilization|availability|latency|delay|duration|error|success|avg|mean)/.test(hint)) {
+    return "avg";
+  }
+  if (/(count|num|total|amount|bytes|bps|traffic|throughput|qps|flow|volume|capacity|critical|major|minor|times)/.test(hint)) {
+    return "sum";
+  }
+  return "sum";
+};
 
 export interface RecommendResult {
   chartType: ChartType;
@@ -88,7 +112,7 @@ export const extractSourceFields = (source?: DataSourceDef): SourceField[] => {
     return [];
   }
   if (source.schemaFields?.length) {
-    return source.schemaFields.map((field) => ({ name: field.name, type: field.type }));
+    return source.schemaFields.map((field) => ({ name: field.name, label: field.label, type: field.type, unit: field.unit ?? null }));
   }
   if (source.type === "static" && Array.isArray(source.staticData)) {
     const rows = source.staticData.filter((row): row is Record<string, unknown> => !!row && typeof row === "object");
@@ -98,6 +122,7 @@ export const extractSourceFields = (source?: DataSourceDef): SourceField[] => {
     const keys = [...new Set(rows.flatMap((row) => Object.keys(row)))];
     return keys.map((key) => ({
       name: key,
+      label: undefined,
       type: guessFieldType(
         key,
         rows.map((row) => row[key])
@@ -147,32 +172,32 @@ export const recommendBindings = (chartType: ChartType, fields: SourceField[]): 
   if (chartType === "pie") {
     return [
       { role: "category", field: categoryField?.name ?? xField.name },
-      { role: "value", field: yField.name, agg: "sum" }
+      { role: "value", field: yField.name, agg: inferRecommendedAgg(yField) }
     ];
   }
 
   if (chartType === "treemap" || chartType === "sunburst" || chartType === "funnel") {
     return [
       { role: "category", field: categoryField?.name ?? xField.name },
-      { role: "value", field: yField.name, agg: "sum" }
+      { role: "value", field: yField.name, agg: inferRecommendedAgg(yField) }
     ];
   }
 
   if (chartType === "gauge") {
-    return [{ role: "value", field: yField.name, agg: "avg" }];
+    return [{ role: "value", field: yField.name, agg: inferRecommendedAgg(yField) }];
   }
 
   if (chartType === "combo") {
     const secondary = metrics.find((field) => field.name !== yField.name && field.name !== xField.name);
     return [
       { role: "x", field: xField.name },
-      { role: "y", field: yField.name, agg: "sum", axis: "primary" },
+      { role: "y", field: yField.name, agg: inferRecommendedAgg(yField), axis: "primary" },
       ...(secondary
         ? [
             {
               role: "y2" as const,
               field: secondary.name,
-              agg: "avg" as const,
+              agg: inferRecommendedAgg(secondary),
               axis: "secondary" as const,
               as: "secondary"
             }
@@ -184,7 +209,7 @@ export const recommendBindings = (chartType: ChartType, fields: SourceField[]): 
   if (chartType === "calendar") {
     return [
       { role: "x", field: xField.name },
-      { role: "y", field: yField.name, agg: "avg" }
+      { role: "y", field: yField.name, agg: inferRecommendedAgg(yField) }
     ];
   }
 
@@ -195,7 +220,7 @@ export const recommendBindings = (chartType: ChartType, fields: SourceField[]): 
     return [
       { role: "linkSource", field: source.name },
       { role: "linkTarget", field: target.name },
-      { role: "linkValue", field: yField.name, agg: "sum" }
+      { role: "linkValue", field: yField.name, agg: inferRecommendedAgg(yField) }
     ];
   }
 
@@ -203,12 +228,12 @@ export const recommendBindings = (chartType: ChartType, fields: SourceField[]): 
     const node = categoryField ?? xField;
     return [
       { role: "node", field: node.name },
-      { role: "value", field: yField.name, agg: "sum" }
+      { role: "value", field: yField.name, agg: inferRecommendedAgg(yField) }
     ];
   }
 
   const bindings: FieldBinding[] = [{ role: "x", field: xField.name }];
-  bindings.push({ role: "y", field: yField.name, agg: "sum" });
+  bindings.push({ role: "y", field: yField.name, agg: inferRecommendedAgg(yField) });
   if (seriesField && seriesField.name !== xField.name) {
     bindings.push({ role: "series", field: seriesField.name });
   }

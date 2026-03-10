@@ -1,15 +1,18 @@
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
-import type { ChartSpec, ImageProps, TableSpec, VDoc, VNode } from "../../core/doc/types";
+import type { ChartSpec, DashboardProps, ImageProps, TableSpec, VDoc, VNode } from "../../core/doc/types";
 import { DataEngine } from "../../runtime/data/data-engine";
 import { EChartView } from "../../runtime/chart/EChartView";
 import { TableView } from "../../runtime/table/TableView";
 import { FloatingLayer, type FloatingLayerArgs } from "../components/FloatingLayer";
 import { EditorInsertPanel, type EditorInsertPanelItem } from "../components/EditorInsertPanel";
+import { NodeDataState } from "../components/NodeDataState";
+import { NodeTextBlock } from "../components/NodeTextBlock";
 import { useNodeRows } from "../hooks/use-node-rows";
 import { useDataEngine } from "../hooks/use-data-engine";
 import { useEditorStore } from "../state/editor-context";
 import { useSignalValue } from "../state/use-signal-value";
 import { buildCanvasSelectionRect, isCanvasSelectionGesture, resolveCanvasSelectionIds } from "../utils/canvas-selection";
+import { HttpAssetRepository } from "../api/http-asset-repository";
 import {
   buildDashboardInsertNode,
   clearDashboardInsertItemDrag,
@@ -23,10 +26,11 @@ import {
 import { resolveGridConflict, resolveGridGroupMove, isGridOverlap, type GridRect } from "../utils/dashboard-grid";
 import { buildDuplicateNodesPlan } from "../utils/duplicate-nodes";
 import { isAdditiveSelectionModifier, isTypingTarget } from "../utils/editor-input";
-import { buildEmbeddedImageAsset, buildImageNode } from "../utils/image-assets";
+import { buildImageNode } from "../utils/image-assets";
 import { resolveSideInsertPanelStyle } from "../utils/editor-insert-layout";
 import {
   resolveDashboardNodeRect,
+  resolveDashboardBackgroundStyle,
   resolveDashboardSurfaceMetrics,
   resolveGridRectFromCanvasRect,
   resolveImageAsset,
@@ -34,6 +38,14 @@ import {
   type DashboardRect,
   type DashboardSurfaceMetrics
 } from "../utils/dashboard-surface";
+import {
+  isRemoteDataNode,
+  resolveNodeDisplayTitle,
+  resolveNodeSurfaceStyle,
+  resolveNodeTitleStyle,
+  resolveTitleTextStyle,
+  shouldRenderOuterNodeTitle
+} from "../utils/node-style";
 
 interface DashboardEditorProps {
   doc: VDoc;
@@ -59,8 +71,10 @@ export function DashboardEditor({ doc }: DashboardEditorProps): JSX.Element {
   const store = useEditorStore();
   const selection = useSignalValue(store.selection);
   const ui = useSignalValue(store.ui);
+  const assetRepoRef = useRef(new HttpAssetRepository("/api/v1"));
   const { engine, dataVersion } = useDataEngine(doc.dataSources ?? [], doc.queries ?? [], { debounceMs: 120 });
   const root = doc.root;
+  const rootProps = (root.props ?? {}) as DashboardProps;
   const children = root.children ?? [];
   const [layoutHint, setLayoutHint] = useState("");
   const [gridPreview, setGridPreview] = useState<{ nodeId: string; layout: GridRect; conflictIds: string[] } | null>(null);
@@ -80,6 +94,7 @@ export function DashboardEditor({ doc }: DashboardEditorProps): JSX.Element {
     containerHeight: viewportSize.height,
     scaleMode: "width"
   });
+  const backgroundStyle = resolveDashboardBackgroundStyle(doc);
   const selectedNodeIds = selection.selectedIds.filter((id) => children.some((node) => node.id === id));
   const insertGroups = resolveDashboardInsertGroups({
     doc,
@@ -175,9 +190,12 @@ export function DashboardEditor({ doc }: DashboardEditorProps): JSX.Element {
       return;
     }
     try {
-      const embedded = await buildEmbeddedImageAsset(file);
-      const baseWidth = Math.min(420, Math.max(180, embedded.width));
-      const baseHeight = Math.max(120, Math.round(baseWidth * ((embedded.height || 1) / (embedded.width || 1))));
+      const uploaded = await assetRepoRef.current.uploadImage(file);
+      if (!uploaded.asset.uri) {
+        throw new Error("图片上传成功，但未返回文件地址");
+      }
+      const baseWidth = Math.min(420, Math.max(180, uploaded.width));
+      const baseHeight = Math.max(120, Math.round(baseWidth * ((uploaded.height || 1) / (uploaded.width || 1))));
       const placement = resolveDashboardInsertPlacement({
         root,
         metrics,
@@ -191,7 +209,7 @@ export function DashboardEditor({ doc }: DashboardEditorProps): JSX.Element {
         point
       });
       const node = buildImageNode({
-        assetId: embedded.asset.assetId,
+        assetId: uploaded.asset.assetId,
         title: file.name,
         layout: {
           ...placement.layout,
@@ -206,7 +224,7 @@ export function DashboardEditor({ doc }: DashboardEditorProps): JSX.Element {
             {
               type: "UpdateDoc",
               doc: {
-                assets: [...(doc.assets ?? []), embedded.asset]
+                assets: [...(doc.assets ?? []).filter((asset) => asset.assetId !== uploaded.asset.assetId), uploaded.asset]
               }
             },
             {
@@ -438,7 +456,9 @@ export function DashboardEditor({ doc }: DashboardEditorProps): JSX.Element {
         }}
       />
       <div className="dashboard-editor-meta row">
-        <span className="chip">{metrics.dashTitle}</span>
+        <span className="chip" style={resolveTitleTextStyle({ fontSize: 13, bold: true }, rootProps.titleStyle)}>
+          {metrics.dashTitle}
+        </span>
         <span className="chip">{displayModeLabel}</span>
         <span className="chip">{`选中 ${selectedNodeIds.length}`}</span>
         {metrics.showFilterBar ? <span className="chip">{filterSummary ? `筛选栏: ${filterSummary}` : "筛选栏已启用"}</span> : null}
@@ -481,6 +501,7 @@ export function DashboardEditor({ doc }: DashboardEditorProps): JSX.Element {
               style={{
                 width: metrics.canvasWidth,
                 height: metrics.canvasHeight,
+                ...backgroundStyle,
                 transform: `scale(${metrics.scale})`,
                 transformOrigin: "top left"
               }}
@@ -787,14 +808,8 @@ function DashboardCard({
   const duplicateOnDropRef = useRef(duplicateOnDrop);
   const { rows, loading, error } = useNodeRows(doc, node, engine, dataVersion);
   const placementLabel = isAbsolute ? "浮动元素" : "卡片布局";
-  const title =
-    node.kind === "chart"
-      ? String((node.props as ChartSpec | undefined)?.titleText ?? node.name ?? node.id)
-      : node.kind === "table"
-        ? String((node.props as TableSpec | undefined)?.titleText ?? node.name ?? node.id)
-        : node.kind === "image"
-          ? resolveImageNodeTitle(doc, node)
-          : String(node.name ?? node.id);
+  const showOuterTitle = shouldRenderOuterNodeTitle(node);
+  const title = node.kind === "image" ? resolveImageNodeTitle(doc, node) : resolveNodeDisplayTitle(node);
 
   useEffect(() => {
     setRect(baseRect);
@@ -942,41 +957,35 @@ function DashboardCard({
       className={`dash-card ${active ? "active" : ""} ${layout.lock ? "is-locked" : ""} ${node.kind === "text" ? "dash-card-text" : ""} ${node.kind === "image" ? "dash-card-image" : ""}`}
       data-testid={`dashboard-card-${node.id}`}
       style={{
-        left: rect.left,
-        top: rect.top,
-        width: rect.width,
-        height: rect.height,
-        transform: groupPreviewOffset ? `translate(${groupPreviewOffset.x}px, ${groupPreviewOffset.y}px)` : undefined
+        ...resolveNodeSurfaceStyle(node.style, {
+          left: rect.left,
+          top: rect.top,
+          width: rect.width,
+          height: rect.height,
+          transform: groupPreviewOffset ? `translate(${groupPreviewOffset.x}px, ${groupPreviewOffset.y}px)` : undefined
+        })
       }}
       onMouseDown={(event) => beginDrag(event, "move")}
     >
       {node.kind !== "text" ? (
         <div className="card-head card-head-floating row" style={{ justifyContent: "space-between", gap: 8 }}>
-          <span className="card-head-title">{title}</span>
+          {showOuterTitle ? (
+            <span className="card-head-title" style={resolveTitleTextStyle({ fontSize: 13, bold: true }, resolveNodeTitleStyle(node))}>
+              {title}
+            </span>
+          ) : (
+            <span className="card-head-title" />
+          )}
           <span className="chip dashboard-card-mode-chip">{placementLabel}</span>
         </div>
       ) : null}
       <div className="card-body" style={{ height: "100%" }}>
         {node.kind === "chart" ? (
-          loading ? (
-            <div className="muted">loading...</div>
-          ) : error ? (
-            <div className="muted">error: {error}</div>
-          ) : (
-            <EChartView spec={node.props as ChartSpec} rows={rows} height="100%" />
-          )
+          loading || error ? <NodeDataState loading={loading} error={error} remote={isRemoteDataNode(doc, node)} /> : <EChartView spec={node.props as ChartSpec} rows={rows} height="100%" />
         ) : node.kind === "table" ? (
-          loading ? (
-            <div className="muted">loading...</div>
-          ) : error ? (
-            <div className="muted">error: {error}</div>
-          ) : (
-            <TableView spec={node.props as TableSpec} rows={rows} height="100%" />
-          )
+          loading || error ? <NodeDataState loading={loading} error={error} remote={isRemoteDataNode(doc, node)} /> : <TableView spec={node.props as TableSpec} rows={rows} height="100%" />
         ) : node.kind === "text" ? (
-          <pre style={{ margin: 0, whiteSpace: "pre-wrap", height: "100%", overflow: "auto" }}>
-            {String((node.props as Record<string, unknown>)?.text ?? "")}
-          </pre>
+          <NodeTextBlock node={node} style={{ height: "100%" }} />
         ) : node.kind === "image" ? (
           <DashboardImageNode doc={doc} node={node} />
         ) : (

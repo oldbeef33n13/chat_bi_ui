@@ -1,13 +1,23 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ChartSpec, ImageProps, ReportProps, TableSpec, VDoc, VNode } from "../../core/doc/types";
+import type { ChartSpec, DashboardProps, DeckProps, ImageProps, ReportProps, TableSpec, VDoc, VNode } from "../../core/doc/types";
 import { EChartView } from "../../runtime/chart/EChartView";
 import { TableView } from "../../runtime/table/TableView";
 import { useDataEngine } from "../hooks/use-data-engine";
 import { useNodeRows } from "../hooks/use-node-rows";
 import { ChartAskAssistant } from "./ChartAskAssistant";
+import { NodeDataState } from "./NodeDataState";
+import { NodeTextBlock } from "./NodeTextBlock";
 import { buildReportGridRows } from "../utils/report-layout";
 import { flattenReportSections, getTopReportSections } from "../utils/report-sections";
-import { resolveDashboardNodeRect, resolveDashboardSurfaceMetrics, resolveImageAsset } from "../utils/dashboard-surface";
+import { resolveDashboardBackgroundStyle, resolveDashboardNodeRect, resolveDashboardSurfaceMetrics, resolveImageAsset } from "../utils/dashboard-surface";
+import {
+  isRemoteDataNode,
+  resolveNodeDisplayTitle,
+  resolveNodeSurfaceStyle,
+  resolveNodeTitleStyle,
+  resolveTitleTextStyle,
+  shouldRenderOuterNodeTitle
+} from "../utils/node-style";
 import type { PresentationRuntimeSettings } from "../utils/presentation-settings";
 
 export function DocRuntimeView({
@@ -42,6 +52,7 @@ function DashboardRuntimeView({
   presentationSettings?: PresentationRuntimeSettings;
 }): JSX.Element {
   const root = doc.root;
+  const rootProps = (root.props ?? {}) as DashboardProps;
   const children = root.children ?? [];
   const wrapRef = useRef<HTMLDivElement>(null);
   const [viewportSize, setViewportSize] = useState({ width: 1280, height: 720 });
@@ -52,6 +63,7 @@ function DashboardRuntimeView({
     containerHeight: viewportSize.height,
     scaleMode: immersive && presentationSettings?.fitMode === "fill" ? "width" : "contain"
   });
+  const backgroundStyle = resolveDashboardBackgroundStyle(doc);
 
   useEffect(() => {
     const host = wrapRef.current;
@@ -79,11 +91,13 @@ function DashboardRuntimeView({
     <div className={`col ${immersive ? "runtime-dashboard-immersive" : ""}`} style={{ height: "100%" }}>
       {!immersive ? (
         <div className="row" style={{ justifyContent: "space-between" }}>
-          <span className="chip">{metrics.dashTitle}</span>
+          <span className="chip" style={resolveTitleTextStyle({ fontSize: 13, bold: true }, rootProps.titleStyle)}>
+            {metrics.dashTitle}
+          </span>
           <span className="chip">运行态预览</span>
         </div>
       ) : null}
-      {metrics.headerShow ? <div className="dashboard-global-header">{metrics.headerText}</div> : null}
+      {metrics.headerShow ? <div className="dashboard-global-header" style={resolveTitleTextStyle({ fontSize: 16, bold: true }, rootProps.headerStyle)}>{metrics.headerText}</div> : null}
       {metrics.showFilterBar ? (
         <div className="row" style={{ padding: "6px 2px", gap: 10 }}>
           {(doc.filters ?? []).map((filter) => (
@@ -110,30 +124,31 @@ function DashboardRuntimeView({
             style={{
               width: metrics.canvasWidth,
               height: metrics.canvasHeight,
+              ...backgroundStyle,
               transform: `scale(${metrics.scale})`,
               transformOrigin: "top left"
             }}
           >
         {children.map((node) => {
           const rect = resolveDashboardNodeRect(node, metrics);
-          const showHeader = node.kind !== "text";
-          const title =
-            node.kind === "chart"
-              ? String((node.props as ChartSpec | undefined)?.titleText ?? node.name ?? node.id)
-              : node.kind === "table"
-                ? String((node.props as TableSpec | undefined)?.titleText ?? node.name ?? node.id)
-                : node.kind === "image"
-                  ? String((node.props as ImageProps | undefined)?.title ?? node.name ?? node.id)
-                : String(node.name ?? node.id);
+          const showOuterTitle = shouldRenderOuterNodeTitle(node);
+          const showHeader = node.kind !== "text" && (showOuterTitle || node.kind === "chart");
+          const title = node.kind === "image" ? String((node.props as ImageProps | undefined)?.title ?? node.name ?? node.id) : resolveNodeDisplayTitle(node);
           return (
             <div
               key={node.id}
               className={`dash-card runtime-card ${node.kind === "text" ? "dash-card-text" : ""}`}
-              style={{ left: rect.left, top: rect.top, width: rect.width, height: rect.height }}
+              style={resolveNodeSurfaceStyle(node.style, { left: rect.left, top: rect.top, width: rect.width, height: rect.height })}
             >
               {showHeader ? (
                 <div className="card-head card-head-floating row" style={{ justifyContent: "space-between", gap: 6 }}>
-                  <span className="card-head-title">{title}</span>
+                  {showOuterTitle ? (
+                    <span className="card-head-title" style={resolveTitleTextStyle({ fontSize: 13, bold: true }, resolveNodeTitleStyle(node))}>
+                      {title}
+                    </span>
+                  ) : (
+                    <span className="card-head-title" />
+                  )}
                   {node.kind === "chart" ? <RuntimeChartAskHeaderAction doc={doc} node={node} engine={engine} dataVersion={dataVersion} /> : null}
                 </div>
               ) : null}
@@ -146,7 +161,7 @@ function DashboardRuntimeView({
           </div>
         </div>
       </div>
-      {metrics.footerShow ? <div className="dashboard-global-footer">{metrics.footerText}</div> : null}
+      {metrics.footerShow ? <div className="dashboard-global-footer" style={resolveTitleTextStyle({ fontSize: 12, fg: "#64748b" }, rootProps.footerStyle)}>{metrics.footerText}</div> : null}
     </div>
   );
 }
@@ -242,15 +257,15 @@ function ReportRuntimeView({
       <div className="report-page-frame">
         {rootProps.headerShow ? (
           <div className="report-page-header row" style={{ justifyContent: "space-between" }}>
-            <span>{rootProps.headerText || rootProps.reportTitle}</span>
-            {rootProps.showPageNumber ? <span className="muted">Page {page.pageNumber}</span> : null}
+            <span style={resolveTitleTextStyle({ fontSize: 12, fg: "#64748b" }, rootProps.headerStyle)}>{rootProps.headerText || rootProps.reportTitle}</span>
+            {rootProps.showPageNumber ? <span className="muted" style={resolveTitleTextStyle({ fontSize: 12, fg: "#64748b" }, rootProps.headerStyle)}>Page {page.pageNumber}</span> : null}
           </div>
         ) : null}
         <div className="report-page-body" style={{ padding: Math.max(0, Number(rootProps.bodyPaddingPx ?? 12)) }}>{body}</div>
         {rootProps.footerShow ? (
           <div className="report-page-footer row" style={{ justifyContent: "space-between" }}>
-            <span className="muted">{rootProps.footerText || "Visual Document OS"}</span>
-            {rootProps.showPageNumber ? <span className="muted">#{page.pageNumber}</span> : null}
+            <span className="muted" style={resolveTitleTextStyle({ fontSize: 12, fg: "#64748b" }, rootProps.footerStyle)}>{rootProps.footerText || "Visual Document OS"}</span>
+            {rootProps.showPageNumber ? <span className="muted" style={resolveTitleTextStyle({ fontSize: 12, fg: "#64748b" }, rootProps.footerStyle)}>#{page.pageNumber}</span> : null}
           </div>
         ) : null}
       </div>
@@ -258,7 +273,9 @@ function ReportRuntimeView({
     if (page.kind === "cover") {
       return renderFrame(
         <div className="col" style={{ minHeight: 240, justifyContent: "center", alignItems: "center", textAlign: "center" }}>
-          <div style={{ fontSize: 30, fontWeight: 700 }}>{rootProps.coverTitle || rootProps.reportTitle}</div>
+          <div style={resolveTitleTextStyle({ fontSize: 30, bold: true, align: "center" }, rootProps.coverTitleStyle)}>
+            {rootProps.coverTitle || rootProps.reportTitle}
+          </div>
           <div className="muted">{rootProps.coverSubtitle}</div>
           <div className="muted">{rootProps.coverNote}</div>
         </div>
@@ -267,7 +284,7 @@ function ReportRuntimeView({
     if (page.kind === "toc") {
       return renderFrame(
         <div className="section">
-          <div className="section-title" style={{ marginBottom: Math.max(0, Number(rootProps.sectionGapPx ?? 12)) }}>目录</div>
+          <div className="section-title" style={{ ...resolveTitleTextStyle({ fontSize: 24, bold: true }, rootProps.sectionTitleStyle), marginBottom: Math.max(0, Number(rootProps.sectionGapPx ?? 12)) }}>目录</div>
           <div className="block" style={{ margin: 0 }}>
             {flatSections.map((item) => (
               <div key={item.section.id} className="row" style={{ justifyContent: "space-between", borderBottom: "1px dashed var(--line)", padding: "6px 0" }}>
@@ -286,7 +303,7 @@ function ReportRuntimeView({
       const sectionBlocks = flat ? flat.blocks : (section.children ?? []).filter((item) => item.kind !== "section");
       return renderFrame(
         <div className="section">
-          <div className="section-title" style={{ marginBottom: Math.max(0, Number(rootProps.sectionGapPx ?? 12)) }}>
+          <div className="section-title" style={{ ...resolveTitleTextStyle({ fontSize: 24, bold: true }, rootProps.sectionTitleStyle), marginBottom: Math.max(0, Number(rootProps.sectionGapPx ?? 12)) }}>
             {sectionTitle}
           </div>
           {buildReportGridRows(sectionBlocks).map((row) => (
@@ -297,21 +314,21 @@ function ReportRuntimeView({
                   className="report-row-cell"
                   style={{ gridColumn: `${item.gx + 1} / span ${item.gw}` }}
                 >
-                    <div className="block runtime-node-surface" style={{ margin: 0, height: item.height }}>
-                      {item.node.kind !== "text" ? (
+                    <div className="block runtime-node-surface" style={resolveNodeSurfaceStyle(item.node.style, { margin: 0, height: item.height })}>
+                      {item.node.kind !== "text" && (shouldRenderOuterNodeTitle(item.node) || item.node.kind === "chart") ? (
                         <div className="node-floating-label runtime-node-header row" style={{ justifyContent: "space-between", gap: 6 }}>
-                          <span className="node-floating-label-text">
-                            {item.node.kind === "chart"
-                              ? String((item.node.props as ChartSpec | undefined)?.titleText ?? item.node.name ?? item.node.id)
-                              : item.node.kind === "table"
-                                ? String((item.node.props as TableSpec | undefined)?.titleText ?? item.node.name ?? item.node.id)
-                                : String(item.node.name ?? item.node.id)}
-                          </span>
+                          {shouldRenderOuterNodeTitle(item.node) ? (
+                            <span className="node-floating-label-text" style={resolveTitleTextStyle({ fontSize: 12, bold: true }, resolveNodeTitleStyle(item.node))}>
+                              {resolveNodeDisplayTitle(item.node)}
+                            </span>
+                          ) : (
+                            <span className="node-floating-label-text" />
+                          )}
                           {item.node.kind === "chart" ? <RuntimeChartAskHeaderAction doc={doc} node={item.node} engine={engine} dataVersion={dataVersion} /> : null}
                         </div>
                       ) : null}
                     {item.node.kind === "text" ? (
-                      <pre style={{ margin: 0, whiteSpace: "pre-wrap" }}>{String((item.node.props as Record<string, unknown>)?.text ?? "")}</pre>
+                      <NodeTextBlock node={item.node} />
                     ) : (
                       <RuntimeNodeContent doc={doc} node={item.node} engine={engine} dataVersion={dataVersion} height={Math.max(120, item.height - 18)} />
                     )}
@@ -325,7 +342,7 @@ function ReportRuntimeView({
     }
     return renderFrame(
       <div className="section">
-        <div className="section-title" style={{ marginBottom: Math.max(0, Number(rootProps.sectionGapPx ?? 12)) }}>
+        <div className="section-title" style={{ ...resolveTitleTextStyle({ fontSize: 24, bold: true }, rootProps.summaryTitleStyle), marginBottom: Math.max(0, Number(rootProps.sectionGapPx ?? 12)) }}>
           {rootProps.summaryTitle}
         </div>
         <div className="block" style={{ margin: 0 }}>
@@ -408,7 +425,7 @@ function PptRuntimeView({
   presentationSettings?: PresentationRuntimeSettings;
 }): JSX.Element {
   const slides = (doc.root.children ?? []).filter((node) => node.kind === "slide");
-  const rootProps = (doc.root.props ?? {}) as Record<string, unknown>;
+  const rootProps = (doc.root.props ?? {}) as DeckProps & Record<string, unknown>;
   const masterShowHeader = rootProps.masterShowHeader !== false;
   const masterHeaderText = String(rootProps.masterHeaderText ?? doc.title ?? "");
   const masterShowFooter = rootProps.masterShowFooter !== false;
@@ -596,8 +613,8 @@ function PptRuntimeView({
           className="runtime-ppt-master-header"
           style={{ borderBottomColor: masterAccentColor, left: masterPaddingXPx, right: masterPaddingXPx, top: masterHeaderTopPx, minHeight: masterHeaderHeightPx }}
         >
-          <span>{masterHeaderText || String((slide.props as Record<string, unknown>)?.title ?? "")}</span>
-          <span>{String((slide.props as Record<string, unknown>)?.title ?? "")}</span>
+          <span style={resolveTitleTextStyle({ fontSize: 13, fg: "#64748b" }, rootProps.headerStyle)}>{masterHeaderText || String((slide.props as Record<string, unknown>)?.title ?? "")}</span>
+          <span style={resolveTitleTextStyle({ fontSize: 13, fg: "#64748b" }, rootProps.headerStyle)}>{String((slide.props as Record<string, unknown>)?.title ?? "")}</span>
         </div>
       ) : null}
       {(slide.children ?? []).map((node) => {
@@ -606,33 +623,21 @@ function PptRuntimeView({
           <div
             key={node.id}
             className={`slide-node runtime-slide-node ${node.kind !== "text" ? "runtime-node-surface" : ""}`}
-            style={{
+            style={resolveNodeSurfaceStyle(node.style, {
               left: Number(layout.x ?? 80),
               top: Number(layout.y ?? 80),
               width: Number(layout.w ?? 220),
               height: Number(layout.h ?? 140),
               zIndex: Number(layout.z ?? 1)
-            }}
+            })}
           >
-            {node.kind !== "text" ? (
-              <div className="node-floating-label runtime-node-header row" style={{ justifyContent: "space-between", gap: 6 }}>
-                <span className="node-floating-label-text">
-                  {node.kind === "chart"
-                    ? String((node.props as ChartSpec | undefined)?.titleText ?? node.name ?? node.id)
-                    : node.kind === "table"
-                      ? String((node.props as TableSpec | undefined)?.titleText ?? node.name ?? node.id)
-                      : String(node.name ?? node.id)}
-                </span>
-                {node.kind === "chart" ? <RuntimeChartAskHeaderAction doc={doc} node={node} engine={engine} dataVersion={dataVersion} /> : null}
-              </div>
-            ) : null}
-            {node.kind === "text" ? (
-              <pre style={{ margin: 0, whiteSpace: "pre-wrap", width: "100%", height: "100%", overflow: "auto" }}>
-                {String((node.props as Record<string, unknown>)?.text ?? "")}
-              </pre>
-            ) : (
-              <RuntimeNodeContent doc={doc} node={node} engine={engine} dataVersion={dataVersion} height="100%" />
-            )}
+            <div className="ppt-node-content runtime-ppt-node-content">
+              {node.kind === "text" ? (
+                <NodeTextBlock node={node} style={{ width: "100%", height: "100%" }} />
+              ) : (
+                <RuntimeNodeContent doc={doc} node={node} engine={engine} dataVersion={dataVersion} height="100%" />
+              )}
+            </div>
           </div>
         );
       })}
@@ -641,8 +646,8 @@ function PptRuntimeView({
           className="runtime-ppt-master-footer"
           style={{ borderTopColor: masterAccentColor, left: masterPaddingXPx, right: masterPaddingXPx, bottom: masterFooterBottomPx, minHeight: masterFooterHeightPx }}
         >
-          <span>{masterFooterText}</span>
-          {masterShowSlideNumber ? <span>{`#${slides.findIndex((item) => item.id === slide.id) + 1}`}</span> : null}
+          <span style={resolveTitleTextStyle({ fontSize: 12, fg: "#64748b" }, rootProps.footerStyle)}>{masterFooterText}</span>
+          {masterShowSlideNumber ? <span style={resolveTitleTextStyle({ fontSize: 12, fg: "#64748b" }, rootProps.footerStyle)}>{`#${slides.findIndex((item) => item.id === slide.id) + 1}`}</span> : null}
         </div>
       ) : null}
     </div>
@@ -768,10 +773,10 @@ function RuntimeNodeContent({
 }): JSX.Element {
   const { rows, loading, error } = useNodeRows(doc, node, engine, dataVersion);
   if (loading) {
-    return <div className="muted">loading...</div>;
+    return <NodeDataState loading remote={isRemoteDataNode(doc, node)} />;
   }
   if (error) {
-    return <div className="muted">error: {error}</div>;
+    return <NodeDataState error={error} remote={isRemoteDataNode(doc, node)} />;
   }
   if (node.kind === "chart") {
     return <EChartView spec={node.props as ChartSpec} rows={rows} height={height} />;
@@ -780,7 +785,7 @@ function RuntimeNodeContent({
     return <TableView spec={node.props as TableSpec} rows={rows} height={height} />;
   }
   if (node.kind === "text") {
-    return <pre style={{ margin: 0, whiteSpace: "pre-wrap" }}>{String((node.props as Record<string, unknown>)?.text ?? "")}</pre>;
+    return <NodeTextBlock node={node} style={{ height }} />;
   }
   if (node.kind === "image") {
     const props = (node.props ?? {}) as ImageProps;
@@ -816,16 +821,21 @@ const normalizeReportProps = (doc: VDoc): Required<Omit<ReportProps, "pageSize">
     tocShow: raw.tocShow ?? true,
     coverEnabled: raw.coverEnabled ?? true,
     coverTitle: raw.coverTitle ?? reportTitle,
+    coverTitleStyle: raw.coverTitleStyle ?? {},
     coverSubtitle: raw.coverSubtitle ?? "Report",
     coverNote: raw.coverNote ?? "",
     summaryEnabled: raw.summaryEnabled ?? true,
     summaryTitle: raw.summaryTitle ?? "执行摘要",
+    summaryTitleStyle: raw.summaryTitleStyle ?? {},
     summaryText: raw.summaryText ?? "",
     headerShow: raw.headerShow ?? true,
     footerShow: raw.footerShow ?? true,
     headerText: raw.headerText ?? reportTitle,
+    headerStyle: raw.headerStyle ?? {},
     footerText: raw.footerText ?? "Visual Document OS",
+    footerStyle: raw.footerStyle ?? {},
     showPageNumber: raw.showPageNumber ?? true,
+    sectionTitleStyle: raw.sectionTitleStyle ?? {},
     paginationStrategy: raw.paginationStrategy ?? "section",
     marginPreset: raw.marginPreset ?? "normal",
     marginTopMm: raw.marginTopMm ?? 14,

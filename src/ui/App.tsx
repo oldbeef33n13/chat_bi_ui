@@ -1,14 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
-import type { Command, CommandPlan, DocType, VDoc, VNode } from "../core/doc/types";
+import type { Command, CommandPlan, DocType, TemplateVariableDef, VDoc, VNode } from "../core/doc/types";
 import { CanvasPanel, preloadEditorChunk } from "./components/CanvasPanel";
 import { ChatBridgePanel } from "./components/ChatBridgePanel";
 import { CommandPalette, type PaletteCommand } from "./components/CommandPalette";
+import { DataEndpointManagerPanel } from "./components/DataEndpointManagerPanel";
 import { DocOutlinePanel } from "./components/DocOutlinePanel";
 import { DocRuntimeView } from "./components/DocRuntimeView";
 import { EditorTopToolbar } from "./components/EditorTopToolbar";
 import { InspectorPanel } from "./components/InspectorPanel";
-import { DocApiError, type DocContent, type DocMeta, type EditorDocType } from "./api/doc-repository";
+import { TemplateSchedulePanel } from "./components/TemplateSchedulePanel";
+import { TemplateVariableForm } from "./components/TemplateVariableForm";
+import { DocApiError, type DocContent, type DocMeta, type DocSeedTemplate, type EditorDocType } from "./api/doc-repository";
+import { HttpTemplateRuntimeRepository } from "./api/http-template-runtime-repository";
+import type { TemplateArtifact, TemplateRun } from "./api/template-runtime-repository";
+import { templateOutputByDocType } from "./api/template-runtime-repository";
 import { useDocLibrary } from "./hooks/use-doc-library";
 import { EditorProvider, useEditorStore } from "./state/editor-context";
 import { useSignalValue } from "./state/use-signal-value";
@@ -16,6 +22,7 @@ import { setEditorTelemetryContext } from "./telemetry/editor-telemetry";
 import { createAiTraceId, emitAiTelemetry, setAiTelemetryContext } from "./telemetry/ai-telemetry";
 import { explainPlan, inferCommandPlan } from "./utils/ai-command-plan";
 import { buildAlignCommands, buildAlignToContainerCommandResult, type AlignKind } from "./utils/alignment";
+import { buildTemplateVariableDefaults, coerceTemplateVariableValue } from "./utils/template-variables";
 import {
   loadPresentationRuntimeSettings,
   savePresentationRuntimeSettings,
@@ -26,21 +33,130 @@ import type { Persona } from "./types/persona";
 interface EditSession {
   docId: string;
   seed: VDoc;
-  saved: VDoc;
   live: VDoc;
-  draftRevision: number | null;
+  baseRevision: number;
 }
 
 interface DocDetailState {
   meta: DocMeta;
-  published: DocContent;
-  draft: DocContent;
+  content: DocContent;
+}
+
+interface SchedulePanelTemplateContext {
+  id: string;
+  name: string;
+  docType: EditorDocType;
+  templateVariables?: TemplateVariableDef[];
+  defaultVariables?: Record<string, unknown>;
+}
+
+interface BlankTemplateOption {
+  id: string;
+  label: string;
+  description: string;
+  docType: EditorDocType;
+  icon: string;
+  dashboardPreset?: "wallboard" | "workbench";
 }
 
 export type RouteState = { page: "library" } | { page: "detail"; docId: string; mode: "view" | "edit" | "present" };
 
 const DOC_TYPES: EditorDocType[] = ["dashboard", "report", "ppt"];
+const DOC_TYPE_LABELS: Record<EditorDocType, string> = {
+  dashboard: "Dashboard",
+  report: "Report",
+  ppt: "PPT"
+};
+const BLANK_TEMPLATE_OPTIONS: BlankTemplateOption[] = [
+  {
+    id: "blank-dashboard-wallboard",
+    label: "监控大屏",
+    description: "空白全屏大屏，适合值班大盘和电视墙",
+    docType: "dashboard",
+    icon: "⛶",
+    dashboardPreset: "wallboard"
+  },
+  {
+    id: "blank-dashboard-workbench",
+    label: "PC 工作台",
+    description: "空白页面工作台，适合首页和运营工作台",
+    docType: "dashboard",
+    icon: "▤",
+    dashboardPreset: "workbench"
+  },
+  {
+    id: "blank-report",
+    label: "空白报告",
+    description: "创建仅含空章节的报告模板",
+    docType: "report",
+    icon: "📝"
+  },
+  {
+    id: "blank-ppt",
+    label: "空白汇报",
+    description: "创建仅含空白页的汇报模板",
+    docType: "ppt",
+    icon: "▣"
+  }
+];
 const cloneDoc = (doc: VDoc): VDoc => structuredClone(doc);
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => window.setTimeout(resolve, ms));
+const SESSION_DRAFT_PREFIX = "chatbi.template.sessionDraft";
+
+const buildSessionDraftKey = (docId: string, baseRevision: number): string => `${SESSION_DRAFT_PREFIX}:${docId}:${baseRevision}`;
+
+const loadSessionDraft = (docId: string, baseRevision: number): VDoc | null => {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  const raw = window.sessionStorage.getItem(buildSessionDraftKey(docId, baseRevision));
+  if (!raw) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(raw) as VDoc;
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+};
+
+const saveSessionDraft = (docId: string, baseRevision: number, doc: VDoc): void => {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.sessionStorage.setItem(buildSessionDraftKey(docId, baseRevision), JSON.stringify(doc));
+};
+
+const clearSessionDraft = (docId: string, baseRevision: number): void => {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.sessionStorage.removeItem(buildSessionDraftKey(docId, baseRevision));
+};
+
+const clearAllSessionDrafts = (docId: string): void => {
+  if (typeof window === "undefined") {
+    return;
+  }
+  const prefix = `${SESSION_DRAFT_PREFIX}:${docId}:`;
+  for (let index = window.sessionStorage.length - 1; index >= 0; index -= 1) {
+    const key = window.sessionStorage.key(index);
+    if (key?.startsWith(prefix)) {
+      window.sessionStorage.removeItem(key);
+    }
+  }
+};
+
+const pickPreferredArtifact = (docType: EditorDocType, artifacts: TemplateArtifact[]): TemplateArtifact | undefined => {
+  if (docType === "report") {
+    return artifacts.find((item) => item.artifactType === "report_docx") ?? artifacts[0];
+  }
+  if (docType === "ppt") {
+    return artifacts.find((item) => item.artifactType === "ppt_pptx") ?? artifacts[0];
+  }
+  return artifacts.find((item) => item.artifactType === "dashboard_snapshot_json") ?? artifacts[0];
+};
 
 /**
  * 应用主壳：承接文档中心 -> 详情运行态 -> 编辑态完整闭环。
@@ -48,16 +164,29 @@ const cloneDoc = (doc: VDoc): VDoc => structuredClone(doc);
  */
 export function App(): JSX.Element {
   const [route, setRoute] = useState<RouteState>(() => parseRouteFromHash(window.location.hash));
-  const { repo, source, page, loading: listLoading, error: listError, filters, refresh, createDoc } = useDocLibrary();
+  const { repo, page, loading: listLoading, error: listError, filters, refresh, createDoc } = useDocLibrary();
+  const runtimeRepo = useMemo(() => new HttpTemplateRuntimeRepository("/api/v1"), []);
   const docs = page.items;
   const [advancedMode, setAdvancedMode] = useState(false);
-  const [previewDraft, setPreviewDraft] = useState(false);
-  const [dashboardPresetOpen, setDashboardPresetOpen] = useState(false);
+  const [createTemplatePanelOpen, setCreateTemplatePanelOpen] = useState(false);
+  const [dataEndpointPanelOpen, setDataEndpointPanelOpen] = useState(false);
+  const [schedulePanelTemplate, setSchedulePanelTemplate] = useState<SchedulePanelTemplateContext | null>(null);
   const [editSession, setEditSession] = useState<EditSession | null>(null);
   const [detail, setDetail] = useState<DocDetailState | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string>();
   const [actionError, setActionError] = useState<string>();
+  const [runtimeHint, setRuntimeHint] = useState<string>();
+  const [detailVariablePanelOpen, setDetailVariablePanelOpen] = useState(false);
+  const [detailVariableValues, setDetailVariableValues] = useState<Record<string, unknown>>({});
+  const [previewSnapshotDoc, setPreviewSnapshotDoc] = useState<VDoc | null>(null);
+  const [previewResolvedVariables, setPreviewResolvedVariables] = useState<Record<string, unknown>>({});
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [exportLoading, setExportLoading] = useState(false);
+  const [lastExportRun, setLastExportRun] = useState<TemplateRun | null>(null);
+  const [seedTemplates, setSeedTemplates] = useState<DocSeedTemplate[]>([]);
+  const [seedTemplatesLoading, setSeedTemplatesLoading] = useState(false);
+  const [seedTemplatesError, setSeedTemplatesError] = useState<string>();
 
   const currentRecord = route.page === "detail" ? detail?.meta ?? docs.find((item) => item.id === route.docId) : undefined;
   const currentDetailDoc = useMemo(() => {
@@ -67,10 +196,21 @@ export function App(): JSX.Element {
     if (route.page === "detail" && route.mode === "edit" && editSession?.docId === detail.meta.id) {
       return editSession.live;
     }
-    return previewDraft ? detail.draft.doc : detail.published.doc;
-  }, [detail, editSession, previewDraft, route]);
+    return detail.content.doc;
+  }, [detail, editSession, route]);
+  const activeDetailDoc = route.page === "detail" && route.mode !== "edit" ? previewSnapshotDoc ?? currentDetailDoc : currentDetailDoc;
+  const displayTitle = useMemo(() => {
+    if (route.page !== "detail") {
+      return "Visual Document OS";
+    }
+    const docTitle = route.mode === "edit" ? editSession?.live.title : activeDetailDoc?.title;
+    if (typeof docTitle === "string" && docTitle.trim().length > 0) {
+      return docTitle.trim();
+    }
+    return currentRecord?.name ?? "Visual Document OS";
+  }, [activeDetailDoc?.title, currentRecord?.name, editSession?.live.title, route]);
   const isEditDirty = useMemo(
-    () => (editSession ? JSON.stringify(editSession.live) !== JSON.stringify(editSession.saved) : false),
+    () => (editSession ? JSON.stringify(editSession.live) !== JSON.stringify(editSession.seed) : false),
     [editSession]
   );
 
@@ -79,12 +219,8 @@ export function App(): JSX.Element {
       setDetailLoading(true);
       setDetailError(undefined);
       try {
-        const [meta, published, draft] = await Promise.all([
-          repo.getDocMeta(docId),
-          repo.getPublishedDoc(docId),
-          repo.getDraftDoc(docId)
-        ]);
-        setDetail({ meta, published, draft });
+        const [meta, content] = await Promise.all([repo.getDocMeta(docId), repo.getDocContent(docId)]);
+        setDetail({ meta, content });
       } catch (error) {
         setDetail(null);
         setDetailError(toErrorText(error));
@@ -111,9 +247,50 @@ export function App(): JSX.Element {
   }, [route]);
 
   useEffect(() => {
-    setPreviewDraft(false);
     setActionError(undefined);
+    setRuntimeHint(undefined);
+    setDetailVariablePanelOpen(false);
+    setPreviewSnapshotDoc(null);
+    setPreviewResolvedVariables({});
+    setLastExportRun(null);
   }, [route.page === "detail" ? route.docId : "", route.page, route.page === "detail" ? route.mode : ""]);
+
+  useEffect(() => {
+    if (route.page !== "library") {
+      setDataEndpointPanelOpen(false);
+      setCreateTemplatePanelOpen(false);
+    }
+  }, [route.page]);
+
+  const loadSeedTemplates = useCallback(async (): Promise<void> => {
+    setSeedTemplatesLoading(true);
+    setSeedTemplatesError(undefined);
+    try {
+      const items = await repo.listSeedTemplates();
+      setSeedTemplates(items);
+    } catch (error) {
+      setSeedTemplatesError(toErrorText(error));
+    } finally {
+      setSeedTemplatesLoading(false);
+    }
+  }, [repo]);
+
+  useEffect(() => {
+    if (route.page !== "library") {
+      return;
+    }
+    void loadSeedTemplates();
+  }, [loadSeedTemplates, route.page]);
+
+  useEffect(() => {
+    if (!currentDetailDoc || route.page !== "detail" || route.mode === "edit") {
+      return;
+    }
+    setDetailVariableValues(buildTemplateVariableDefaults(currentDetailDoc.templateVariables));
+    setPreviewSnapshotDoc(null);
+    setPreviewResolvedVariables({});
+    setLastExportRun(null);
+  }, [currentDetailDoc, route.page, route.page === "detail" ? route.mode : "view"]);
 
   useEffect(() => {
     // 把文档上下文注入 AI 埋点全局上下文，避免每个组件重复传参。
@@ -181,32 +358,56 @@ export function App(): JSX.Element {
       setEditSession(null);
       return;
     }
-    if (editSession?.docId === detail.meta.id) {
+    if (editSession?.docId === detail.meta.id && editSession.baseRevision === detail.content.revision) {
       return;
     }
-    const seed = cloneDoc(detail.draft.doc);
+    const seed = cloneDoc(detail.content.doc);
+    const localDraft = loadSessionDraft(detail.meta.id, detail.content.revision);
     setEditSession({
       docId: detail.meta.id,
       seed,
-      saved: cloneDoc(seed),
-      live: cloneDoc(seed),
-      draftRevision: detail.draft.revision
+      live: cloneDoc(localDraft ?? seed),
+      baseRevision: detail.content.revision
     });
     setAdvancedMode(false);
     preloadEditorChunk(detail.meta.docType);
-  }, [detail, editSession?.docId, route]);
+  }, [detail, editSession?.baseRevision, editSession?.docId, route]);
+
+  useEffect(() => {
+    if (!editSession) {
+      return;
+    }
+    saveSessionDraft(editSession.docId, editSession.baseRevision, editSession.live);
+  }, [editSession]);
+
+  useEffect(() => {
+    if (!isEditDirty) {
+      return;
+    }
+    const onBeforeUnload = (event: BeforeUnloadEvent): void => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [isEditDirty]);
 
   const createDocByType = async (
     docType: EditorDocType,
     options?: {
       dashboardPreset?: "wallboard" | "workbench";
+      seedTemplateId?: string;
     }
   ): Promise<void> => {
     setActionError(undefined);
     try {
-      const created = await createDoc({ docType, dashboardPreset: options?.dashboardPreset });
+      const created = await createDoc({
+        docType,
+        dashboardPreset: options?.dashboardPreset,
+        seedTemplateId: options?.seedTemplateId
+      });
       preloadEditorChunk(docType);
-      setDashboardPresetOpen(false);
+      setCreateTemplatePanelOpen(false);
       setRoute({ page: "detail", docId: created.id, mode: "edit" });
     } catch (error) {
       setActionError(`新建失败: ${toErrorText(error)}`);
@@ -225,96 +426,129 @@ export function App(): JSX.Element {
     });
   }, [route]);
 
-  const saveDraft = async (): Promise<void> => {
-    if (!editSession) {
-      return;
-    }
+  const publishDoc = async (docId: string): Promise<void> => {
     setActionError(undefined);
+    setRuntimeHint(undefined);
     try {
-      const saved = await repo.saveDraft(editSession.docId, {
+      if (route.page !== "detail" || route.mode !== "edit" || !editSession || editSession.docId !== docId) {
+        return;
+      }
+      const result = await repo.publishDoc(docId, {
         doc: editSession.live,
-        baseRevision: editSession.draftRevision
+        baseRevision: editSession.baseRevision
       });
-      setDetail((prev) => {
-        if (!prev || prev.meta.id !== editSession.docId) {
-          return prev;
-        }
-        return {
-          ...prev,
-          meta: saved.meta,
-          draft: saved.draft
-        };
+      clearAllSessionDrafts(docId);
+      setDetail({ meta: result.meta, content: result.content });
+      const snapshot = cloneDoc(result.content.doc);
+      setEditSession({
+        docId,
+        seed: snapshot,
+        live: cloneDoc(snapshot),
+        baseRevision: result.content.revision
       });
-      setEditSession((prev) => (prev ? { ...prev, saved: cloneDoc(prev.live), draftRevision: saved.draft.revision } : prev));
+      setRuntimeHint("已发布当前改动");
       await refresh();
     } catch (error) {
-      setActionError(resolveActionError("保存草稿", error));
+      setActionError(resolveActionError("发布", error));
     }
   };
 
-  const publishDraft = async (docId: string): Promise<void> => {
-    // 优先使用编辑态最新草稿版本，避免发布旧 revision。
-    const draftRevision =
-      route.page === "detail" && route.mode === "edit" && editSession?.docId === docId ? editSession.draftRevision : detail?.draft.revision;
-    if (draftRevision === undefined || draftRevision === null) {
+  const restorePublished = (): void => {
+    if (!editSession || !detail || editSession.docId !== detail.meta.id) {
       return;
     }
-    setActionError(undefined);
-    try {
-      const result = await repo.publishDraft(docId, { fromDraftRevision: draftRevision });
-      setDetail({
-        meta: result.meta,
-        published: result.published,
-        draft: result.draft
-      });
-      setEditSession((prev) => {
-        if (!prev || prev.docId !== docId) {
-          return prev;
-        }
-        const snapshot = cloneDoc(result.draft.doc);
-        return {
-          ...prev,
-          seed: snapshot,
-          saved: cloneDoc(snapshot),
-          live: cloneDoc(snapshot),
-          draftRevision: result.draft.revision
-        };
-      });
-      setPreviewDraft(false);
-      await refresh();
-    } catch (error) {
-      setActionError(resolveActionError("发布草稿", error));
-    }
+    clearAllSessionDrafts(editSession.docId);
+    const snapshot = cloneDoc(detail.content.doc);
+    setEditSession({
+      docId: editSession.docId,
+      seed: snapshot,
+      live: cloneDoc(snapshot),
+      baseRevision: detail.content.revision
+    });
+    setRuntimeHint("已恢复到发布版本");
   };
 
-  const discardDraft = async (docId: string): Promise<void> => {
-    setActionError(undefined);
-    try {
-      const discarded = await repo.discardDraft(docId);
-      const published = detail?.meta.id === docId ? detail.published : await repo.getPublishedDoc(docId);
-      setDetail({
-        meta: discarded.meta,
-        published,
-        draft: discarded.draft
-      });
-      setEditSession((prev) => {
-        if (!prev || prev.docId !== docId) {
-          return prev;
-        }
-        const snapshot = cloneDoc(discarded.draft.doc);
-        return {
-          ...prev,
-          seed: snapshot,
-          saved: cloneDoc(snapshot),
-          live: cloneDoc(snapshot),
-          draftRevision: discarded.draft.revision
-        };
-      });
-      await refresh();
-    } catch (error) {
-      setActionError(resolveActionError("放弃草稿", error));
+  const updateDetailVariableValue = useCallback(
+    (key: string, value: unknown, variable?: TemplateVariableDef): void => {
+      setDetailVariableValues((prev) => ({
+        ...prev,
+        [key]: variable ? coerceTemplateVariableValue(variable, value) : value
+      }));
+    },
+    []
+  );
+
+  const openScheduleForTemplate = useCallback(
+    (template: { id: string; name: string; docType: EditorDocType; templateVariables?: TemplateVariableDef[]; defaultVariables?: Record<string, unknown> }) => {
+      setSchedulePanelTemplate(template);
+    },
+    []
+  );
+
+  const runTemplatePreview = useCallback(async (): Promise<void> => {
+    if (!currentRecord || route.page !== "detail" || route.mode === "edit") {
+      return;
     }
-  };
+    setPreviewLoading(true);
+    setActionError(undefined);
+    setRuntimeHint(undefined);
+    try {
+      const result = await runtimeRepo.previewTemplate(currentRecord.id, detailVariableValues);
+      setPreviewSnapshotDoc(result.snapshot);
+      setPreviewResolvedVariables(result.resolvedVariables);
+      setRuntimeHint("已生成动态预览");
+    } catch (error) {
+      setActionError(resolveActionError("动态预览", error));
+    } finally {
+      setPreviewLoading(false);
+    }
+  }, [currentRecord, detailVariableValues, route, runtimeRepo]);
+
+  const clearTemplatePreview = useCallback((): void => {
+    setPreviewSnapshotDoc(null);
+    setPreviewResolvedVariables({});
+    setRuntimeHint("已还原模板视图");
+  }, []);
+
+  const runTemplateExport = useCallback(async (): Promise<void> => {
+    if (!currentRecord || route.page !== "detail" || route.mode === "edit") {
+      return;
+    }
+    setExportLoading(true);
+    setActionError(undefined);
+    setRuntimeHint(undefined);
+    setLastExportRun(null);
+    try {
+      const accepted = await runtimeRepo.exportTemplate(currentRecord.id, {
+        outputType: templateOutputByDocType[currentRecord.docType],
+        variables: detailVariableValues
+      });
+      let latestRun: TemplateRun | null = null;
+      for (let attempt = 0; attempt < 30; attempt += 1) {
+        latestRun = await runtimeRepo.getRun(accepted.runId);
+        if (latestRun.status === "succeeded" || latestRun.status === "failed") {
+          break;
+        }
+        await sleep(250);
+      }
+      if (!latestRun) {
+        throw new Error("导出任务未返回执行结果");
+      }
+      setLastExportRun(latestRun);
+      if (latestRun.status === "failed") {
+        throw new Error(latestRun.errorMessage ?? "导出失败");
+      }
+      const artifact = pickPreferredArtifact(currentRecord.docType, latestRun.artifacts);
+      if (artifact) {
+        window.open(artifact.downloadUrl, "_blank", "noopener,noreferrer");
+      }
+      setRuntimeHint(`导出完成 · ${latestRun.id}`);
+    } catch (error) {
+      setActionError(resolveActionError("导出下载", error));
+    } finally {
+      setExportLoading(false);
+    }
+  }, [currentRecord, detailVariableValues, route, runtimeRepo]);
 
   if (route.page === "library") {
     return (
@@ -322,43 +556,28 @@ export function App(): JSX.Element {
         <div className="topbar">
           <span className="brand">Visual Document OS</span>
           <span className="chip">文档中心</span>
-          <span className="chip">数据源: {source === "api" ? "后端 API" : "本地兜底"}</span>
+          <span className="chip">数据源: 后端 API</span>
           {actionError ? <span className="chip" style={{ color: "#b91c1c" }}>{actionError}</span> : null}
           <div className="row">
+            <button className={`btn ${dataEndpointPanelOpen ? "primary" : ""}`} onClick={() => setDataEndpointPanelOpen((value) => !value)}>
+              数据接口
+            </button>
             <div className="tool-group tool-group-menu">
-              <button className={`btn ${dashboardPresetOpen ? "primary" : ""}`} onClick={() => setDashboardPresetOpen((value) => !value)}>
-                新建 Dashboard ▾
+              <button className={`btn ${createTemplatePanelOpen ? "primary" : ""}`} onClick={() => setCreateTemplatePanelOpen((value) => !value)}>
+                新建模板 ▾
               </button>
-              {dashboardPresetOpen ? (
-                <div className="toolbar-pop" style={{ minWidth: 260 }}>
-                  <div className="toolbar-pop-title">选择展示模式</div>
-                  <button className="toolbar-menu-item" onClick={() => void createDocByType("dashboard", { dashboardPreset: "wallboard" })}>
-                    <span className="toolbar-menu-icon">⛶</span>
-                    <span className="toolbar-menu-label">
-                      <strong>监控大屏</strong>
-                      <span className="muted" style={{ display: "block" }}>
-                        全屏适配，适合值班大屏和电视墙
-                      </span>
-                    </span>
-                  </button>
-                  <button className="toolbar-menu-item" onClick={() => void createDocByType("dashboard", { dashboardPreset: "workbench" })}>
-                    <span className="toolbar-menu-icon">▤</span>
-                    <span className="toolbar-menu-label">
-                      <strong>PC 工作台</strong>
-                      <span className="muted" style={{ display: "block" }}>
-                        页面滚动，适合首页和运营工作台
-                      </span>
-                    </span>
-                  </button>
-                </div>
+              {createTemplatePanelOpen ? (
+                <CreateTemplatePanel
+                  blankOptions={BLANK_TEMPLATE_OPTIONS}
+                  seeds={seedTemplates}
+                  seedsLoading={seedTemplatesLoading}
+                  seedsError={seedTemplatesError}
+                  onRetrySeeds={() => void loadSeedTemplates()}
+                  onCreateBlank={(option) => void createDocByType(option.docType, { dashboardPreset: option.dashboardPreset })}
+                  onCreateFromSeed={(seed) => void createDocByType(seed.docType, { seedTemplateId: seed.id })}
+                />
               ) : null}
             </div>
-            <button className="btn" onClick={() => void createDocByType("report")}>
-              新建 Report
-            </button>
-            <button className="btn" onClick={() => void createDocByType("ppt")}>
-              新建 PPT
-            </button>
           </div>
           <span className="chip">总数: {page.total}</span>
         </div>
@@ -366,7 +585,6 @@ export function App(): JSX.Element {
           docs={docs}
           loading={listLoading}
           error={listError}
-          source={source}
           filters={filters}
           pageIndex={page.page}
           pageSize={page.pageSize}
@@ -378,7 +596,10 @@ export function App(): JSX.Element {
             preloadEditorChunk(docType);
             setRoute({ page: "detail", docId, mode: "edit" });
           }}
+          onOpenSchedule={(doc) => setSchedulePanelTemplate({ id: doc.id, name: doc.name, docType: doc.docType })}
         />
+        <DataEndpointManagerPanel open={dataEndpointPanelOpen} onClose={() => setDataEndpointPanelOpen(false)} />
+        <TemplateSchedulePanel open={Boolean(schedulePanelTemplate)} template={schedulePanelTemplate ?? undefined} onClose={() => setSchedulePanelTemplate(null)} />
       </div>
     );
   }
@@ -445,29 +666,46 @@ export function App(): JSX.Element {
     return (
       <div className="app-shell">
         <div className="topbar">
-          <span className="brand">{currentRecord.name}</span>
+          <span className="brand">{displayTitle}</span>
           <span className="chip">{currentRecord.docType}</span>
-          <span className={`chip status-${currentRecord.status}`}>{currentRecord.status === "published" ? "已发布" : "草稿中"}</span>
+          <span className="chip status-published">已发布</span>
           <span className="chip">更新于 {formatUiTime(currentRecord.updatedAt)}</span>
+          <span className="chip">当前查看: {previewSnapshotDoc ? "动态快照" : "发布版"}</span>
+          {runtimeHint ? <span className="chip">{runtimeHint}</span> : null}
           {actionError ? <span className="chip" style={{ color: "#b91c1c" }}>{actionError}</span> : null}
           <div className="row">
-            {currentRecord.status === "draft" ? (
-              <button className="btn" onClick={() => setPreviewDraft((value) => !value)}>
-                {previewDraft ? "查看发布版" : "查看草稿版"}
-              </button>
-            ) : null}
-            {currentRecord.status === "draft" ? (
-              <button className="btn" disabled={!canPublish} onClick={() => void publishDraft(currentRecord.id)}>
-                发布草稿
-              </button>
-            ) : null}
-            {currentRecord.status === "draft" ? (
-              <button className="btn danger" disabled={!canPublish} onClick={() => void discardDraft(currentRecord.id)}>
-                放弃草稿
-              </button>
-            ) : null}
             <button className="btn" onClick={() => void loadDetail(currentRecord.id)}>
               刷新
+            </button>
+            {currentDetailDoc.templateVariables?.length ? (
+              <button className={`btn ${detailVariablePanelOpen ? "primary" : ""}`} onClick={() => setDetailVariablePanelOpen((value) => !value)}>
+                运行变量
+              </button>
+            ) : null}
+            <button className="btn" disabled={previewLoading} onClick={() => void runTemplatePreview()}>
+              {previewLoading ? "预览中..." : "动态预览"}
+            </button>
+            {previewSnapshotDoc ? (
+              <button className="btn" onClick={clearTemplatePreview}>
+                还原模板视图
+              </button>
+            ) : null}
+            <button className="btn" disabled={exportLoading} onClick={() => void runTemplateExport()}>
+              {exportLoading ? "导出中..." : currentRecord.docType === "dashboard" ? "导出快照" : "生成并下载"}
+            </button>
+            <button
+              className="btn"
+              onClick={() =>
+                openScheduleForTemplate({
+                  id: currentRecord.id,
+                  name: currentRecord.name,
+                  docType: currentRecord.docType,
+                  templateVariables: currentDetailDoc.templateVariables,
+                  defaultVariables: detailVariableValues
+                })
+              }
+            >
+              定时任务
             </button>
             <button className="btn" onClick={() => setRoute({ page: "detail", docId: currentRecord.id, mode: "present" })}>
               沉浸预览
@@ -480,7 +718,17 @@ export function App(): JSX.Element {
             </button>
           </div>
         </div>
-        <DetailPage record={currentRecord} doc={currentDetailDoc} previewDraft={previewDraft} />
+        <DetailPage
+          record={currentRecord}
+          doc={activeDetailDoc!}
+          variablePanelOpen={detailVariablePanelOpen}
+          variableDefs={currentDetailDoc.templateVariables ?? []}
+          variableValues={detailVariableValues}
+          resolvedVariables={previewResolvedVariables}
+          exportRun={lastExportRun}
+          onVariableChange={updateDetailVariableValue}
+        />
+        <TemplateSchedulePanel open={Boolean(schedulePanelTemplate)} template={schedulePanelTemplate ?? undefined} onClose={() => setSchedulePanelTemplate(null)} />
       </div>
     );
   }
@@ -489,10 +737,8 @@ export function App(): JSX.Element {
     return (
       <PresentationPage
         record={currentRecord}
-        doc={currentDetailDoc}
-        previewDraft={previewDraft}
+        doc={activeDetailDoc!}
         onBack={() => setRoute({ page: "detail", docId: currentRecord.id, mode: "view" })}
-        onTogglePreviewDraft={() => setPreviewDraft((value) => !value)}
       />
     );
   }
@@ -533,17 +779,19 @@ export function App(): JSX.Element {
   return (
     <div className="app-shell">
       <div className="topbar">
-        <span className="brand">{currentRecord.name}</span>
+        <span className="brand">{displayTitle}</span>
         <span className="chip">{currentRecord.docType}</span>
-        <span className={`chip status-${currentRecord.status}`}>{currentRecord.status === "published" ? "已发布" : "草稿中"}</span>
-        <span className="chip">草稿版本: r{editSession.draftRevision ?? "-"}</span>
-        <span className={`chip ${isEditDirty ? "chip-warning" : ""}`}>{isEditDirty ? "有未保存改动" : "已保存"}</span>
+        <span className="chip status-published">发布版本</span>
+        <span className="chip">当前版本: r{currentRecord.currentRevision}</span>
+        <span className={`chip ${isEditDirty ? "chip-warning" : ""}`}>{isEditDirty ? "本地未发布修改" : "与发布版本一致"}</span>
+        <span className="chip">未发布修改仅保存在当前浏览器会话</span>
+        {runtimeHint ? <span className="chip">{runtimeHint}</span> : null}
         {actionError ? <span className="chip" style={{ color: "#b91c1c" }}>{actionError}</span> : null}
         <div className="row">
-          <button className="btn" onClick={() => void saveDraft()}>
-            保存草稿
+          <button className="btn" onClick={restorePublished} disabled={!isEditDirty}>
+            恢复发布版
           </button>
-          <button className="btn primary" disabled={!canPublish} onClick={() => void publishDraft(currentRecord.id)}>
+          <button className="btn primary" disabled={!canPublish} onClick={() => void publishDoc(currentRecord.id)}>
             发布
           </button>
           <button className="btn" onClick={() => void loadDetail(currentRecord.id)}>
@@ -561,7 +809,7 @@ export function App(): JSX.Element {
         </div>
       </div>
       <EditorProvider
-        key={`${editSession.docId}_${editSession.draftRevision ?? 0}`}
+        key={`${editSession.docId}_${editSession.baseRevision}`}
         initialDoc={editSession.seed}
         onDocChange={onEditDocSnapshot}
       >
@@ -571,11 +819,83 @@ export function App(): JSX.Element {
   );
 }
 
+function CreateTemplatePanel({
+  blankOptions,
+  seeds,
+  seedsLoading,
+  seedsError,
+  onRetrySeeds,
+  onCreateBlank,
+  onCreateFromSeed
+}: {
+  blankOptions: BlankTemplateOption[];
+  seeds: DocSeedTemplate[];
+  seedsLoading: boolean;
+  seedsError?: string;
+  onRetrySeeds: () => void;
+  onCreateBlank: (option: BlankTemplateOption) => void;
+  onCreateFromSeed: (seed: DocSeedTemplate) => void;
+}): JSX.Element {
+  const groupedSeeds = useMemo(() => {
+    return DOC_TYPES.map((docType) => ({
+      docType,
+      label: DOC_TYPE_LABELS[docType],
+      items: seeds.filter((item) => item.docType === docType)
+    })).filter((group) => group.items.length > 0);
+  }, [seeds]);
+
+  return (
+    <div className="toolbar-pop create-template-pop">
+      <div className="toolbar-pop-title">空白创建</div>
+      <div className="create-template-grid">
+        {blankOptions.map((option) => (
+          <button key={option.id} className="create-template-card" onClick={() => onCreateBlank(option)}>
+            <span className="create-template-icon">{option.icon}</span>
+            <span className="create-template-name">{option.label}</span>
+            <span className="create-template-desc">{option.description}</span>
+          </button>
+        ))}
+      </div>
+
+      <div className="toolbar-pop-title">从示例创建</div>
+      {seedsLoading ? <div className="create-template-empty">正在加载示例模板...</div> : null}
+      {seedsError ? (
+        <div className="create-template-empty">
+          <span>{seedsError}</span>
+          <button className="btn" onClick={onRetrySeeds}>
+            重试
+          </button>
+        </div>
+      ) : null}
+      {!seedsLoading && !seedsError ? (
+        groupedSeeds.length > 0 ? (
+          <div className="create-template-groups">
+            {groupedSeeds.map((group) => (
+              <div key={group.docType} className="create-template-group">
+                <div className="create-template-group-title">{group.label}</div>
+                <div className="create-template-grid create-template-grid-seed">
+                  {group.items.map((seed) => (
+                    <button key={seed.id} className="create-template-card create-template-card-seed" onClick={() => onCreateFromSeed(seed)}>
+                      <span className="create-template-name">{seed.name}</span>
+                      <span className="create-template-desc">{seed.description}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="create-template-empty">当前没有可用示例模板。</div>
+        )
+      ) : null}
+    </div>
+  );
+}
+
 function LibraryPage({
   docs,
   loading,
   error,
-  source,
   filters,
   pageIndex,
   pageSize,
@@ -583,20 +903,21 @@ function LibraryPage({
   onFiltersChange,
   onRetry,
   onOpen,
-  onEdit
+  onEdit,
+  onOpenSchedule
 }: {
   docs: DocMeta[];
   loading: boolean;
   error?: string;
-  source: "api" | "local";
-  filters: { type: EditorDocType | "all"; status: "published" | "draft" | "all"; q: string; page: number; pageSize: number };
+  filters: { type: EditorDocType | "all"; q: string; page: number; pageSize: number };
   pageIndex: number;
   pageSize: number;
   total: number;
-  onFiltersChange: (next: Partial<{ type: EditorDocType | "all"; status: "published" | "draft" | "all"; q: string; page: number; pageSize: number }>) => void;
+  onFiltersChange: (next: Partial<{ type: EditorDocType | "all"; q: string; page: number; pageSize: number }>) => void;
   onRetry: () => void;
   onOpen: (docId: string) => void;
   onEdit: (docId: string, docType: EditorDocType) => void;
+  onOpenSchedule: (doc: Pick<DocMeta, "id" | "name" | "docType">) => void;
 }): JSX.Element {
   const [keywordInput, setKeywordInput] = useState(filters.q);
   useEffect(() => {
@@ -622,16 +943,6 @@ function LibraryPage({
           ))}
         </div>
         <div className="row">
-          <select
-            className="select"
-            value={filters.status}
-            onChange={(event) => onFiltersChange({ status: event.target.value as "all" | "published" | "draft", page: 1 })}
-            style={{ width: 120 }}
-          >
-            <option value="all">全部状态</option>
-            <option value="published">已发布</option>
-            <option value="draft">草稿中</option>
-          </select>
           <input
             className="input"
             style={{ maxWidth: 320 }}
@@ -650,7 +961,7 @@ function LibraryPage({
       </div>
       {error ? <div className="doc-empty">{error}</div> : null}
       <div className="row" style={{ justifyContent: "space-between" }}>
-        <span className="chip">数据源: {source === "api" ? "后端 API" : "本地兜底"}</span>
+        <span className="chip">数据源: 后端 API</span>
         <span className="chip">
           第 {pageIndex} 页 / 共 {Math.max(1, Math.ceil(total / pageSize))} 页
         </span>
@@ -662,7 +973,7 @@ function LibraryPage({
           <article key={item.id} className="doc-card">
             <div className="row" style={{ justifyContent: "space-between" }}>
               <strong>{item.name}</strong>
-              <span className={`chip status-${item.status}`}>{item.status === "published" ? "已发布" : "草稿中"}</span>
+              <span className="chip status-published">已发布</span>
             </div>
             <div className="muted">{item.description}</div>
             <div className="row">
@@ -677,6 +988,9 @@ function LibraryPage({
               ))}
             </div>
             <div className="row" style={{ justifyContent: "flex-end" }}>
+              <button className="btn" onClick={() => onOpenSchedule(item)}>
+                定时任务
+              </button>
               <button className="btn" onClick={() => onOpen(item.id)}>
                 查看详情
               </button>
@@ -699,7 +1013,26 @@ function LibraryPage({
   );
 }
 
-function DetailPage({ record, doc, previewDraft }: { record: DocMeta; doc: VDoc; previewDraft: boolean }): JSX.Element {
+function DetailPage({
+  record,
+  doc,
+  variablePanelOpen,
+  variableDefs,
+  variableValues,
+  resolvedVariables,
+  exportRun,
+  onVariableChange
+}: {
+  record: DocMeta;
+  doc: VDoc;
+  variablePanelOpen: boolean;
+  variableDefs: TemplateVariableDef[];
+  variableValues: Record<string, unknown>;
+  resolvedVariables: Record<string, unknown>;
+  exportRun: TemplateRun | null;
+  onVariableChange: (key: string, value: unknown, variable?: TemplateVariableDef) => void;
+}): JSX.Element {
+  const resolvedEntries = Object.entries(resolvedVariables);
   return (
     <div className="runtime-shell">
       <div className="runtime-header">
@@ -708,10 +1041,55 @@ function DetailPage({ record, doc, previewDraft }: { record: DocMeta; doc: VDoc;
           <span className="muted">{record.description}</span>
         </div>
         <div className="row">
-          {record.status === "draft" ? <span className="chip">当前查看: {previewDraft ? "草稿版" : "发布版"}</span> : null}
+          <span className="chip">当前查看: 发布版</span>
           <span className="chip">类型: {record.docType}</span>
         </div>
       </div>
+      {variablePanelOpen && variableDefs.length > 0 ? (
+        <div className="runtime-variable-panel">
+          <div className="row" style={{ justifyContent: "space-between" }}>
+            <strong>运行变量</strong>
+            <span className="muted">preview / export / schedule 共用同一套变量定义</span>
+          </div>
+          <TemplateVariableForm
+            variables={variableDefs}
+            values={variableValues}
+            onChange={(key, value) => {
+              const variable = variableDefs.find((item) => item.key === key);
+              onVariableChange(key, value, variable);
+            }}
+            compact
+          />
+        </div>
+      ) : null}
+      {resolvedEntries.length > 0 ? (
+        <div className="runtime-variable-panel" style={{ paddingTop: 0 }}>
+          <div className="row" style={{ flexWrap: "wrap" }}>
+            <strong>本次预览变量</strong>
+            {resolvedEntries.map(([key, value]) => (
+              <span key={key} className="chip">
+                {key}={formatRuntimeValue(value)}
+              </span>
+            ))}
+          </div>
+        </div>
+      ) : null}
+      {exportRun ? (
+        <div className="runtime-variable-panel" style={{ paddingTop: 0 }}>
+          <div className="row" style={{ justifyContent: "space-between" }}>
+            <strong>最近导出</strong>
+            <span className="chip">状态: {exportRun.status}</span>
+          </div>
+          <div className="row" style={{ flexWrap: "wrap" }}>
+            {exportRun.artifacts.map((artifact) => (
+              <a key={artifact.id} className="runtime-artifact-link" href={artifact.downloadUrl} target="_blank" rel="noreferrer">
+                <strong>{artifact.fileName}</strong>
+                <span className="muted">{artifact.artifactType}</span>
+              </a>
+            ))}
+          </div>
+        </div>
+      ) : null}
       <div className="runtime-body">
         <DocRuntimeView doc={doc} />
       </div>
@@ -722,15 +1100,11 @@ function DetailPage({ record, doc, previewDraft }: { record: DocMeta; doc: VDoc;
 function PresentationPage({
   record,
   doc,
-  previewDraft,
-  onBack,
-  onTogglePreviewDraft
+  onBack
 }: {
   record: DocMeta;
   doc: VDoc;
-  previewDraft: boolean;
   onBack: () => void;
-  onTogglePreviewDraft: () => void;
 }): JSX.Element {
   const hostRef = useRef<HTMLDivElement>(null);
   const [fullscreen, setFullscreen] = useState(false);
@@ -861,14 +1235,9 @@ function PresentationPage({
           <strong>{record.name}</strong>
           <span className="chip">{record.docType}</span>
           <span className="chip">{tenFootMode ? "10ft 大屏模式" : "标准模式"}</span>
-          {record.status === "draft" ? <span className="chip">当前查看: {previewDraft ? "草稿版" : "发布版"}</span> : null}
+          <span className="chip">当前查看: 发布版</span>
         </div>
         <div className="row">
-          {record.status === "draft" ? (
-            <button className="btn" onClick={onTogglePreviewDraft}>
-              {previewDraft ? "查看发布版" : "查看草稿版"}
-            </button>
-          ) : null}
           <button className="btn" onClick={() => setPresentationSettings((current) => ({ ...current, fitMode: current.fitMode === "fill" ? "contain" : "fill" }))}>
             {presentationSettings.fitMode === "fill" ? "铺满优先" : "完整显示"}
           </button>
@@ -1078,6 +1447,20 @@ const formatUiTime = (iso: string): string => {
   return dt.toLocaleString("zh-CN", { hour12: false });
 };
 
+const formatRuntimeValue = (value: unknown): string => {
+  if (value === undefined || value === null) {
+    return "";
+  }
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+};
+
 const resolveActionError = (action: string, error: unknown): string => {
   if (error instanceof DocApiError && error.status === 409) {
     return `${action}失败：版本冲突，请刷新后重试。`;
@@ -1087,6 +1470,22 @@ const resolveActionError = (action: string, error: unknown): string => {
 
 const isTypingTarget = (target: HTMLElement | null): boolean =>
   !!target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT" || target.isContentEditable);
+
+const INSPECTOR_WIDTH_STORAGE_KEY = "chatbi.editor.inspectorWidth";
+const DEFAULT_INSPECTOR_WIDTH = 380;
+const MIN_INSPECTOR_WIDTH = 340;
+const MAX_INSPECTOR_WIDTH = 520;
+
+const clampInspectorWidth = (value: number): number => Math.min(MAX_INSPECTOR_WIDTH, Math.max(MIN_INSPECTOR_WIDTH, Math.round(value)));
+
+const loadInspectorWidth = (): number => {
+  if (typeof window === "undefined") {
+    return DEFAULT_INSPECTOR_WIDTH;
+  }
+  const raw = window.localStorage.getItem(INSPECTOR_WIDTH_STORAGE_KEY);
+  const parsed = raw ? Number(raw) : Number.NaN;
+  return Number.isFinite(parsed) ? clampInspectorWidth(parsed) : DEFAULT_INSPECTOR_WIDTH;
+};
 
 function AppLayout({ advanced }: { advanced: boolean }): JSX.Element {
   // 产品策略：默认简化模式，开启“更多设置”后进入 analyst 能力层。
@@ -1105,6 +1504,9 @@ function AppLayout({ advanced }: { advanced: boolean }): JSX.Element {
   const [aiQuickPlan, setAiQuickPlan] = useState("");
   const [aiQuickExplain, setAiQuickExplain] = useState("");
   const [presentPreviewOpen, setPresentPreviewOpen] = useState(false);
+  const [inspectorWidth, setInspectorWidth] = useState(loadInspectorWidth);
+  const [inspectorResizing, setInspectorResizing] = useState(false);
+  const inspectorResizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
 
   useEffect(() => {
     if (!advanced) {
@@ -1126,6 +1528,46 @@ function AppLayout({ advanced }: { advanced: boolean }): JSX.Element {
       setAiQuickDockOpen(false);
     }
   }, [rightPanelTab]);
+
+  useEffect(() => {
+    window.localStorage.setItem(INSPECTOR_WIDTH_STORAGE_KEY, String(inspectorWidth));
+  }, [inspectorWidth]);
+
+  useEffect(() => {
+    if (!inspectorResizing) {
+      return;
+    }
+    const handleMouseMove = (event: MouseEvent): void => {
+      const state = inspectorResizeRef.current;
+      if (!state) {
+        return;
+      }
+      const delta = state.startX - event.clientX;
+      setInspectorWidth(clampInspectorWidth(state.startWidth + delta));
+    };
+    const handleMouseUp = (): void => {
+      inspectorResizeRef.current = null;
+      setInspectorResizing(false);
+    };
+    const previousUserSelect = document.body.style.userSelect;
+    document.body.style.userSelect = "none";
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      document.body.style.userSelect = previousUserSelect;
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [inspectorResizing]);
+
+  const beginInspectorResize = (event: ReactMouseEvent<HTMLDivElement>): void => {
+    event.preventDefault();
+    inspectorResizeRef.current = {
+      startX: event.clientX,
+      startWidth: inspectorWidth
+    };
+    setInspectorResizing(true);
+  };
 
   const inferredQuickPlan = useMemo(
     () => inferCommandPlan(aiQuickPrompt, selection.primaryId, doc?.root),
@@ -1599,7 +2041,10 @@ function AppLayout({ advanced }: { advanced: boolean }): JSX.Element {
           onOpenCommandPalette={() => setShowCommandPalette(true)}
           onOpenPresentPreview={() => setPresentPreviewOpen(true)}
         />
-        <section className={`editor-workspace doc-${doc?.docType ?? "unknown"}`}>
+        <section
+          className={`editor-workspace doc-${doc?.docType ?? "unknown"} ${inspectorResizing ? "is-resizing" : ""}`}
+          style={{ ["--editor-side-right-width" as string]: `${inspectorWidth}px` }}
+        >
           {doc?.docType === "dashboard" ? null : (
             <aside className="panel editor-side-left">
               <DocOutlinePanel />
@@ -1616,6 +2061,13 @@ function AppLayout({ advanced }: { advanced: boolean }): JSX.Element {
             />
           </section>
           <aside className="panel editor-side-right ai-side-panel">
+            <div
+              className={`editor-side-resizer ${inspectorResizing ? "active" : ""}`}
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="调整属性面板宽度"
+              onMouseDown={beginInspectorResize}
+            />
             <div className="panel-header">
               <div className="tabs">
                 <button className={`tab-btn ${rightPanelTab === "inspector" ? "active" : ""}`} onClick={() => setRightPanelTab("inspector")}>

@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useEffect } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { VDoc } from "../../core/doc/types";
 import { createPptDoc } from "../../core/doc/defaults";
 import { EditorProvider, useEditorStore } from "../state/editor-context";
@@ -10,6 +10,11 @@ import { PptEditor } from "./PptEditor";
 vi.mock("../../runtime/chart/EChartView", () => ({
   EChartView: () => <div data-testid="echart-mock" />
 }));
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
 
 function DocObserver({ onDoc }: { onDoc: (doc: VDoc) => void }): null {
   const store = useEditorStore();
@@ -54,6 +59,12 @@ const createDataTransfer = (): DataTransfer => {
     setDragImage: () => undefined
   } as DataTransfer;
 };
+
+const createJsonResponse = (payload: unknown): Response =>
+  new Response(JSON.stringify(payload), {
+    status: 200,
+    headers: { "Content-Type": "application/json" }
+  });
 
 describe("PptEditor direct manipulation", () => {
   it("supports marquee multi selection on the active slide", async () => {
@@ -340,6 +351,56 @@ describe("PptEditor direct manipulation", () => {
       const firstSlide = latestDoc.root.children?.[0];
       const bars = (firstSlide?.children ?? []).filter((node) => node.kind === "chart" && String((node.props as Record<string, unknown> | undefined)?.chartType ?? "") === "bar");
       expect(bars).toHaveLength(1);
+    });
+  });
+
+  it("uploads an image from the side insert panel and inserts it onto the slide", async () => {
+    const fetchMock = vi.fn(async () =>
+      createJsonResponse({
+        id: "asset_ppt_image",
+        name: "示意图",
+        originalFileName: "topology.png",
+        fileUrl: "/files/assets/asset_ppt_image",
+        mimeType: "image/png",
+        widthPx: 640,
+        heightPx: 360,
+        sizeBytes: 2048
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    let latestDoc = createPptDoc();
+
+    const { container } = render(
+      <EditorProvider initialDoc={latestDoc}>
+        <UiSeed insertPanelOpen />
+        <DocObserver
+          onDoc={(doc) => {
+            latestDoc = structuredClone(doc);
+          }}
+        />
+        <PptEditor doc={latestDoc} />
+      </EditorProvider>
+    );
+
+    const panel = screen.getByTestId("ppt-insert-panel");
+    fireEvent.click(within(panel).getAllByRole("button", { name: /图片/ })[0]!);
+    const input = container.querySelector('input[type="file"]');
+    if (!(input instanceof HTMLInputElement)) {
+      throw new Error("missing image file input");
+    }
+    fireEvent.change(input, {
+      target: {
+        files: [new File(["png"], "topology.png", { type: "image/png" })]
+      }
+    });
+
+    await waitFor(() => {
+      const slide = latestDoc.root.children?.[0];
+      const imageNode = (slide?.children ?? []).find((node) => node.kind === "image");
+      expect(imageNode?.kind).toBe("image");
+      expect((imageNode?.props as Record<string, unknown> | undefined)?.assetId).toBe("asset_ppt_image");
+      expect(latestDoc.assets?.some((asset) => asset.assetId === "asset_ppt_image")).toBe(true);
     });
   });
 });

@@ -6,15 +6,49 @@
 
 ```bash
 npm install
+mvn -f tools/pom.xml -pl chatbi-app-server -am org.springframework.boot:spring-boot-maven-plugin:run
 npm run dev
 ```
 
-### 本地 API Mock（默认开启）
+## 一站式启动与测试
 
-- 开发模式会自动拦截 `/api/v1`，并使用 `localexample/docs.seed.json` 初始化数据。
-- 运行时数据会落盘到 `localexample/docs.db.json`（新建/保存/发布会实时写入）。
-- 关闭本地拦截：
-  - PowerShell: `$env:VITE_LOCAL_API='false'; npm run dev`
+推荐直接使用统一脚本：
+
+```bash
+npm run stack:init
+npm run stack:dev
+```
+
+`stack:dev` 会在控制台输出：
+
+- 运行时数据目录
+- 后端日志文件路径
+- 前端日志文件路径
+
+如果本地 `.runtime/storage/dev` 中的 SQLite/Flyway 状态和当前代码不兼容，脚本会自动重置该目录并重试一次。
+
+展示模式：
+
+```bash
+npm run stack:showcase
+```
+
+全链路自动化测试：
+
+```bash
+npm run test:all
+```
+
+更多说明见 [本地启动初始化与自动化测试](./doc/%E6%9C%AC%E5%9C%B0%E5%90%AF%E5%8A%A8%E5%88%9D%E5%A7%8B%E5%8C%96%E4%B8%8E%E8%87%AA%E5%8A%A8%E5%8C%96%E6%B5%8B%E8%AF%95.md)。
+开发分工和本地调试说明见 [开发与测试指南](./doc/%E5%BC%80%E5%8F%91%E4%B8%8E%E6%B5%8B%E8%AF%95%E6%8C%87%E5%8D%97.md)。
+
+### 本地联调
+
+- 前端默认代理 `/api`、`/files` 到 `http://localhost:18080`
+- 后端 App 入口：`tools/chatbi-app-server`
+- 如需改目标地址：
+  - PowerShell: `$env:VITE_API_TARGET='http://localhost:18080'; npm run dev`
+- `localexample/` 现在仅保留为离线种子数据与样例参考，不再作为主联调通道
 
 ## 已落地模块
 

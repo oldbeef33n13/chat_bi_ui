@@ -136,3 +136,44 @@ describe("chart-adapter grid toggle", () => {
     expect(option.yAxis?.splitLine?.show).toBe(false);
   });
 });
+
+describe("chart-adapter title style", () => {
+  it("maps titleStyle and subtitleStyle into echarts title config", () => {
+    const spec: ChartSpec = {
+      chartType: "line",
+      titleText: "告警趋势",
+      subtitleText: "最近7天",
+      titleStyle: {
+        fg: "#ef4444",
+        fontSize: 20,
+        bold: true,
+        bg: "#fef2f2",
+        borderC: "#fecaca",
+        borderW: 1,
+        radius: 10,
+        pad: 8
+      },
+      subtitleStyle: {
+        fg: "#64748b",
+        fontSize: 12,
+        italic: true
+      },
+      bindings: [
+        { role: "x", field: "day" },
+        { role: "y", field: "value", agg: "sum" }
+      ]
+    };
+    const rows = [
+      { day: "Mon", value: 10 },
+      { day: "Tue", value: 12 }
+    ];
+
+    const option = chartSpecToOption(spec, rows) as Record<string, any>;
+    expect(option.title?.textStyle?.color).toBe("#ef4444");
+    expect(option.title?.textStyle?.fontSize).toBe(20);
+    expect(option.title?.backgroundColor).toBe("#fef2f2");
+    expect(option.title?.borderColor).toBe("#fecaca");
+    expect(option.title?.subtextStyle?.color).toBe("#64748b");
+    expect(option.title?.subtextStyle?.fontSize).toBe(12);
+  });
+});

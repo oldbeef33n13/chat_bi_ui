@@ -10,9 +10,8 @@ public record TemplateMetaResponse(
   String description,
   List<String> tags,
   Instant updatedAt,
-  String status,
+  int currentRevision,
   boolean canEdit,
-  boolean canPublish,
-  TemplateRevisionsResponse revisions
+  boolean canPublish
 ) {
 }

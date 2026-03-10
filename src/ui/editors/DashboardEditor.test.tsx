@@ -56,6 +56,26 @@ const createDataTransfer = (): DataTransfer => {
 };
 
 describe("DashboardEditor direct manipulation", () => {
+  it("does not render a duplicate floating title for chart cards with intrinsic titles", async () => {
+    let latestDoc = createDashboardDoc();
+
+    render(
+      <EditorProvider initialDoc={latestDoc}>
+        <DocObserver
+          onDoc={(doc) => {
+            latestDoc = structuredClone(doc);
+          }}
+        />
+        <DashboardEditor doc={latestDoc} />
+      </EditorProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByText("告警趋势")).toBeNull();
+      expect(screen.getAllByText("卡片布局").length).toBeGreaterThan(0);
+    });
+  });
+
   it("supports marquee multi selection on the dashboard canvas", async () => {
     let latestDoc = createDashboardDoc();
 

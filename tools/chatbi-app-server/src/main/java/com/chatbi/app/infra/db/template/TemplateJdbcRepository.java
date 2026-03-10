@@ -1,20 +1,16 @@
 package com.chatbi.app.infra.db.template;
 
-import com.chatbi.app.domain.template.RevisionChannel;
 import com.chatbi.app.domain.template.StoredTemplateState;
 import com.chatbi.app.domain.template.TemplateContent;
 import com.chatbi.app.domain.template.TemplateListQuery;
 import com.chatbi.app.domain.template.TemplateMeta;
 import com.chatbi.app.domain.template.TemplatePage;
-import com.chatbi.app.domain.template.TemplateRevisions;
+import com.chatbi.app.domain.template.TemplateRevisionEntry;
 import com.chatbi.app.domain.template.TemplateType;
-import com.chatbi.app.domain.template.WorkspaceStatus;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.sql.ResultSet;
-import java.sql.SQLException;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -47,7 +43,7 @@ public class TemplateJdbcRepository {
     String whereClause = buildWhereClause(query);
     MapSqlParameterSource params = buildListParams(query);
     String sql = """
-      select id, template_type, name, description, status, tags_json, published_revision, draft_revision, created_at, updated_at
+      select id, template_type, name, description, tags_json, current_revision, created_at, updated_at
       from template
       %s
       order by updated_at desc
@@ -66,7 +62,7 @@ public class TemplateJdbcRepository {
 
   public Optional<StoredTemplateState> findTemplateState(String templateId) {
     String sql = """
-      select id, template_type, name, description, status, tags_json, published_revision, draft_revision, created_at, updated_at
+      select id, template_type, name, description, tags_json, current_revision, created_at, updated_at
       from template
       where id = :id
       """;
@@ -74,37 +70,44 @@ public class TemplateJdbcRepository {
     return rows.stream().findFirst();
   }
 
-  public Optional<TemplateContent> findContent(String templateId, RevisionChannel channel, int revision) {
+  public Optional<TemplateContent> findContent(String templateId, int revision) {
     String sql = """
       select template_json, revision_no
       from template_revision
       where template_id = :templateId
-        and channel = :channel
         and revision_no = :revision
       limit 1
       """;
     List<TemplateContent> rows = jdbcTemplate.query(
       sql,
-      Map.of("templateId", templateId, "channel", channel.value(), "revision", revision),
+      Map.of("templateId", templateId, "revision", revision),
       contentRowMapper()
     );
     return rows.stream().findFirst();
   }
 
-  public boolean existsRevision(String templateId, RevisionChannel channel, int revision) {
+  public List<TemplateRevisionEntry> listRevisions(String templateId, int currentRevision) {
     String sql = """
-      select count(1)
+      select revision_no, created_at, created_by
       from template_revision
       where template_id = :templateId
-        and channel = :channel
-        and revision_no = :revision
+      order by revision_no desc
       """;
-    Long count = jdbcTemplate.queryForObject(
-      sql,
-      Map.of("templateId", templateId, "channel", channel.value(), "revision", revision),
-      Long.class
+    return jdbcTemplate.query(sql, Map.of("templateId", templateId), (rs, rowNum) -> new TemplateRevisionEntry(
+      rs.getInt("revision_no"),
+      Instant.parse(rs.getString("created_at")),
+      rs.getString("created_by"),
+      rs.getInt("revision_no") == currentRevision
+    ));
+  }
+
+  public int findMaxRevisionNumber(String templateId) {
+    Integer revision = jdbcTemplate.queryForObject(
+      "select coalesce(max(revision_no), 0) from template_revision where template_id = :templateId",
+      Map.of("templateId", templateId),
+      Integer.class
     );
-    return count != null && count > 0;
+    return revision == null ? 0 : revision;
   }
 
   public void insertTemplate(
@@ -112,17 +115,15 @@ public class TemplateJdbcRepository {
     TemplateType templateType,
     String name,
     String description,
-    WorkspaceStatus status,
     List<String> tags,
-    int publishedRevision,
-    int draftRevision,
+    int currentRevision,
     Instant now
   ) {
     String sql = """
       insert into template (
-        id, template_type, name, description, status, tags_json, published_revision, draft_revision, created_at, updated_at
+        id, template_type, name, description, tags_json, current_revision, created_at, updated_at
       ) values (
-        :id, :templateType, :name, :description, :status, :tagsJson, :publishedRevision, :draftRevision, :createdAt, :updatedAt
+        :id, :templateType, :name, :description, :tagsJson, :currentRevision, :createdAt, :updatedAt
       )
       """;
     jdbcTemplate.update(sql, new MapSqlParameterSource()
@@ -130,10 +131,8 @@ public class TemplateJdbcRepository {
       .addValue("templateType", templateType.value())
       .addValue("name", name)
       .addValue("description", description)
-      .addValue("status", status.value())
       .addValue("tagsJson", writeJson(tags))
-      .addValue("publishedRevision", publishedRevision)
-      .addValue("draftRevision", draftRevision)
+      .addValue("currentRevision", currentRevision)
       .addValue("createdAt", now.toString())
       .addValue("updatedAt", now.toString()));
   }
@@ -141,31 +140,28 @@ public class TemplateJdbcRepository {
   public void insertRevision(
     String templateId,
     int revision,
-    RevisionChannel channel,
     JsonNode dsl,
     Instant now,
     String createdBy
   ) {
     String sql = """
       insert into template_revision (
-        template_id, revision_no, channel, template_json, created_at, created_by
+        template_id, revision_no, template_json, created_at, created_by
       ) values (
-        :templateId, :revision, :channel, :templateJson, :createdAt, :createdBy
+        :templateId, :revision, :templateJson, :createdAt, :createdBy
       )
       """;
     jdbcTemplate.update(sql, new MapSqlParameterSource()
       .addValue("templateId", templateId)
       .addValue("revision", revision)
-      .addValue("channel", channel.value())
       .addValue("templateJson", writeJson(dsl))
       .addValue("createdAt", now.toString())
       .addValue("createdBy", createdBy));
   }
 
-  public void updateDraftPointer(
+  public void updateCurrentPointer(
     String templateId,
-    int draftRevision,
-    WorkspaceStatus status,
+    int currentRevision,
     String name,
     String description,
     List<String> tags,
@@ -173,8 +169,7 @@ public class TemplateJdbcRepository {
   ) {
     String sql = """
       update template
-      set draft_revision = :draftRevision,
-          status = :status,
+      set current_revision = :currentRevision,
           name = :name,
           description = :description,
           tags_json = :tagsJson,
@@ -183,69 +178,7 @@ public class TemplateJdbcRepository {
       """;
     jdbcTemplate.update(sql, new MapSqlParameterSource()
       .addValue("id", templateId)
-      .addValue("draftRevision", draftRevision)
-      .addValue("status", status.value())
-      .addValue("name", name)
-      .addValue("description", description)
-      .addValue("tagsJson", writeJson(tags))
-      .addValue("updatedAt", now.toString()));
-  }
-
-  public void updatePublishedPointer(
-    String templateId,
-    int publishedRevision,
-    WorkspaceStatus status,
-    String name,
-    String description,
-    List<String> tags,
-    Instant now
-  ) {
-    String sql = """
-      update template
-      set published_revision = :publishedRevision,
-          status = :status,
-          name = :name,
-          description = :description,
-          tags_json = :tagsJson,
-          updated_at = :updatedAt
-      where id = :id
-      """;
-    jdbcTemplate.update(sql, new MapSqlParameterSource()
-      .addValue("id", templateId)
-      .addValue("publishedRevision", publishedRevision)
-      .addValue("status", status.value())
-      .addValue("name", name)
-      .addValue("description", description)
-      .addValue("tagsJson", writeJson(tags))
-      .addValue("updatedAt", now.toString()));
-  }
-
-  public void updateDraftAndPublishedPointers(
-    String templateId,
-    int publishedRevision,
-    int draftRevision,
-    WorkspaceStatus status,
-    String name,
-    String description,
-    List<String> tags,
-    Instant now
-  ) {
-    String sql = """
-      update template
-      set published_revision = :publishedRevision,
-          draft_revision = :draftRevision,
-          status = :status,
-          name = :name,
-          description = :description,
-          tags_json = :tagsJson,
-          updated_at = :updatedAt
-      where id = :id
-      """;
-    jdbcTemplate.update(sql, new MapSqlParameterSource()
-      .addValue("id", templateId)
-      .addValue("publishedRevision", publishedRevision)
-      .addValue("draftRevision", draftRevision)
-      .addValue("status", status.value())
+      .addValue("currentRevision", currentRevision)
       .addValue("name", name)
       .addValue("description", description)
       .addValue("tagsJson", writeJson(tags))
@@ -259,9 +192,6 @@ public class TemplateJdbcRepository {
     if (!isBlankOrAll(query.type())) {
       params.addValue("templateType", query.type().trim().toLowerCase());
     }
-    if (!isBlankOrAll(query.status())) {
-      params.addValue("status", query.status().trim().toLowerCase());
-    }
     if (query.q() != null && !query.q().isBlank()) {
       params.addValue("q", "%" + query.q().trim().toLowerCase() + "%");
     }
@@ -272,9 +202,6 @@ public class TemplateJdbcRepository {
     StringBuilder where = new StringBuilder("where 1 = 1");
     if (!isBlankOrAll(query.type())) {
       where.append(" and lower(template_type) = :templateType");
-    }
-    if (!isBlankOrAll(query.status())) {
-      where.append(" and lower(status) = :status");
     }
     if (query.q() != null && !query.q().isBlank()) {
       where.append(" and (lower(name) like :q or lower(description) like :q or lower(tags_json) like :q)");
@@ -294,10 +221,9 @@ public class TemplateJdbcRepository {
       rs.getString("description"),
       readTags(rs.getString("tags_json")),
       Instant.parse(rs.getString("updated_at")),
-      WorkspaceStatus.fromValue(rs.getString("status")),
+      rs.getInt("current_revision"),
       true,
-      true,
-      new TemplateRevisions(rs.getInt("published_revision"), rs.getInt("draft_revision"))
+      true
     );
   }
 
@@ -308,9 +234,7 @@ public class TemplateJdbcRepository {
       rs.getString("name"),
       rs.getString("description"),
       readTags(rs.getString("tags_json")),
-      WorkspaceStatus.fromValue(rs.getString("status")),
-      rs.getInt("published_revision"),
-      rs.getInt("draft_revision"),
+      rs.getInt("current_revision"),
       Instant.parse(rs.getString("created_at")),
       Instant.parse(rs.getString("updated_at"))
     );

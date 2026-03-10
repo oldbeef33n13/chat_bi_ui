@@ -1,6 +1,6 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useEffect } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { VDoc } from "../../core/doc/types";
 import { createReportDoc, defaultChartSpec } from "../../core/doc/defaults";
 import { findNodeById } from "../utils/node-tree";
@@ -57,8 +57,36 @@ const createDataTransfer = (): DataTransfer => {
   } as DataTransfer;
 };
 
+const createJsonResponse = (payload: unknown): Response =>
+  new Response(JSON.stringify(payload), {
+    status: 200,
+    headers: { "Content-Type": "application/json" }
+  });
+
 afterEach(() => {
   resetEditorTelemetryContext();
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
+
+class TestIntersectionObserver implements IntersectionObserver {
+  readonly root = null;
+  readonly rootMargin = "0px";
+  readonly thresholds = [0];
+  disconnect(): void {}
+  observe(): void {}
+  takeRecords(): IntersectionObserverEntry[] {
+    return [];
+  }
+  unobserve(): void {}
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+beforeEach(() => {
+  vi.stubGlobal("IntersectionObserver", TestIntersectionObserver);
 });
 
 const openAdvancedLayout = (): void => {
@@ -214,16 +242,19 @@ describe("ReportEditor insertion anchors", () => {
   it("does not open a blank-click insert popover on the section canvas", async () => {
     let latestDoc = createRowActionDoc();
 
-    render(
-      <EditorProvider initialDoc={latestDoc}>
-        <DocObserver
-          onDoc={(doc) => {
-            latestDoc = structuredClone(doc);
-          }}
-        />
-        <ReportEditor doc={latestDoc} />
-      </EditorProvider>
-    );
+    await act(async () => {
+      render(
+        <EditorProvider initialDoc={latestDoc}>
+          <DocObserver
+            onDoc={(doc) => {
+              latestDoc = structuredClone(doc);
+            }}
+          />
+          <ReportEditor doc={latestDoc} />
+        </EditorProvider>
+      );
+      await Promise.resolve();
+    });
 
     const page = screen.getByTestId(`report-canvas-page-${latestDoc.root.children?.[0]?.id}-0`);
     fireEvent.mouseDown(page, { clientX: 120, clientY: 32 });
@@ -299,6 +330,56 @@ describe("ReportEditor insertion anchors", () => {
 
     dispose();
     expect(events.some((event) => event.stage === "apply" && event.action === "insert_block_on_canvas")).toBe(true);
+  });
+
+  it("uploads an image from the side insert panel and inserts it into the section canvas", async () => {
+    const fetchMock = vi.fn(async () =>
+      createJsonResponse({
+        id: "asset_report_image",
+        name: "拓扑图",
+        originalFileName: "report-topology.png",
+        fileUrl: "/files/assets/asset_report_image",
+        mimeType: "image/png",
+        widthPx: 800,
+        heightPx: 480,
+        sizeBytes: 4096
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    let latestDoc = createRowActionDoc();
+
+    const { container } = render(
+      <EditorProvider initialDoc={latestDoc}>
+        <UiSeeder openReportInsertPanel />
+        <DocObserver
+          onDoc={(doc) => {
+            latestDoc = structuredClone(doc);
+          }}
+        />
+        <ReportEditor doc={latestDoc} />
+      </EditorProvider>
+    );
+
+    const panel = screen.getByTestId("report-insert-panel");
+    fireEvent.click(within(panel).getAllByRole("button", { name: /图片/ })[0]!);
+    const input = container.querySelector('input[type="file"]');
+    if (!(input instanceof HTMLInputElement)) {
+      throw new Error("missing image file input");
+    }
+    fireEvent.change(input, {
+      target: {
+        files: [new File(["png"], "report-topology.png", { type: "image/png" })]
+      }
+    });
+
+    await waitFor(() => {
+      const firstSection = latestDoc.root.children?.[0];
+      const imageNode = (firstSection?.children ?? []).find((node) => node.kind === "image");
+      expect(imageNode?.kind).toBe("image");
+      expect((imageNode?.props as Record<string, unknown> | undefined)?.assetId).toBe("asset_report_image");
+      expect(latestDoc.assets?.some((asset) => asset.assetId === "asset_report_image")).toBe(true);
+    });
   });
 
   it("shows row layout preview on preset hover", async () => {
@@ -615,16 +696,19 @@ describe("ReportEditor insertion anchors", () => {
   it("keeps the section canvas toolbar lightweight for multi selection", async () => {
     let latestDoc = createRowActionDoc();
 
-    render(
-      <EditorProvider initialDoc={latestDoc}>
-        <DocObserver
-          onDoc={(doc) => {
-            latestDoc = structuredClone(doc);
-          }}
-        />
-        <ReportEditor doc={latestDoc} />
-      </EditorProvider>
-    );
+    await act(async () => {
+      render(
+        <EditorProvider initialDoc={latestDoc}>
+          <DocObserver
+            onDoc={(doc) => {
+              latestDoc = structuredClone(doc);
+            }}
+          />
+          <ReportEditor doc={latestDoc} />
+        </EditorProvider>
+      );
+      await Promise.resolve();
+    });
 
     const chartSurface = screen.getByTestId("report-canvas-block-chart_left").querySelector(".report-node-surface");
     const textSurface = screen.getByTestId("report-canvas-block-text_story").querySelector(".report-node-surface");

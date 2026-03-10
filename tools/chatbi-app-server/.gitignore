@@ -2,3 +2,6 @@ target/
 storage/app.db
 storage/*.db
 storage/**/*.db
+storage/assets/**
+storage/artifacts/**
+!storage/.gitkeep

@@ -1,15 +1,23 @@
 import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
-import { createLocalExampleApiPlugin } from "./localexample/local-api-plugin";
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
-  const localApiEnabled = env.VITE_LOCAL_API !== "false";
 
   return {
-    plugins: [react(), createLocalExampleApiPlugin({ enabled: localApiEnabled })],
+    plugins: [react()],
     server: {
-      port: 5173
+      port: 5173,
+      proxy: {
+        "/api": {
+          target: env.VITE_API_TARGET || "http://localhost:18080",
+          changeOrigin: true
+        },
+        "/files": {
+          target: env.VITE_API_TARGET || "http://localhost:18080",
+          changeOrigin: true
+        }
+      }
     },
     build: {
       chunkSizeWarningLimit: 900,

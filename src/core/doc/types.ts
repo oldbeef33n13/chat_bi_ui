@@ -31,7 +31,9 @@ export interface VLayout {
 export interface VStyle {
   tokenId?: string;
   bg?: string;
+  bgOpacity?: number;
   fg?: string;
+  opacity?: number;
   borderW?: number;
   borderC?: string;
   radius?: number;
@@ -44,13 +46,35 @@ export interface VStyle {
   italic?: boolean;
   underline?: boolean;
   align?: "left" | "center" | "right";
+  valign?: "top" | "middle" | "bottom";
+  writingMode?: "horizontal-tb" | "vertical-rl";
+  lineHeight?: number;
+  letterSpacing?: number;
 }
 
 export interface VDataBinding {
-  sourceId: string;
+  sourceId?: string;
+  endpointId?: string;
   queryId?: string;
-  params?: Record<string, string | number | boolean | string[]>;
+  params?: Record<string, unknown>;
+  paramBindings?: Record<
+    string,
+    {
+      from: "const" | "templateVar" | "systemVar" | "filter";
+      value?: unknown;
+      key?: string;
+    }
+  >;
   filterRefs?: string[];
+}
+
+export interface TemplateVariableDef {
+  key: string;
+  label?: string;
+  type: "string" | "number" | "boolean" | "date" | "datetime";
+  required?: boolean;
+  defaultValue?: unknown;
+  description?: string;
 }
 
 export type BindingRole =
@@ -126,6 +150,8 @@ export interface ChartSpec {
   chartType: ChartType;
   titleText?: string;
   subtitleText?: string;
+  titleStyle?: VStyle;
+  subtitleStyle?: VStyle;
   bindings: FieldBinding[];
   computedFields?: Array<{ name: string; expression: string }>;
   legendShow?: boolean;
@@ -153,6 +179,7 @@ export interface ChartSpec {
 
 export interface DashboardProps {
   dashTitle?: string;
+  titleStyle?: VStyle;
   displayMode?: DashboardDisplayMode;
   designWidthPx?: number;
   designHeightPx?: number;
@@ -166,8 +193,10 @@ export interface DashboardProps {
   showFilterBar?: boolean;
   headerShow?: boolean;
   headerText?: string;
+  headerStyle?: VStyle;
   footerShow?: boolean;
   footerText?: string;
+  footerStyle?: VStyle;
 }
 
 export interface ReportProps {
@@ -184,14 +213,19 @@ export interface ReportProps {
   marginLeftMm?: number;
   coverEnabled?: boolean;
   coverTitle?: string;
+  coverTitleStyle?: VStyle;
   coverSubtitle?: string;
   coverNote?: string;
   summaryEnabled?: boolean;
   summaryTitle?: string;
+  summaryTitleStyle?: VStyle;
   summaryText?: string;
   headerText?: string;
+  headerStyle?: VStyle;
   footerText?: string;
+  footerStyle?: VStyle;
   showPageNumber?: boolean;
+  sectionTitleStyle?: VStyle;
   /**
    * 报告页正文内边距（像素）：用于 Web 预览与导出间距映射。
    */
@@ -214,8 +248,10 @@ export interface DeckProps {
   defaultBg?: string;
   masterShowHeader?: boolean;
   masterHeaderText?: string;
+  headerStyle?: VStyle;
   masterShowFooter?: boolean;
   masterFooterText?: string;
+  footerStyle?: VStyle;
   masterShowSlideNumber?: boolean;
   masterAccentColor?: string;
   /**
@@ -297,6 +333,7 @@ export interface TablePivotSpec {
 
 export interface TableSpec {
   titleText?: string;
+  titleStyle?: VStyle;
   columns?: TableColumnSpec[];
   headerRows?: TableHeaderCellSpec[][];
   mergeCells?: TableMergeSpec[];
@@ -391,6 +428,7 @@ export interface VDoc {
   title?: string;
   locale?: string;
   themeId?: string;
+  templateVariables?: TemplateVariableDef[];
   assets?: AssetRef[];
   dataSources?: DataSourceDef[];
   queries?: QueryDef[];

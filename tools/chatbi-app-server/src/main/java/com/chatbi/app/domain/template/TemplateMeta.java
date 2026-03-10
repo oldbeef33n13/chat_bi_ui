@@ -10,9 +10,8 @@ public record TemplateMeta(
   String description,
   List<String> tags,
   Instant updatedAt,
-  WorkspaceStatus status,
+  int currentRevision,
   boolean canEdit,
-  boolean canPublish,
-  TemplateRevisions revisions
+  boolean canPublish
 ) {
 }

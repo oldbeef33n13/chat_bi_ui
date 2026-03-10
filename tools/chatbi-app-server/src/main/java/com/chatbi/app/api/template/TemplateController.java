@@ -1,12 +1,16 @@
 package com.chatbi.app.api.template;
 
+import com.chatbi.app.application.render.TemplateSnapshotService;
 import com.chatbi.app.application.template.TemplateService;
 import com.chatbi.app.domain.template.TemplateContent;
+import com.chatbi.app.domain.template.TemplateDocument;
 import com.chatbi.app.domain.template.TemplateMeta;
 import com.chatbi.app.domain.template.TemplatePage;
+import com.chatbi.app.domain.template.TemplateRevisionEntry;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
@@ -25,27 +29,33 @@ import org.springframework.web.bind.annotation.RestController;
 public class TemplateController {
 
   private final TemplateService templateService;
+  private final TemplateSnapshotService templateSnapshotService;
 
-  public TemplateController(TemplateService templateService) {
+  public TemplateController(TemplateService templateService, TemplateSnapshotService templateSnapshotService) {
     this.templateService = templateService;
+    this.templateSnapshotService = templateSnapshotService;
   }
 
   @GetMapping
   public TemplatePageResponse listTemplates(
     @RequestParam(defaultValue = "all") String type,
-    @RequestParam(defaultValue = "all") String status,
     @RequestParam(defaultValue = "") String q,
     @RequestParam(defaultValue = "1") @Min(1) int page,
     @RequestParam(defaultValue = "20") @Min(1) @Max(100) int pageSize
   ) {
-    TemplatePage result = templateService.listTemplates(type, status, q, page, pageSize);
+    TemplatePage result = templateService.listTemplates(type, q, page, pageSize);
     return TemplateResponseMapper.toPageResponse(result);
   }
 
+  @GetMapping("/seeds")
+  public TemplateSeedListResponse listSeedTemplates() {
+    return TemplateResponseMapper.toSeedListResponse(templateService.listSeedDefinitions());
+  }
+
   @PostMapping
-  public ResponseEntity<TemplateVersionBundleResponse> createTemplate(@Valid @RequestBody CreateTemplateRequest request) {
+  public ResponseEntity<TemplateDocumentResponse> createTemplate(@Valid @RequestBody CreateTemplateRequest request) {
     return ResponseEntity.status(HttpStatus.CREATED).body(
-      TemplateResponseMapper.toBundleResponse(templateService.createTemplate(request))
+      TemplateResponseMapper.toDocumentResponse(templateService.createTemplate(request))
     );
   }
 
@@ -55,42 +65,45 @@ public class TemplateController {
     return TemplateResponseMapper.toMetaResponse(meta);
   }
 
-  @GetMapping("/{templateId}/draft")
-  public TemplateContentResponse getDraft(@PathVariable String templateId) {
-    TemplateContent content = templateService.getDraft(templateId);
+  @GetMapping("/{templateId}/content")
+  public TemplateContentResponse getContent(@PathVariable String templateId) {
+    TemplateContent content = templateService.getCurrent(templateId);
     return TemplateResponseMapper.toContentResponse(content);
   }
 
-  @GetMapping("/{templateId}/published")
-  public TemplateContentResponse getPublished(@PathVariable String templateId) {
-    TemplateContent content = templateService.getPublished(templateId);
-    return TemplateResponseMapper.toContentResponse(content);
-  }
-
-  @PutMapping("/{templateId}/draft")
-  public TemplateSaveDraftResponse saveDraft(
-    @PathVariable String templateId,
-    @Valid @RequestBody SaveDraftRequest request
-  ) {
-    return TemplateResponseMapper.toSaveDraftResponse(
-      templateService.saveDraft(templateId, request),
-      templateService.getDraft(templateId)
-    );
+  @GetMapping("/{templateId}/revisions")
+  public List<TemplateRevisionResponse> listRevisions(@PathVariable String templateId) {
+    List<TemplateRevisionEntry> revisions = templateService.listRevisions(templateId);
+    return revisions.stream().map(TemplateResponseMapper::toRevisionResponse).toList();
   }
 
   @PostMapping("/{templateId}/publish")
-  public TemplateVersionBundleResponse publishDraft(
+  public TemplateDocumentResponse publish(
     @PathVariable String templateId,
-    @RequestBody(required = false) PublishTemplateRequest request
+    @Valid @RequestBody PublishTemplateRequest request
   ) {
-    return TemplateResponseMapper.toBundleResponse(
-      templateService.publishDraft(templateId, request == null ? null : request.fromDraftRevision())
+    return TemplateResponseMapper.toDocumentResponse(
+      templateService.publish(templateId, request.dsl(), request.baseRevision())
     );
   }
 
-  @PostMapping("/{templateId}/discard-draft")
-  public TemplateSaveDraftResponse discardDraft(@PathVariable String templateId) {
-    TemplateMeta meta = templateService.discardDraft(templateId);
-    return TemplateResponseMapper.toSaveDraftResponse(meta, templateService.getDraft(templateId));
+  @PostMapping("/{templateId}/restore/{revision}")
+  public TemplateDocumentResponse restoreRevision(@PathVariable String templateId, @PathVariable int revision) {
+    TemplateDocument document = templateService.restoreRevision(templateId, revision);
+    return TemplateResponseMapper.toDocumentResponse(document);
+  }
+
+  @PostMapping("/{templateId}/preview")
+  public TemplatePreviewResponse previewTemplate(
+    @PathVariable String templateId,
+    @RequestBody(required = false) CreatePreviewRequest request
+  ) {
+    return TemplatePreviewResponseMapper.toResponse(
+      templateSnapshotService.previewTemplate(
+        templateId,
+        request == null ? null : request.dsl(),
+        request == null ? null : request.variables()
+      )
+    );
   }
 }

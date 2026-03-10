@@ -1,40 +1,20 @@
 # localexample 本地测试数据
 
-该目录用于本地开发时模拟 `/api/v1` 后端接口，避免没有后端时出现 404。
+该目录现在只用于保留历史离线样例和种子数据参考，不再作为前端开发环境的默认 API 来源。
 
 ## 文件说明
 
 - `docs.seed.json`
-  - 默认种子文档。
-  - 首次启动开发服务时，会按该文件初始化文档库。
-  - `version` 升级时会自动进行种子迁移，刷新默认演示文档（保留非种子文档）。
+  - 历史样例模板数据。
+  - 可用于补测试、补种子或手工迁移到后端 `templates`。
 - `docs.db.json`
-  - 运行时数据库文件（自动生成）。
-  - 新建文档、保存草稿、发布、放弃草稿都会写回该文件。
+  - 历史本地 mock 运行数据。
+  - 当前主链已不再自动生成或写回该文件。
 
-## 如何使用
+## 当前定位
 
-1. 执行 `npm run dev`。
-2. 访问前端页面，文档请求会走本地拦截 API。
-3. 在页面中新建/保存后，可直接查看 `localexample/docs.db.json`。
-
-## 可用接口（拦截）
-
-- `GET /api/v1/docs`
-- `GET /api/v1/docs/:id`
-- `GET /api/v1/docs/:id/published`
-- `GET /api/v1/docs/:id/draft`
-- `POST /api/v1/docs`
-- `PUT /api/v1/docs/:id/draft`
-- `POST /api/v1/docs/:id/publish`
-- `POST /api/v1/docs/:id/discard-draft`
-
-## 开关
-
-- 默认开启本地 API 拦截。
-- 如需关闭，启动时设置环境变量：
-  - PowerShell: `$env:VITE_LOCAL_API='false'; npm run dev`
-
-## 重置
-
-删除 `docs.db.json` 后重启 `npm run dev`，会按 `docs.seed.json` 重新初始化。
+- 默认开发链路：`vite -> /api,/files -> chatbi-app-server`
+- `localexample/` 仅保留为：
+  - 离线数据参考
+  - 样例 DSL 来源
+  - 迁移或补测试时的静态素材

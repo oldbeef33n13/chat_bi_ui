@@ -1,7 +1,8 @@
 import { defaultChartSpec } from "../../core/doc/defaults";
-import type { ChartType, TableSpec, VDoc, VNode } from "../../core/doc/types";
+import type { ChartType, ImageProps, TableSpec, VDoc, VNode } from "../../core/doc/types";
 import { prefixedId } from "../../core/utils/id";
 import { buildChartNode } from "./chart-recommend";
+import { buildImageNode } from "./image-assets";
 import { findNodeById } from "./node-tree";
 import {
   buildReportCanvasInsertNodePlan,
@@ -15,7 +16,7 @@ export interface ReportInsertItem {
   description: string;
   icon: string;
   badge: string;
-  kind: "chart" | "table" | "text";
+  kind: "chart" | "table" | "text" | "image";
   chartType?: ChartType;
   tablePreset?: "basic" | "multi-header" | "pivot";
   textTemplate?: "title" | "body" | "note";
@@ -134,6 +135,15 @@ const REPORT_INSERT_LIBRARY: ReportInsertItem[] = [
     kind: "text",
     textTemplate: "note",
     defaultSpan: { gw: 4, gh: 3 }
+  },
+  {
+    id: "media.image",
+    label: "图片",
+    description: "上传后插入",
+    icon: "▣",
+    badge: "媒体",
+    kind: "image",
+    defaultSpan: { gw: 6, gh: 4 }
   }
 ];
 
@@ -200,7 +210,12 @@ const buildTableSpecByPreset = (preset: NonNullable<ReportInsertItem["tablePrese
   };
 };
 
-const buildReportInsertNode = (doc: VDoc, section: VNode, item: ReportInsertItem): VNode => {
+const buildReportInsertNode = (
+  doc: VDoc,
+  section: VNode,
+  item: ReportInsertItem,
+  imageAsset?: { assetId: string; title?: string }
+): VNode => {
   const binding = resolveDefaultDataBinding(doc);
   if (item.kind === "chart") {
     const chartNode = buildChartNode({
@@ -241,6 +256,19 @@ const buildReportInsertNode = (doc: VDoc, section: VNode, item: ReportInsertItem
         gh: item.defaultSpan.gh
       }
     };
+  }
+  if (item.kind === "image" && imageAsset) {
+    return buildImageNode({
+      assetId: imageAsset.assetId,
+      title: imageAsset.title ?? item.label,
+      layout: {
+        mode: "grid",
+        gx: 0,
+        gy: 0,
+        gw: item.defaultSpan.gw,
+        gh: item.defaultSpan.gh
+      }
+    });
   }
   const textValue =
     item.textTemplate === "title"
@@ -326,6 +354,11 @@ export const resolveReportInsertGroups = ({
       id: "text",
       label: "文本",
       items: REPORT_INSERT_LIBRARY.filter((item) => item.kind === "text")
+    },
+    {
+      id: "media",
+      label: "媒体",
+      items: REPORT_INSERT_LIBRARY.filter((item) => item.kind === "image")
     }
   );
   return groups;
@@ -335,7 +368,8 @@ export const buildReportInsertItemPlan = ({
   doc,
   sectionId,
   item,
-  point
+  point,
+  imageAsset
 }: {
   doc: VDoc;
   sectionId: string;
@@ -344,12 +378,16 @@ export const buildReportInsertItemPlan = ({
     x: number;
     y: number;
   };
+  imageAsset?: {
+    assetId: string;
+    title?: string;
+  };
 }): ReportCanvasPlan | null => {
   const section = findNodeById(doc.root, sectionId);
-  if (!section || section.kind !== "section") {
+  if (!section || section.kind !== "section" || (item.kind === "image" && !imageAsset)) {
     return null;
   }
-  const node = buildReportInsertNode(doc, section, item);
+  const node = buildReportInsertNode(doc, section, item, imageAsset);
   return buildReportCanvasInsertNodePlan(
     doc,
     sectionId,

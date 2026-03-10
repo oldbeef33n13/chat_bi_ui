@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 import type { TableSpec } from "../../core/doc/types";
 import { buildTableRenderModel } from "./table-adapter";
+import { resolveTextContainerStyle, resolveTextContentStyle } from "../../ui/utils/node-style";
 
 interface TableViewProps {
   spec?: TableSpec | Record<string, unknown>;
@@ -22,7 +23,11 @@ export function TableView({ spec, rows, height = "100%" }: TableViewProps): JSX.
 
   return (
     <div className="bi-table-wrap" style={wrapperStyle}>
-      {model.titleText ? <div className="bi-table-title">{model.titleText}</div> : null}
+      {model.titleText ? (
+        <div className="bi-table-title" style={resolveTextContainerStyle(model.titleStyle)}>
+          <div style={resolveTextContentStyle(model.titleStyle)}>{model.titleText}</div>
+        </div>
+      ) : null}
       <table className="bi-table">
         <colgroup>
           {model.columns.map((column) => (

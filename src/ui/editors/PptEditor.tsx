@@ -1,20 +1,25 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
-import type { ChartSpec, TableSpec, VDoc, VNode } from "../../core/doc/types";
+import type { ChartSpec, DeckProps, ImageProps, TableSpec, VDoc, VNode } from "../../core/doc/types";
 import { DataEngine } from "../../runtime/data/data-engine";
 import { EChartView } from "../../runtime/chart/EChartView";
 import { TableView } from "../../runtime/table/TableView";
+import { HttpAssetRepository } from "../api/http-asset-repository";
 import { FloatingLayer } from "../components/FloatingLayer";
 import { EditorInsertPanel, type EditorInsertPanelItem } from "../components/EditorInsertPanel";
+import { NodeDataState } from "../components/NodeDataState";
+import { NodeTextBlock } from "../components/NodeTextBlock";
 import { useNodeRows } from "../hooks/use-node-rows";
 import { useDataEngine } from "../hooks/use-data-engine";
 import { useEditorStore } from "../state/editor-context";
 import { useSignalValue } from "../state/use-signal-value";
+import { upsertDocAsset } from "../utils/doc-assets";
 import { resolveAncestorIdByKind } from "../utils/node-tree";
 import { buildCanvasSelectionRect, isCanvasSelectionGesture, resolveCanvasSelectionIds } from "../utils/canvas-selection";
 import { buildDuplicateNodesPlan } from "../utils/duplicate-nodes";
 import { isAdditiveSelectionModifier, isTypingTarget } from "../utils/editor-input";
 import { resolveSideInsertPanelStyle } from "../utils/editor-insert-layout";
 import {
+  buildPptImageNode,
   buildPptInsertNode,
   clearPptInsertItemDrag,
   decodePptInsertItem,
@@ -23,6 +28,15 @@ import {
   resolvePptInsertRect,
   type PptInsertItem
 } from "../utils/ppt-insert";
+import { resolveImageAsset, resolveImageNodeTitle } from "../utils/dashboard-surface";
+import {
+  isRemoteDataNode,
+  resolveNodeDisplayTitle,
+  resolveNodeSurfaceStyle,
+  resolveNodeTitleStyle,
+  resolveTitleTextStyle,
+  shouldRenderOuterNodeTitle
+} from "../utils/node-style";
 
 interface PptEditorProps {
   doc: VDoc;
@@ -60,6 +74,7 @@ export function PptEditor({ doc, showNavigator = true }: PptEditorProps): JSX.El
   const store = useEditorStore();
   const selection = useSignalValue(store.selection);
   const ui = useSignalValue(store.ui);
+  const assetRepoRef = useRef(new HttpAssetRepository("/api/v1"));
   const { engine, dataVersion } = useDataEngine(doc.dataSources ?? [], doc.queries ?? [], { debounceMs: 120 });
   const slides = (doc.root.children ?? []).filter((node) => node.kind === "slide");
   const selectedSlideId = resolveAncestorIdByKind(doc.root, selection.primaryId, "slide");
@@ -71,7 +86,7 @@ export function PptEditor({ doc, showNavigator = true }: PptEditorProps): JSX.El
   const [insertSearch, setInsertSearch] = useState("");
   const [insertPreview, setInsertPreview] = useState<{ itemId: string; label: string; rect: { x: number; y: number; w: number; h: number } } | null>(null);
   const snapEnabled = (doc.root.props as Record<string, unknown>)?.editorSnapEnabled === undefined ? true : Boolean((doc.root.props as Record<string, unknown>)?.editorSnapEnabled);
-  const rootProps = (doc.root.props ?? {}) as Record<string, unknown>;
+  const rootProps = (doc.root.props ?? {}) as DeckProps & Record<string, unknown>;
   const masterShowHeader = rootProps.masterShowHeader === undefined ? true : Boolean(rootProps.masterShowHeader);
   const masterHeaderText = String(rootProps.masterHeaderText ?? doc.title ?? "");
   const masterShowFooter = rootProps.masterShowFooter === undefined ? true : Boolean(rootProps.masterShowFooter);
@@ -85,6 +100,8 @@ export function PptEditor({ doc, showNavigator = true }: PptEditorProps): JSX.El
   const masterFooterHeightPx = Math.max(12, Number(rootProps.masterFooterHeightPx ?? 22) || 22);
   const [layoutHint, setLayoutHint] = useState("");
   const stageRef = useRef<HTMLDivElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const pendingImagePointRef = useRef<{ x: number; y: number } | undefined>(undefined);
 
   useEffect(() => {
     if (selectedSlideId && selectedSlideId !== activeSlideId) {
@@ -105,23 +122,30 @@ export function PptEditor({ doc, showNavigator = true }: PptEditorProps): JSX.El
   const insertPanelGroups = insertGroups.map((group) => ({
     id: group.id,
     label: group.label,
-    items: group.items.map(
-      (item): EditorInsertPanelItem & { source: PptInsertItem } => ({
-        id: item.id,
-        label: item.label,
-        description: item.description,
-        icon: item.icon,
-        badge: item.badge,
-        title: "点击插入到当前页，也可拖到画布",
-        source: item
-      })
-    )
+        items: group.items.map(
+          (item): EditorInsertPanelItem & { source: PptInsertItem } => ({
+            id: item.id,
+            label: item.label,
+            description: item.description,
+            icon: item.icon,
+            badge: item.badge,
+            accent: item.kind === "image",
+            draggable: item.kind !== "image",
+            title: item.kind === "image" ? "点击上传后插入" : "点击插入到当前页，也可拖到画布",
+            source: item
+          })
+        )
   }));
 
   const insertPptItem = (item: PptInsertItem, point?: { x: number; y: number }): void => {
     if (!activeSlide) {
       setLayoutHint("当前没有可插入的页面");
       setTimeout(() => setLayoutHint(""), 1600);
+      return;
+    }
+    if (item.kind === "image") {
+      pendingImagePointRef.current = point;
+      imageInputRef.current?.click();
       return;
     }
     const node = buildPptInsertNode({
@@ -148,6 +172,63 @@ export function PptEditor({ doc, showNavigator = true }: PptEditorProps): JSX.El
     setInsertPreview(null);
     setLayoutHint(`已插入${item.label}`);
     setTimeout(() => setLayoutHint(""), 1600);
+  };
+
+  const handlePptImagePicked = async (file?: File): Promise<void> => {
+    const point = pendingImagePointRef.current;
+    pendingImagePointRef.current = undefined;
+    const imageItem = insertGroups.flatMap((group) => group.items).find((item) => item.id === "media.image");
+    if (!file || !activeSlide || !imageItem) {
+      return;
+    }
+    try {
+      const uploaded = await assetRepoRef.current.uploadImage(file);
+      const naturalWidth = Math.max(180, uploaded.width || imageItem.size.w);
+      const naturalHeight = Math.max(120, uploaded.height || imageItem.size.h);
+      const maxWidth = Math.min(420, naturalWidth);
+      const scaledHeight = Math.max(120, Math.round(maxWidth * (naturalHeight / Math.max(1, naturalWidth))));
+      const node = buildPptImageNode({
+        slide: activeSlide,
+        item: imageItem,
+        assetId: uploaded.asset.assetId,
+        title: file.name,
+        point,
+        width: maxWidth,
+        height: scaledHeight
+      });
+      const inserted = store.executeCommand(
+        {
+          type: "Transaction",
+          commands: [
+            {
+              type: "UpdateDoc",
+              doc: {
+                assets: upsertDocAsset(doc.assets, uploaded.asset)
+              }
+            },
+            {
+              type: "InsertNode",
+              parentId: activeSlide.id,
+              node
+            }
+          ]
+        },
+        { summary: `ppt insert image ${file.name}` }
+      );
+      if (!inserted) {
+        setLayoutHint("图片插入失败");
+        setTimeout(() => setLayoutHint(""), 1600);
+        return;
+      }
+      store.rememberPptInsertItem(imageItem.id);
+      store.setSelection(node.id, false);
+      setInsertPreview(null);
+      setLayoutHint(`已插入图片：${file.name}`);
+      setTimeout(() => setLayoutHint(""), 1600);
+    } catch (error) {
+      setLayoutHint(error instanceof Error ? error.message : "图片插入失败");
+      setTimeout(() => setLayoutHint(""), 1600);
+    }
   };
 
   const getSlidePoint = (target: HTMLDivElement, clientX: number, clientY: number): { x: number; y: number } => {
@@ -337,19 +418,35 @@ export function PptEditor({ doc, showNavigator = true }: PptEditorProps): JSX.El
       ) : null}
 
       <div ref={stageRef} className="canvas-wrap ppt-editor-stage" style={{ flex: 1 }}>
+        <input
+          ref={imageInputRef}
+          type="file"
+          accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
+          style={{ display: "none" }}
+          onChange={(event) => {
+            void handlePptImagePicked(event.target.files?.[0]);
+            event.currentTarget.value = "";
+          }}
+        />
         {ui.pptInsertPanelOpen ? (
           <FloatingLayer anchorRef={stageRef} className="dashboard-insert-panel-layer" resolveStyle={resolveSideInsertPanelStyle}>
             <EditorInsertPanel
               title="插入组件"
               subtitle="点击插入到当前页，也可拖到画布"
               search={insertSearch}
-              placeholder="搜索图表、表格、文本"
+              placeholder="搜索图表、表格、文本、图片"
               groups={insertPanelGroups}
               testId="ppt-insert-panel"
               onSearchChange={setInsertSearch}
               onClose={() => store.setPptInsertPanelOpen(false)}
               onInsert={(item) => insertPptItem(item.source)}
-              onDragStart={(item, event) => encodePptInsertItem(event.dataTransfer, item.source.id)}
+              onDragStart={(item, event) => {
+                if (item.source.kind === "image") {
+                  event.preventDefault();
+                  return;
+                }
+                encodePptInsertItem(event.dataTransfer, item.source.id);
+              }}
               onDragEnd={() => clearPptInsertItemDrag()}
             />
           </FloatingLayer>
@@ -447,15 +544,15 @@ export function PptEditor({ doc, showNavigator = true }: PptEditorProps): JSX.El
             }}
           >
             {masterShowHeader ? (
-              <div style={{ position: "absolute", left: masterPaddingXPx, right: masterPaddingXPx, top: masterHeaderTopPx, minHeight: masterHeaderHeightPx, borderBottom: `1px solid ${masterAccentColor}`, display: "flex", justifyContent: "space-between", fontSize: 13, color: "#64748b", paddingBottom: 4, zIndex: 2, pointerEvents: "none" }}>
-                <span>{masterHeaderText || String((activeSlide.props as Record<string, unknown>)?.title ?? "")}</span>
-                <span>{String((activeSlide.props as Record<string, unknown>)?.title ?? "")}</span>
+              <div style={{ position: "absolute", left: masterPaddingXPx, right: masterPaddingXPx, top: masterHeaderTopPx, minHeight: masterHeaderHeightPx, borderBottom: `1px solid ${masterAccentColor}`, display: "flex", justifyContent: "space-between", paddingBottom: 4, zIndex: 2, pointerEvents: "none" }}>
+                <span style={resolveTitleTextStyle({ fontSize: 13, fg: "#64748b" }, rootProps.headerStyle)}>{masterHeaderText || String((activeSlide.props as Record<string, unknown>)?.title ?? "")}</span>
+                <span style={resolveTitleTextStyle({ fontSize: 13, fg: "#64748b" }, rootProps.headerStyle)}>{String((activeSlide.props as Record<string, unknown>)?.title ?? "")}</span>
               </div>
             ) : null}
             {masterShowFooter ? (
-              <div style={{ position: "absolute", left: masterPaddingXPx, right: masterPaddingXPx, bottom: masterFooterBottomPx, minHeight: masterFooterHeightPx, borderTop: `1px solid ${masterAccentColor}`, display: "flex", justifyContent: "space-between", fontSize: 12, color: "#64748b", paddingTop: 4, zIndex: 2, pointerEvents: "none" }}>
-                <span>{masterFooterText}</span>
-                {masterShowSlideNumber ? <span>{`#${slides.findIndex((item) => item.id === activeSlide.id) + 1}`}</span> : null}
+              <div style={{ position: "absolute", left: masterPaddingXPx, right: masterPaddingXPx, bottom: masterFooterBottomPx, minHeight: masterFooterHeightPx, borderTop: `1px solid ${masterAccentColor}`, display: "flex", justifyContent: "space-between", paddingTop: 4, zIndex: 2, pointerEvents: "none" }}>
+                <span style={resolveTitleTextStyle({ fontSize: 12, fg: "#64748b" }, rootProps.footerStyle)}>{masterFooterText}</span>
+                {masterShowSlideNumber ? <span style={resolveTitleTextStyle({ fontSize: 12, fg: "#64748b" }, rootProps.footerStyle)}>{`#${slides.findIndex((item) => item.id === activeSlide.id) + 1}`}</span> : null}
               </div>
             ) : null}
             {insertPreview ? (
@@ -590,12 +687,8 @@ function SlideNode({
 }): JSX.Element {
   const { rows, loading, error } = useNodeRows(doc, node, engine, dataVersion);
   const layout = node.layout ?? { mode: "absolute", x: 80, y: 80, w: 200, h: 120, z: 1 };
-  const nodeTitle =
-    node.kind === "chart"
-      ? String((node.props as ChartSpec | undefined)?.titleText ?? node.name ?? node.id)
-      : node.kind === "table"
-        ? String((node.props as TableSpec | undefined)?.titleText ?? node.name ?? node.id)
-        : "";
+  const showOuterTitle = shouldRenderOuterNodeTitle(node);
+  const nodeTitle = node.kind === "image" ? resolveImageNodeTitle(doc, node) : resolveNodeDisplayTitle(node);
   const [rect, setRect] = useState({
     x: Number(layout.x ?? 80),
     y: Number(layout.y ?? 80),
@@ -773,12 +866,14 @@ function SlideNode({
       className={`slide-node ${selected ? "active" : ""} ${node.layout?.lock ? "is-locked" : ""}`}
       data-testid={`ppt-node-${node.id}`}
       style={{
-        left: rect.x,
-        top: rect.y,
-        width: rect.w,
-        height: rect.h,
-        zIndex: editorZIndex,
-        transform: groupPreviewOffset ? `translate(${groupPreviewOffset.x}px, ${groupPreviewOffset.y}px)` : undefined
+        ...resolveNodeSurfaceStyle(node.style, {
+          left: rect.x,
+          top: rect.y,
+          width: rect.w,
+          height: rect.h,
+          zIndex: editorZIndex,
+          transform: groupPreviewOffset ? `translate(${groupPreviewOffset.x}px, ${groupPreviewOffset.y}px)` : undefined
+        })
       }}
       onMouseDown={onPointerDownMove}
       onDoubleClick={() => onBringFront()}
@@ -788,35 +883,51 @@ function SlideNode({
       }}
     >
       {selected ? <div className="ppt-node-active-wash" /> : null}
-      {node.kind !== "text" ? <div className={`node-floating-label ${selected ? "show" : ""}`}>{nodeTitle}</div> : null}
+      {node.kind !== "text" && showOuterTitle ? (
+        <div className={`node-floating-label ${selected ? "show" : ""}`} style={resolveTitleTextStyle({ fontSize: 12, bold: true }, resolveNodeTitleStyle(node))}>
+          {nodeTitle}
+        </div>
+      ) : null}
       <div className="ppt-node-content">
         {node.kind === "text" ? (
-          <pre style={{ margin: 0, whiteSpace: "pre-wrap", width: "100%", height: "100%", overflow: "auto" }}>
-            {String((node.props as Record<string, unknown>)?.text ?? "")}
-          </pre>
+          <NodeTextBlock node={node} style={{ width: "100%", height: "100%" }} />
         ) : node.kind === "table" ? (
-          loading ? (
-            <div className="muted">loading...</div>
-          ) : error ? (
-            <div className="muted">error: {error}</div>
-          ) : (
-            <TableView spec={node.props as TableSpec} rows={rows} height="100%" />
-          )
+          loading || error ? <NodeDataState loading={loading} error={error} remote={isRemoteDataNode(doc, node)} /> : <TableView spec={node.props as TableSpec} rows={rows} height="100%" />
         ) : node.kind === "chart" ? (
-          loading ? (
-            <div className="muted">loading...</div>
-          ) : error ? (
-            <div className="muted">error: {error}</div>
+          loading || error ? (
+            <NodeDataState loading={loading} error={error} remote={isRemoteDataNode(doc, node)} />
           ) : (
             <div style={{ width: "100%", height: "100%", position: "relative" }}>
               <EChartView spec={node.props as ChartSpec} rows={rows} height="100%" />
             </div>
           )
+        ) : node.kind === "image" ? (
+          <PptImageNode doc={doc} node={node} />
         ) : (
           <div className="muted">unsupported: {node.kind}</div>
         )}
       </div>
       {selected && !node.layout?.lock ? <div className="resize-handle" data-testid={`ppt-resize-handle-${node.id}`} onMouseDown={onResizeDown} /> : null}
     </div>
+  );
+}
+
+function PptImageNode({ doc, node }: { doc: VDoc; node: VNode }): JSX.Element {
+  const props = (node.props ?? {}) as ImageProps;
+  const asset = resolveImageAsset(doc, props.assetId);
+  if (!asset?.uri) {
+    return <div className="muted">图片资源缺失</div>;
+  }
+  return (
+    <img
+      src={asset.uri}
+      alt={props.alt ?? asset.name ?? props.title ?? "图片"}
+      style={{
+        width: "100%",
+        height: "100%",
+        objectFit: props.fit === "stretch" ? "fill" : props.fit ?? "contain",
+        opacity: Math.max(0, Math.min(1, Number(props.opacity ?? 1)))
+      }}
+    />
   );
 }

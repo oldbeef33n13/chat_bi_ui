@@ -9,9 +9,7 @@ public record StoredTemplateState(
   String name,
   String description,
   List<String> tags,
-  WorkspaceStatus status,
-  int publishedRevision,
-  int draftRevision,
+  int currentRevision,
   Instant createdAt,
   Instant updatedAt
 ) {

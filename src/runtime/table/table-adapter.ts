@@ -1,4 +1,4 @@
-import type { TableColumnSpec, TableHeaderCellSpec, TableMergeSpec, TablePivotSpec, TableSpec } from "../../core/doc/types";
+import type { TableColumnSpec, TableHeaderCellSpec, TableMergeSpec, TablePivotSpec, TableSpec, VStyle } from "../../core/doc/types";
 
 export interface TableRenderColumn {
   key: string;
@@ -18,6 +18,7 @@ export interface TableRenderCell {
 
 export interface TableRenderModel {
   titleText: string;
+  titleStyle?: VStyle;
   columns: TableRenderColumn[];
   headerRows: TableRenderCell[][];
   bodyRows: TableRenderCell[][];
@@ -84,6 +85,7 @@ export const buildTableRenderModel = (
 
   return {
     titleText,
+    titleStyle: spec.titleStyle,
     columns,
     headerRows,
     bodyRows,

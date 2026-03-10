@@ -9,7 +9,14 @@
     "preview": "vite preview --config vite.config.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:backend": "mvn -f tools/pom.xml -pl chatbi-app-server -am test",
+    "test:e2e": "playwright test",
+    "test:all": "node scripts/stack.mjs test",
+    "stack:init": "node scripts/stack.mjs init",
+    "stack:dev": "node scripts/stack.mjs dev",
+    "stack:showcase": "node scripts/stack.mjs showcase",
+    "stack:stop": "node scripts/stack.mjs stop"
   },
   "dependencies": {
     "@preact/signals-react": "^3.0.0",
@@ -20,6 +27,7 @@
   "devDependencies": {
     "@testing-library/react": "^16.2.0",
     "@types/node": "^22.13.10",
+    "@playwright/test": "^1.58.2",
     "@types/react": "^18.3.20",
     "@types/react-dom": "^18.3.6",
     "@vitejs/plugin-react": "^4.3.4",
@@ -28,5 +36,5 @@
     "typescript": "^5.8.2",
     "vite": "^5.4.14",
     "vitest": "^3.0.9"
-  }
+  } 
 }

@@ -24,6 +24,11 @@
 
   <dependencies>
     <dependency>
+      <groupId>com.chatbi</groupId>
+      <artifactId>poi-dsl-exporter</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-web</artifactId>
       <exclusions>
@@ -67,6 +72,21 @@
       <plugin>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-maven-plugin</artifactId>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <configuration>
+          <argLine>--enable-native-access=ALL-UNNAMED -XX:+EnableDynamicAgentLoading -Xshare:off</argLine>
+          <systemPropertyVariables>
+            <debug>false</debug>
+            <spring.main.banner-mode>off</spring.main.banner-mode>
+            <logging.level.root>WARN</logging.level.root>
+            <logging.level.org.springframework>WARN</logging.level.org.springframework>
+            <logging.level.org.flywaydb>WARN</logging.level.org.flywaydb>
+            <logging.level.com.zaxxer.hikari>WARN</logging.level.com.zaxxer.hikari>
+          </systemPropertyVariables>
+        </configuration>
       </plugin>
     </plugins>
   </build>

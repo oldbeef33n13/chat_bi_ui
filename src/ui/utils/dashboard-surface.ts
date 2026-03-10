@@ -217,3 +217,20 @@ export const resolveImageNodeTitle = (doc: VDoc, node: VNode): string => {
   const asset = resolveImageAsset(doc, props.assetId);
   return props.title ?? asset?.name ?? node.name ?? "图片";
 };
+
+export const resolveDashboardBackgroundStyle = (doc: VDoc): Record<string, string> => {
+  const props = normalizeDashboardProps(doc);
+  if (props.bgMode !== "image" || !props.bgAssetId) {
+    return {};
+  }
+  const asset = resolveImageAsset(doc, props.bgAssetId);
+  if (!asset?.uri) {
+    return {};
+  }
+  return {
+    backgroundImage: `url("${asset.uri}")`,
+    backgroundPosition: "center",
+    backgroundRepeat: "no-repeat",
+    backgroundSize: "cover"
+  };
+};

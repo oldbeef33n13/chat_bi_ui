@@ -1,20 +1,17 @@
 package com.chatbi.app.application.template;
 
 import com.chatbi.app.api.template.CreateTemplateRequest;
-import com.chatbi.app.api.template.SaveDraftRequest;
 import com.chatbi.app.common.error.BadRequestException;
 import com.chatbi.app.common.error.ConflictException;
 import com.chatbi.app.common.error.NotFoundException;
-import com.chatbi.app.domain.template.RevisionChannel;
 import com.chatbi.app.domain.template.StoredTemplateState;
-import com.chatbi.app.domain.template.TemplateBundle;
 import com.chatbi.app.domain.template.TemplateContent;
+import com.chatbi.app.domain.template.TemplateDocument;
 import com.chatbi.app.domain.template.TemplateListQuery;
 import com.chatbi.app.domain.template.TemplateMeta;
 import com.chatbi.app.domain.template.TemplatePage;
-import com.chatbi.app.domain.template.TemplateRevisions;
+import com.chatbi.app.domain.template.TemplateRevisionEntry;
 import com.chatbi.app.domain.template.TemplateType;
-import com.chatbi.app.domain.template.WorkspaceStatus;
 import com.chatbi.app.infra.db.template.TemplateJdbcRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.time.Instant;
@@ -35,28 +32,31 @@ public class TemplateService {
     this.templateDslFactory = templateDslFactory;
   }
 
-  public TemplatePage listTemplates(String type, String status, String q, int page, int pageSize) {
-    return templateRepository.listTemplates(new TemplateListQuery(type, status, q, page, pageSize));
+  public TemplatePage listTemplates(String type, String q, int page, int pageSize) {
+    return templateRepository.listTemplates(new TemplateListQuery(type, q, page, pageSize));
+  }
+
+  public List<TemplateSeedDefinition> listSeedDefinitions() {
+    return templateDslFactory.seedDefinitions();
   }
 
   public TemplateMeta getTemplateMeta(String templateId) {
     return toMeta(requireState(templateId));
   }
 
-  public TemplateContent getDraft(String templateId) {
+  public TemplateContent getCurrent(String templateId) {
     StoredTemplateState state = requireState(templateId);
-    return templateRepository.findContent(templateId, RevisionChannel.DRAFT, state.draftRevision())
-      .orElseThrow(() -> new NotFoundException("草稿版本不存在: " + templateId));
+    return templateRepository.findContent(templateId, state.currentRevision())
+      .orElseThrow(() -> new NotFoundException("模板版本不存在: " + templateId));
   }
 
-  public TemplateContent getPublished(String templateId) {
+  public List<TemplateRevisionEntry> listRevisions(String templateId) {
     StoredTemplateState state = requireState(templateId);
-    return templateRepository.findContent(templateId, RevisionChannel.PUBLISHED, state.publishedRevision())
-      .orElseThrow(() -> new NotFoundException("发布版本不存在: " + templateId));
+    return templateRepository.listRevisions(templateId, state.currentRevision());
   }
 
   @Transactional
-  public TemplateBundle createTemplate(CreateTemplateRequest request) {
+  public TemplateDocument createTemplate(CreateTemplateRequest request) {
     Instant now = Instant.now();
     String templateId = generateTemplateId(request.templateType());
     JsonNode dsl = templateDslFactory.createDefaultDsl(templateId, request);
@@ -64,109 +64,73 @@ public class TemplateService {
     String description = blankToDefault(request.description(), "新建模板");
     List<String> tags = sanitizeTags(request.tags(), request.templateType());
 
-    templateRepository.insertTemplate(
-      templateId,
-      request.templateType(),
-      name,
-      description,
-      WorkspaceStatus.DRAFT,
-      tags,
-      1,
-      1,
-      now
-    );
-    templateRepository.insertRevision(templateId, 1, RevisionChannel.PUBLISHED, dsl, now, "system");
-    templateRepository.insertRevision(templateId, 1, RevisionChannel.DRAFT, dsl, now, "system");
-    return getBundle(templateId);
+    templateRepository.insertTemplate(templateId, request.templateType(), name, description, tags, 1, now);
+    templateRepository.insertRevision(templateId, 1, dsl, now, "system");
+    return getDocument(templateId);
   }
 
   @Transactional
-  public TemplateMeta saveDraft(String templateId, SaveDraftRequest request) {
+  public TemplateDocument publish(String templateId, JsonNode dsl, Integer baseRevision) {
     StoredTemplateState state = requireState(templateId);
-    JsonNode dsl = validateDsl(request.dsl());
-    if (request.baseRevision() != null && request.baseRevision() != state.draftRevision()) {
-      throw new ConflictException("草稿已被更新，请刷新后重试");
+    JsonNode validDsl = validateDsl(dsl);
+    if (baseRevision != null && baseRevision != state.currentRevision()) {
+      throw new ConflictException("模板已被更新，请刷新后重试");
     }
-    int nextRevision = Math.max(state.draftRevision(), state.publishedRevision()) + 1;
-    Instant now = Instant.now();
 
-    templateRepository.insertRevision(templateId, nextRevision, RevisionChannel.DRAFT, dsl, now, "system");
-    templateRepository.updateDraftPointer(
+    TemplateContent current = getCurrent(templateId);
+    if (current.dsl().equals(validDsl)) {
+      return getDocument(templateId);
+    }
+
+    int nextRevision = templateRepository.findMaxRevisionNumber(templateId) + 1;
+    Instant now = Instant.now();
+    templateRepository.insertRevision(templateId, nextRevision, validDsl, now, "system");
+    templateRepository.updateCurrentPointer(
       templateId,
       nextRevision,
-      WorkspaceStatus.DRAFT,
-      pickDisplayName(state.templateType(), null, dsl),
+      pickDisplayName(state.templateType(), null, validDsl),
       state.description(),
       state.tags(),
       now
     );
-    return getTemplateMeta(templateId);
+    return getDocument(templateId);
   }
 
   @Transactional
-  public TemplateBundle publishDraft(String templateId, Integer fromDraftRevision) {
+  public TemplateDocument restoreRevision(String templateId, int revision) {
     StoredTemplateState state = requireState(templateId);
-    if (fromDraftRevision != null && fromDraftRevision != state.draftRevision()) {
-      throw new ConflictException("发布失败，草稿版本已变化");
-    }
-    TemplateContent draft = getDraft(templateId);
+    TemplateContent restored = templateRepository.findContent(templateId, revision)
+      .orElseThrow(() -> new NotFoundException("模板版本不存在: " + revision));
     Instant now = Instant.now();
-    if (!templateRepository.existsRevision(templateId, RevisionChannel.PUBLISHED, state.draftRevision())) {
-      templateRepository.insertRevision(templateId, state.draftRevision(), RevisionChannel.PUBLISHED, draft.dsl(), now, "system");
-    }
-    templateRepository.updatePublishedPointer(
+    templateRepository.updateCurrentPointer(
       templateId,
-      state.draftRevision(),
-      WorkspaceStatus.PUBLISHED,
-      pickDisplayName(state.templateType(), null, draft.dsl()),
+      revision,
+      pickDisplayName(state.templateType(), null, restored.dsl()),
       state.description(),
       state.tags(),
       now
     );
-    return getBundle(templateId);
-  }
-
-  @Transactional
-  public TemplateMeta discardDraft(String templateId) {
-    StoredTemplateState state = requireState(templateId);
-    if (state.draftRevision() == state.publishedRevision() && state.status() == WorkspaceStatus.PUBLISHED) {
-      return toMeta(state);
-    }
-    TemplateContent published = getPublished(templateId);
-    Instant now = Instant.now();
-    templateRepository.updateDraftAndPublishedPointers(
-      templateId,
-      state.publishedRevision(),
-      state.publishedRevision(),
-      WorkspaceStatus.PUBLISHED,
-      pickDisplayName(state.templateType(), null, published.dsl()),
-      state.description(),
-      state.tags(),
-      now
-    );
-    return getTemplateMeta(templateId);
+    return getDocument(templateId);
   }
 
   @Transactional
   public void seedDefaultsIfEmpty() {
-    if (templateRepository.countTemplates() > 0) {
-      return;
+    for (TemplateSeedDefinition seed : templateDslFactory.seedDefinitions()) {
+      if (templateRepository.findTemplateState(seed.id()).isEmpty()) {
+        seedTemplate(seed);
+      }
     }
-    seedTemplate("template-dashboard-overview", TemplateType.DASHBOARD, "网络运维总览", "默认监控大屏模板", List.of("dashboard", "seed"));
-    seedTemplate("template-report-weekly", TemplateType.REPORT, "网络周报", "默认报告模板", List.of("report", "seed"));
-    seedTemplate("template-ppt-review", TemplateType.PPT, "网络运营汇报", "默认汇报 PPT 模板", List.of("ppt", "seed"));
   }
 
-  private void seedTemplate(String id, TemplateType type, String name, String description, List<String> tags) {
+  private void seedTemplate(TemplateSeedDefinition seed) {
     Instant now = Instant.now();
-    JsonNode dsl = templateDslFactory.createSeedDsl(id, type, name);
-    templateRepository.insertTemplate(id, type, name, description, WorkspaceStatus.PUBLISHED, tags, 1, 1, now);
-    templateRepository.insertRevision(id, 1, RevisionChannel.PUBLISHED, dsl, now, "system");
-    templateRepository.insertRevision(id, 1, RevisionChannel.DRAFT, dsl, now, "system");
+    JsonNode dsl = templateDslFactory.createSeedDsl(seed.id(), seed.id(), seed.name());
+    templateRepository.insertTemplate(seed.id(), seed.templateType(), seed.name(), seed.description(), seed.tags(), 1, now);
+    templateRepository.insertRevision(seed.id(), 1, dsl, now, "system");
   }
 
-  private TemplateBundle getBundle(String templateId) {
-    return new TemplateBundle(getTemplateMeta(templateId), getDraft(templateId), getPublished(templateId));
+  private TemplateDocument getDocument(String templateId) {
+    return new TemplateDocument(getTemplateMeta(templateId), getCurrent(templateId));
   }
 
   private StoredTemplateState requireState(String templateId) {
@@ -182,10 +146,9 @@ public class TemplateService {
       state.description(),
       state.tags(),
       state.updatedAt(),
-      state.status(),
+      state.currentRevision(),
       true,
-      true,
-      new TemplateRevisions(state.publishedRevision(), state.draftRevision())
+      true
     );
   }
 

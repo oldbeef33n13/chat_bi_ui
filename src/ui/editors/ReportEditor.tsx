@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from "react";
-import type { ChartSpec, Command, ReportProps, TableSpec, VDoc, VNode } from "../../core/doc/types";
+import type { ChartSpec, Command, ImageProps, ReportProps, TableSpec, VDoc, VNode } from "../../core/doc/types";
 import { DataEngine } from "../../runtime/data/data-engine";
 import { EChartView } from "../../runtime/chart/EChartView";
 import { TableView } from "../../runtime/table/TableView";
+import { HttpAssetRepository } from "../api/http-asset-repository";
 import { FloatingLayer } from "../components/FloatingLayer";
 import { EditorInsertPanel, type EditorInsertPanelItem } from "../components/EditorInsertPanel";
+import { NodeDataState } from "../components/NodeDataState";
+import { NodeTextBlock } from "../components/NodeTextBlock";
 import { useNodeRows } from "../hooks/use-node-rows";
 import { useDataEngine } from "../hooks/use-data-engine";
 import { useEditorStore } from "../state/editor-context";
@@ -52,6 +55,7 @@ import { flattenReportSections, getTopReportSections, type FlattenedReportSectio
 import { buildLayoutBatchCommands, planLayoutBatchTargets, type LayoutBatchAction } from "../utils/layout-batch";
 import { buildAlignCommandResult, type AlignKind } from "../utils/alignment";
 import { buildCanvasSelectionRect, isCanvasSelectionGesture, resolveCanvasSelectionIds, type CanvasSelectionRect } from "../utils/canvas-selection";
+import { upsertDocAsset } from "../utils/doc-assets";
 import { isAdditiveSelectionModifier, isTypingTarget } from "../utils/editor-input";
 import { resolveSideInsertPanelStyle } from "../utils/editor-insert-layout";
 import {
@@ -63,6 +67,15 @@ import {
   resolveReportInsertPreviewRect,
   type ReportInsertItem
 } from "../utils/report-insert-panel";
+import { resolveImageAsset, resolveImageNodeTitle } from "../utils/dashboard-surface";
+import {
+  isRemoteDataNode,
+  resolveNodeDisplayTitle,
+  resolveNodeSurfaceStyle,
+  resolveNodeTitleStyle,
+  resolveTitleTextStyle,
+  shouldRenderOuterNodeTitle
+} from "../utils/node-style";
 
 interface ReportEditorProps {
   doc: VDoc;
@@ -214,6 +227,7 @@ export function ReportEditor({ doc }: ReportEditorProps): JSX.Element {
   const store = useEditorStore();
   const selection = useSignalValue(store.selection);
   const ui = useSignalValue(store.ui);
+  const assetRepoRef = useRef(new HttpAssetRepository("/api/v1"));
   const { engine, dataVersion } = useDataEngine(doc.dataSources ?? [], doc.queries ?? [], { debounceMs: 120 });
   const sections = useMemo(() => getTopReportSections(doc.root), [doc.root]);
   const flatSections = useMemo(() => flattenReportSections(sections), [sections]);
@@ -244,6 +258,8 @@ export function ReportEditor({ doc }: ReportEditorProps): JSX.Element {
   const canvasResizeRef = useRef<ReportCanvasResizeState | null>(null);
   const canvasPreviewFrameRef = useRef<number | null>(null);
   const canvasPreviewEventRef = useRef<{ clientX: number; clientY: number; altKey: boolean } | null>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const pendingImageInsertRef = useRef<{ sectionId: string; point?: { x: number; y: number } } | null>(null);
 
   const updateReportProps = (partial: Partial<ReportRuntimeProps>, summary: string, mergeWindowMs = 0): void => {
     store.executeCommand(
@@ -277,7 +293,9 @@ export function ReportEditor({ doc }: ReportEditorProps): JSX.Element {
             description: item.description,
             icon: item.icon,
             badge: item.badge,
-            title: "点击插入到当前章节，也可拖到内容区",
+            accent: item.kind === "image",
+            draggable: item.kind !== "image",
+            title: item.kind === "image" ? "点击上传后插入" : "点击插入到当前章节，也可拖到内容区",
             source: item
           })
         )
@@ -942,6 +960,11 @@ export function ReportEditor({ doc }: ReportEditorProps): JSX.Element {
       showTransientHint("当前没有可插入的章节");
       return;
     }
+    if (item.kind === "image") {
+      pendingImageInsertRef.current = { sectionId };
+      imageInputRef.current?.click();
+      return;
+    }
     const sectionTitle = flatSections.find((entry) => entry.section.id === sectionId)?.title ?? "当前章节";
     const plan = buildReportInsertItemPlan({
       doc,
@@ -997,6 +1020,11 @@ export function ReportEditor({ doc }: ReportEditorProps): JSX.Element {
       y: number;
     }
   ): void => {
+    if (item.kind === "image") {
+      pendingImageInsertRef.current = { sectionId, point };
+      imageInputRef.current?.click();
+      return;
+    }
     const sectionTitle = flatSections.find((entry) => entry.section.id === sectionId)?.title ?? "当前章节";
     const plan = buildReportInsertItemPlan({
       doc,
@@ -1022,6 +1050,60 @@ export function ReportEditor({ doc }: ReportEditorProps): JSX.Element {
     });
     if (plan) {
       store.rememberReportInsertItem(item.id);
+    }
+  };
+
+  const handleReportImagePicked = async (file?: File): Promise<void> => {
+    const pendingInsert = pendingImageInsertRef.current;
+    pendingImageInsertRef.current = null;
+    const imageItem = reportInsertGroups.flatMap((group) => group.items).find((item) => item.source.id === "media.image")?.source;
+    if (!file || !pendingInsert || !imageItem) {
+      return;
+    }
+    try {
+      const uploaded = await assetRepoRef.current.uploadImage(file);
+      const plan = buildReportInsertItemPlan({
+        doc,
+        sectionId: pendingInsert.sectionId,
+        item: imageItem,
+        point: pendingInsert.point,
+        imageAsset: {
+          assetId: uploaded.asset.assetId,
+          title: file.name
+        }
+      });
+      const insertedNodeId = plan?.commands.find((command) => command.type === "InsertNode" && command.node?.kind === "image")?.node?.id;
+      if (!plan) {
+        showTransientHint("图片插入失败");
+        return;
+      }
+      const inserted = store.executeCommand(
+        {
+          type: "Transaction",
+          commands: [
+            {
+              type: "UpdateDoc",
+              doc: {
+                assets: upsertDocAsset(doc.assets, uploaded.asset)
+              }
+            },
+            ...plan.commands
+          ]
+        },
+        { summary: plan.summary }
+      );
+      if (!inserted) {
+        showTransientHint("图片插入失败");
+        return;
+      }
+      store.rememberReportInsertItem(imageItem.id);
+      if (insertedNodeId) {
+        store.setSelection(insertedNodeId, false);
+      }
+      setCanvasInsertPreview(null);
+      showTransientHint(`已插入图片：${file.name}`);
+    } catch (error) {
+      showTransientHint(error instanceof Error ? error.message : "图片插入失败");
     }
   };
 
@@ -1323,6 +1405,16 @@ export function ReportEditor({ doc }: ReportEditorProps): JSX.Element {
 
   return (
     <div ref={stageRef} className="col report-editor-stage" style={{ height: "100%" }}>
+      <input
+        ref={imageInputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
+        style={{ display: "none" }}
+        onChange={(event) => {
+          void handleReportImagePicked(event.target.files?.[0]);
+          event.currentTarget.value = "";
+        }}
+      />
       <div className="row">
         <span className="chip">{reportProps.reportTitle}</span>
         <span className="chip">{`章节 ${sections.length} / 子章节 ${Math.max(0, flatSections.length - sections.length)}`}</span>
@@ -1338,13 +1430,17 @@ export function ReportEditor({ doc }: ReportEditorProps): JSX.Element {
             title="插入组件"
             subtitle="插入到当前章节内容区"
             search={insertSearch}
-            placeholder="搜索图表、表格、文本"
+            placeholder="搜索图表、表格、文本、图片"
             groups={reportInsertGroups}
             testId="report-insert-panel"
             onSearchChange={setInsertSearch}
             onClose={() => store.setReportInsertPanelOpen(false)}
             onInsert={(item) => insertReportItemFromPanel(item.source)}
             onDragStart={(item, event) => {
+              if (item.source.kind === "image") {
+                event.preventDefault();
+                return;
+              }
               encodeReportInsertItem(event.dataTransfer, item.source.id);
             }}
             onDragEnd={() => {
@@ -1539,7 +1635,9 @@ export function ReportEditor({ doc }: ReportEditorProps): JSX.Element {
               {entry.kind === "cover" ? (
                 <ReportPageFrame props={reportProps} pageIndex={entry.pageIndex}>
                   <div className="col" style={{ minHeight: 240, justifyContent: "center", alignItems: "center", textAlign: "center" }}>
-                    <div style={{ fontSize: 30, fontWeight: 700 }}>{reportProps.coverTitle || reportProps.reportTitle}</div>
+                    <div style={resolveTitleTextStyle({ fontSize: 30, bold: true, align: "center" }, reportProps.coverTitleStyle)}>
+                      {reportProps.coverTitle || reportProps.reportTitle}
+                    </div>
                     <div className="muted" style={{ fontSize: 16 }}>
                       {reportProps.coverSubtitle}
                     </div>
@@ -1553,7 +1651,7 @@ export function ReportEditor({ doc }: ReportEditorProps): JSX.Element {
               {entry.kind === "toc" ? (
                 <ReportPageFrame props={reportProps} pageIndex={entry.pageIndex}>
                   <div className="section">
-                    <div className="section-title">目录</div>
+                    <div className="section-title" style={resolveTitleTextStyle({ fontSize: 24, bold: true }, reportProps.sectionTitleStyle)}>目录</div>
                     <div className="block" style={{ margin: 0 }}>
                       {flatSections.length === 0 ? <div className="muted">暂无章节</div> : null}
                       {flatSections.map((item) => (
@@ -1572,7 +1670,7 @@ export function ReportEditor({ doc }: ReportEditorProps): JSX.Element {
                   const sectionProjection = sectionCanvasMap.get(entry.item.section.id) ?? buildReportSectionCanvasProjection(entry.item.blocks);
                   return (
                     <div className="section report-section-canvas-shell">
-                      <div className="section-title row report-section-head" style={{ justifyContent: "space-between" }}>
+                      <div className="section-title row report-section-head" style={{ ...resolveTitleTextStyle({ fontSize: 24, bold: true }, reportProps.sectionTitleStyle), justifyContent: "space-between" }}>
                         <div className="row">
                           <span>{`${entry.item.orderLabel}. ${entry.item.title}`}</span>
                           <span className="muted">{entry.item.section.id}</span>
@@ -1651,7 +1749,7 @@ export function ReportEditor({ doc }: ReportEditorProps): JSX.Element {
               {entry.kind === "summary" ? (
                 <ReportPageFrame props={reportProps} pageIndex={entry.pageIndex}>
                   <div className="section">
-                    <div className="section-title">{reportProps.summaryTitle}</div>
+                    <div className="section-title" style={resolveTitleTextStyle({ fontSize: 24, bold: true }, reportProps.summaryTitleStyle)}>{reportProps.summaryTitle}</div>
                     <div className="block" style={{ margin: 0 }}>
                       <pre style={{ margin: 0, whiteSpace: "pre-wrap" }}>{reportProps.summaryText || autoSummary}</pre>
                     </div>
@@ -2338,37 +2436,34 @@ function ReportBlock({
 }): JSX.Element {
   const { rows, loading, error } = useNodeRows(doc, block, engine, dataVersion);
   const bodyHeight = Math.max(120, Math.round(preferredHeight - 18));
-  const blockTitle =
-    block.kind === "chart"
-      ? String((block.props as ChartSpec | undefined)?.titleText ?? block.name ?? block.id)
-      : block.kind === "table"
-        ? String((block.props as TableSpec | undefined)?.titleText ?? block.name ?? block.id)
-        : "";
+  const showOuterTitle = shouldRenderOuterNodeTitle(block);
+  const blockTitle = block.kind === "image" ? resolveImageNodeTitle(doc, block) : resolveNodeDisplayTitle(block);
   const style = {
     margin: 0,
     height: preferredHeight,
+    ...resolveNodeSurfaceStyle(block.style),
     ...(selected ? { borderColor: "#2563eb", boxShadow: "0 0 0 2px rgba(37, 99, 235, .2)" } : {})
   };
 
   return (
     <div className={`block report-node-surface ${block.layout?.lock ? "is-locked" : ""}`} style={style} onClick={(event) => onSelect(isAdditiveSelectionModifier(event))}>
       {selected ? <div className="report-node-active-wash" /> : null}
-      {block.kind !== "text" ? <div className={`node-floating-label ${selected ? "show" : ""}`}>{blockTitle}</div> : null}
+      {block.kind !== "text" && showOuterTitle ? (
+        <div className={`node-floating-label ${selected ? "show" : ""}`} style={resolveTitleTextStyle({ fontSize: 12, bold: true }, resolveNodeTitleStyle(block))}>
+          {blockTitle}
+        </div>
+      ) : null}
       {block.kind === "text" ? (
-        <pre style={{ margin: 0, whiteSpace: "pre-wrap" }}>{String((block.props as Record<string, unknown>)?.text ?? "")}</pre>
+        <NodeTextBlock node={block} />
       ) : block.kind === "table" ? (
-        loading ? (
-          <div className="muted">loading...</div>
-        ) : error ? (
-          <div className="muted">error: {error}</div>
+        loading || error ? (
+          <NodeDataState loading={loading} error={error} remote={isRemoteDataNode(doc, block)} />
         ) : (
           <TableView spec={block.props as TableSpec} rows={rows} height={bodyHeight} />
         )
       ) : block.kind === "chart" ? (
-        loading ? (
-          <div className="muted">loading...</div>
-        ) : error ? (
-          <div className="muted">error: {error}</div>
+        loading || error ? (
+          <NodeDataState loading={loading} error={error} remote={isRemoteDataNode(doc, block)} />
         ) : (
           <div className="col">
             <LazyChartPanel rootRef={lazyRootRef} height={bodyHeight}>
@@ -2383,10 +2478,32 @@ function ReportBlock({
             </LazyChartPanel>
           </div>
         )
+      ) : block.kind === "image" ? (
+        <ReportImageBlock doc={doc} block={block} />
       ) : (
         <div className="muted">暂未支持的块类型: {block.kind}</div>
       )}
     </div>
+  );
+}
+
+function ReportImageBlock({ doc, block }: { doc: VDoc; block: VNode }): JSX.Element {
+  const props = (block.props ?? {}) as ImageProps;
+  const asset = resolveImageAsset(doc, props.assetId);
+  if (!asset?.uri) {
+    return <div className="muted">图片资源缺失</div>;
+  }
+  return (
+    <img
+      src={asset.uri}
+      alt={props.alt ?? asset.name ?? props.title ?? "图片"}
+      style={{
+        width: "100%",
+        height: "100%",
+        objectFit: props.fit === "stretch" ? "fill" : props.fit ?? "contain",
+        opacity: Math.max(0, Math.min(1, Number(props.opacity ?? 1)))
+      }}
+    />
   );
 }
 
@@ -2485,8 +2602,8 @@ function ReportPageFrame({
     <div className="report-page-frame">
       {props.headerShow ? (
         <div className="report-page-header row" style={{ justifyContent: "space-between" }}>
-          <span>{props.headerText || props.reportTitle}</span>
-          {props.showPageNumber ? <span className="muted">Page {pageIndex}</span> : null}
+          <span style={resolveTitleTextStyle({ fontSize: 12, fg: "#64748b" }, props.headerStyle)}>{props.headerText || props.reportTitle}</span>
+          {props.showPageNumber ? <span className="muted" style={resolveTitleTextStyle({ fontSize: 12, fg: "#64748b" }, props.headerStyle)}>Page {pageIndex}</span> : null}
         </div>
       ) : null}
       <div className="report-page-body" style={{ padding: Math.max(0, props.bodyPaddingPx) }}>
@@ -2494,8 +2611,8 @@ function ReportPageFrame({
       </div>
       {props.footerShow ? (
         <div className="report-page-footer row" style={{ justifyContent: "space-between" }}>
-          <span className="muted">{props.footerText || "Visual Document OS"}</span>
-          {props.showPageNumber ? <span className="muted">#{pageIndex}</span> : null}
+          <span className="muted" style={resolveTitleTextStyle({ fontSize: 12, fg: "#64748b" }, props.footerStyle)}>{props.footerText || "Visual Document OS"}</span>
+          {props.showPageNumber ? <span className="muted" style={resolveTitleTextStyle({ fontSize: 12, fg: "#64748b" }, props.footerStyle)}>#{pageIndex}</span> : null}
         </div>
       ) : null}
     </div>
@@ -2519,14 +2636,19 @@ const normalizeReportProps = (doc: VDoc): ReportRuntimeProps => {
     tocShow: raw.tocShow ?? true,
     coverEnabled: raw.coverEnabled ?? true,
     coverTitle: raw.coverTitle ?? reportTitle,
+    coverTitleStyle: raw.coverTitleStyle ?? {},
     coverSubtitle: raw.coverSubtitle ?? "Report",
     coverNote: raw.coverNote ?? `生成时间：${new Date().toLocaleDateString()}`,
     summaryEnabled: raw.summaryEnabled ?? true,
     summaryTitle: raw.summaryTitle ?? "执行摘要",
+    summaryTitleStyle: raw.summaryTitleStyle ?? {},
     summaryText: raw.summaryText ?? "",
     headerText: raw.headerText ?? reportTitle,
+    headerStyle: raw.headerStyle ?? {},
     footerText: raw.footerText ?? "Visual Document OS",
+    footerStyle: raw.footerStyle ?? {},
     showPageNumber: raw.showPageNumber ?? true,
+    sectionTitleStyle: raw.sectionTitleStyle ?? {},
     pageSize: raw.pageSize ?? "A4",
     paginationStrategy: raw.paginationStrategy ?? "section",
     marginPreset: preset,

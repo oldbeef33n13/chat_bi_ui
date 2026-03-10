@@ -21,7 +21,7 @@ describe("ppt insert helpers", () => {
       slide: doc.root.children?.[0]
     });
 
-    expect(items.map((item) => item.id)).toEqual(["table.basic", "chart.combo", "table.multi-header", "text.note"]);
+    expect(items.map((item) => item.id)).toEqual(["table.basic", "media.image", "chart.combo", "table.multi-header"]);
   });
 
   it("prioritizes title and core content on an empty slide", () => {

@@ -149,8 +149,8 @@ const validateVNode = (value: unknown, path: string, errors: ValidationError[]):
   if (value.data !== undefined) {
     if (!isObject(value.data)) {
       pushError(errors, `${path}/data`, "should be object");
-    } else if (!isNonEmptyString(value.data.sourceId)) {
-      pushError(errors, `${path}/data/sourceId`, "should be a non-empty string");
+    } else if (!isNonEmptyString(value.data.sourceId) && !isNonEmptyString(value.data.endpointId)) {
+      pushError(errors, `${path}/data`, "should provide sourceId or endpointId");
     }
   }
 

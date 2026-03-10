@@ -6,7 +6,7 @@
 
 - 前端编辑器：`dashboard`、`report`、`ppt`
 - 文档管理界面：列表、详情、编辑、预览
-- 本地 mock 文档 REST：仅覆盖模板草稿/发布版 CRUD
+- Java App：`tools/chatbi-app-server`，承接模板、资产、导出、数据接口与调度
 - Java 导出工具：`tools/poi-dsl-exporter`，支持 `report -> docx`、`ppt -> pptx`
 
 下一阶段目标是补齐完整业务后台，新增一个独立 Java App 工程，承载：
@@ -192,12 +192,12 @@ server: {
 }
 ```
 
-当前 `localexample` 的 mock API 后续只保留为：
+当前 `localexample` 后续只保留为：
 
 - 种子数据参考
 - 离线样例参考
 
-不再作为主联调通道。
+不再作为 Vite 主联调通道或默认 API 来源。
 
 
 ## 5. 业务对象模型
@@ -215,9 +215,7 @@ server: {
   - `ppt`
 - `name`
 - `description`
-- `status`
-  - `draft`
-  - `published`
+- `currentRevision`
 - `tags`
 - `createdAt`
 - `updatedAt`
@@ -228,12 +226,8 @@ server: {
 
 字段建议：
 
-- `id`
 - `templateId`
 - `revisionNo`
-- `channel`
-  - `draft`
-  - `published`
 - `dslJson`
 - `createdAt`
 - `createdBy`
@@ -601,21 +595,20 @@ create table if not exists template (
   template_type text not null,
   name text not null,
   description text not null default '',
-  status text not null,
   tags_json text not null default '[]',
+  current_revision integer not null,
   created_at text not null,
   updated_at text not null
 );
 
 create table if not exists template_revision (
-  id text primary key,
+  id integer primary key autoincrement,
   template_id text not null,
   revision_no integer not null,
-  channel text not null,
   dsl_json text not null,
   created_at text not null,
   created_by text,
-  unique(template_id, revision_no, channel),
+  unique(template_id, revision_no),
   foreign key(template_id) references template(id)
 );
 
@@ -671,11 +664,13 @@ create table if not exists render_run (
   template_id text not null,
   template_revision_no integer not null,
   schedule_job_id text,
+  output_type text not null,
   status text not null,
   variables_json text not null default '{}',
-  started_at text not null,
+  started_at text,
   finished_at text,
   error_message text,
+  created_at text not null,
   foreign key(template_id) references template(id),
   foreign key(schedule_job_id) references schedule_job(id)
 );
@@ -692,8 +687,8 @@ create table if not exists artifact (
   foreign key(run_id) references render_run(id)
 );
 
-create index if not exists idx_template_type_status on template(template_type, status);
-create index if not exists idx_template_revision_template_channel on template_revision(template_id, channel);
+create index if not exists idx_template_type_updated on template(template_type, updated_at);
+create index if not exists idx_template_revision_template on template_revision(template_id, revision_no desc);
 create index if not exists idx_schedule_job_template on schedule_job(template_id);
 create index if not exists idx_render_run_template on render_run(template_id);
 create index if not exists idx_render_run_schedule on render_run(schedule_job_id);
@@ -710,7 +705,6 @@ create index if not exists idx_artifact_run on artifact(run_id);
 查询参数：
 
 - `type=dashboard|report|ppt|all`
-- `status=draft|published|all`
 - `q`
 - `page`
 - `pageSize`
@@ -727,13 +721,9 @@ create index if not exists idx_artifact_run on artifact(run_id);
       "description": "适用于周运营分析",
       "tags": ["report", "weekly"],
       "updatedAt": "2026-03-07T10:00:00Z",
-      "status": "draft",
+      "currentRevision": 5,
       "canEdit": true,
-      "canPublish": true,
-      "revisions": {
-        "published": 3,
-        "draft": 5
-      }
+      "canPublish": true
     }
   ],
   "total": 1,
@@ -766,57 +756,47 @@ create index if not exists idx_artifact_run on artifact(run_id);
     "description": "",
     "tags": [],
     "updatedAt": "2026-03-07T10:00:00Z",
-    "status": "draft",
+    "currentRevision": 3,
     "canEdit": true,
-    "canPublish": true,
-    "revisions": {
-      "published": 1,
-      "draft": 1
-    }
+    "canPublish": true
   },
-  "draft": {
-    "revision": 1,
-    "template": {}
-  },
-  "published": {
-    "revision": 1,
+  "content": {
+    "revision": 3,
     "template": {}
   }
 }
 ```
 
-### `GET /api/v1/templates/{id}/draft`
+### `GET /api/v1/templates/{id}/content`
 
 响应：
 
 ```json
 {
-  "revision": 5,
+  "revision": 3,
   "template": {}
 }
 ```
 
-### `PUT /api/v1/templates/{id}/draft`
-
-请求：
-
-```json
-{
-  "template": {},
-  "baseRevision": 5
-}
-```
+### `GET /api/v1/templates/{id}/revisions`
 
 响应：
 
 ```json
-{
-  "meta": {},
-  "draft": {
-    "revision": 6,
-    "template": {}
+[
+  {
+    "revision": 3,
+    "createdAt": "2026-03-07T10:00:00Z",
+    "createdBy": "system",
+    "current": true
+  },
+  {
+    "revision": 2,
+    "createdAt": "2026-03-06T10:00:00Z",
+    "createdBy": "system",
+    "current": false
   }
-}
+]
 ```
 
 ### `POST /api/v1/templates/{id}/publish`
@@ -825,7 +805,8 @@ create index if not exists idx_artifact_run on artifact(run_id);
 
 ```json
 {
-  "fromDraftRevision": 6
+  "dsl": {},
+  "baseRevision": 3
 }
 ```
 
@@ -834,26 +815,22 @@ create index if not exists idx_artifact_run on artifact(run_id);
 ```json
 {
   "meta": {},
-  "published": {
-    "revision": 7,
-    "template": {}
-  },
-  "draft": {
-    "revision": 7,
+  "content": {
+    "revision": 4,
     "template": {}
   }
 }
 ```
 
-### `POST /api/v1/templates/{id}/discard-draft`
+### `POST /api/v1/templates/{id}/restore/{revision}`
 
 响应：
 
 ```json
 {
   "meta": {},
-  "draft": {
-    "revision": 7,
+  "content": {
+    "revision": 2,
     "template": {}
   }
 }

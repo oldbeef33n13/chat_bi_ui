@@ -1,5 +1,5 @@
 import type { EChartsOption } from "echarts";
-import type { ChartSpec, ChartType, FieldBinding } from "../../core/doc/types";
+import type { ChartSpec, ChartType, FieldBinding, VStyle } from "../../core/doc/types";
 
 /**
  * ChartSpec -> EChartsOption 适配层。
@@ -254,6 +254,24 @@ const resolveChartBg = (spec: ChartSpec): string | undefined => {
   return spec.themeRef.includes("dark") ? "#0f172a" : "#ffffff";
 };
 
+const resolveChartTitleTextStyle = (style: VStyle | undefined, fallbackColor: string): Record<string, unknown> => ({
+  color: style?.fg ?? fallbackColor,
+  fontSize: style?.fontSize,
+  fontWeight: style?.bold ? 700 : undefined,
+  fontStyle: style?.italic ? "italic" : undefined,
+  textDecoration: style?.underline ? "underline" : undefined,
+  align: style?.align,
+  lineHeight: style?.lineHeight ? Math.round((style.fontSize ?? 14) * style.lineHeight) : undefined
+});
+
+const resolveChartTitleContainerStyle = (style: VStyle | undefined): Record<string, unknown> => ({
+  backgroundColor: style?.bg,
+  borderColor: style?.borderC,
+  borderWidth: style?.borderW,
+  borderRadius: style?.radius,
+  padding: typeof style?.pad === "number" ? style.pad : undefined
+});
+
 const hasField = (rows: Array<Record<string, unknown>>, field?: string): boolean => {
   if (!field) {
     return false;
@@ -410,8 +428,9 @@ export const chartSpecToOption = (spec: ChartSpec, rows: Array<Record<string, un
     title: {
       text: spec.titleText,
       subtext: spec.subtitleText,
-      textStyle: { color: spec.themeRef?.includes("dark") ? "#e2e8f0" : "#0f172a" },
-      subtextStyle: { color: spec.themeRef?.includes("dark") ? "#94a3b8" : "#64748b" }
+      ...resolveChartTitleContainerStyle(spec.titleStyle),
+      textStyle: resolveChartTitleTextStyle(spec.titleStyle, spec.themeRef?.includes("dark") ? "#e2e8f0" : "#0f172a"),
+      subtextStyle: resolveChartTitleTextStyle(spec.subtitleStyle, spec.themeRef?.includes("dark") ? "#94a3b8" : "#64748b")
     },
     tooltip: { show: spec.tooltipShow ?? true, trigger: pieLike || nativeGauge ? "item" : "axis" },
     legend: {

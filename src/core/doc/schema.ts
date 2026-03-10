@@ -10,6 +10,22 @@ export const vDocSchema = {
     title: { type: "string" },
     locale: { type: "string" },
     themeId: { type: "string" },
+    templateVariables: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["key", "type"],
+        properties: {
+          key: { type: "string", minLength: 1 },
+          label: { type: "string" },
+          type: { type: "string", enum: ["string", "number", "boolean", "date", "datetime"] },
+          required: { type: "boolean" },
+          defaultValue: {},
+          description: { type: "string" }
+        }
+      }
+    },
     assets: {
       type: "array",
       items: {
@@ -58,29 +74,71 @@ export const vDocSchema = {
       properties: {
         tokenId: { type: "string" },
         bg: { type: "string" },
+        bgOpacity: { type: "number", minimum: 0, maximum: 1 },
         fg: { type: "string" },
+        opacity: { type: "number", minimum: 0, maximum: 1 },
         borderW: { type: "number" },
         borderC: { type: "string" },
         radius: { type: "number" },
         shadow: { type: "string" },
+        pad: {
+          oneOf: [
+            { type: "number" },
+            {
+              type: "array",
+              minItems: 4,
+              maxItems: 4,
+              items: { type: "number" }
+            }
+          ]
+        },
+        mar: {
+          oneOf: [
+            { type: "number" },
+            {
+              type: "array",
+              minItems: 4,
+              maxItems: 4,
+              items: { type: "number" }
+            }
+          ]
+        },
         font: { type: "string" },
         fontSize: { type: "number" },
         bold: { type: "boolean" },
         italic: { type: "boolean" },
         underline: { type: "boolean" },
-        align: { type: "string", enum: ["left", "center", "right"] }
+        align: { type: "string", enum: ["left", "center", "right"] },
+        valign: { type: "string", enum: ["top", "middle", "bottom"] },
+        writingMode: { type: "string", enum: ["horizontal-tb", "vertical-rl"] },
+        lineHeight: { type: "number", minimum: 0.8, maximum: 3 },
+        letterSpacing: { type: "number", minimum: -4, maximum: 20 }
       }
     },
     VDataBinding: {
       type: "object",
       additionalProperties: false,
-      required: ["sourceId"],
       properties: {
         sourceId: { type: "string", minLength: 1 },
+        endpointId: { type: "string", minLength: 1 },
         queryId: { type: "string" },
         params: { type: "object", additionalProperties: true },
+        paramBindings: {
+          type: "object",
+          additionalProperties: {
+            type: "object",
+            additionalProperties: false,
+            required: ["from"],
+            properties: {
+              from: { type: "string", enum: ["const", "templateVar", "systemVar", "filter"] },
+              value: {},
+              key: { type: "string" }
+            }
+          }
+        },
         filterRefs: { type: "array", items: { type: "string" } }
-      }
+      },
+      anyOf: [{ required: ["sourceId"] }, { required: ["endpointId"] }]
     },
     FieldBinding: {
       type: "object",
@@ -162,6 +220,8 @@ export const vDocSchema = {
         },
         titleText: { type: "string" },
         subtitleText: { type: "string" },
+        titleStyle: { $ref: "#/$defs/VStyle" },
+        subtitleStyle: { $ref: "#/$defs/VStyle" },
         bindings: { type: "array", minItems: 1, items: { $ref: "#/$defs/FieldBinding" } },
         computedFields: {
           type: "array",
@@ -203,6 +263,7 @@ export const vDocSchema = {
       additionalProperties: false,
       properties: {
         titleText: { type: "string" },
+        titleStyle: { $ref: "#/$defs/VStyle" },
         columns: {
           type: "array",
           items: {
