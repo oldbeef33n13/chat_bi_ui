@@ -1,19 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import type { ChartSpec, FieldBinding, VDoc, VNode } from "../../../core/doc/types";
-import { themes } from "../../../runtime/theme/themes";
 import type { DataEndpointMeta } from "../../api/data-endpoint-repository";
 import { HttpDataEndpointRepository } from "../../api/http-data-endpoint-repository";
 import { useEditorStore } from "../../state/editor-context";
-import { ColorPaletteField } from "../ColorPaletteField";
 import { DataGuideDialog } from "../DataGuideDialog";
-import { NodeStyleInspector } from "../NodeStyleInspector";
-import { TextStyleEditor } from "../TextStyleEditor";
 import {
   ChartStatModeDialog,
   ParamBindingEditorDialog,
   describeParamBinding,
   describeResolvedParams,
-  describeStatNarrative,
   extractSourceSampleRows,
   findFieldMeta,
   formatNamedLabel,
@@ -22,9 +17,7 @@ import {
   isSeriesRole
 } from "./shared";
 import {
-  chartTypeOptions,
   extractSourceFields,
-  formatSourceFieldLabel,
   inferRecommendedAgg,
   recommendBindings,
   recommendChartConfig,
@@ -33,6 +26,10 @@ import {
 import { summarizeChartRows } from "../../utils/chart-summary";
 import { extractEndpointFields, resolveDataEndpointParams } from "../../utils/data-endpoint-binding";
 import { getPreviewRows, insertSummaryNode } from "./node-helpers";
+import { ChartBasicTab } from "./chart/ChartBasicTab";
+import { ChartDataTab } from "./chart/ChartDataTab";
+import { ChartStyleTab } from "./chart/ChartStyleTab";
+import { ChartAdvancedTab } from "./chart/ChartAdvancedTab";
 
 export function ChartInspector({
   doc,
@@ -704,580 +701,137 @@ export function ChartInspector({
           .map((binding) => `${binding.as ?? binding.field} -> ${xAxisLabelByIndex.get(Number(binding.xAxis ?? 0)) ?? `xAxis[${Number(binding.xAxis ?? 0)}]`}`)
           .join("；")
       : "尚未配置指标字段";
+  const fieldSummaryText = fields.slice(0, 4).map((field) => `${renderFieldOptionLabel(field.name)}:${field.type}`).join(", ") || "无字段";
+  const recommendReasonsText = recommendHint || recommend.reasons.join("；");
+  const summaryText = buildSummary();
 
   return (
     <div className="col">
       {activeTab === "basic" ? (
-        <>
-          <label className="col">
-            <span>Chart Type</span>
-            <select className="select" value={props.chartType ?? "line"} onChange={(event) => updateProps({ chartType: event.target.value as ChartSpec["chartType"] }, "chart type change")}>
-              {chartTypeOptions.map((type) => (
-                <option key={type} value={type}>
-                  {type}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="col">
-            <span>Title</span>
-            <input className="input" value={String(props.titleText ?? "")} onChange={(event) => updateProps({ titleText: event.target.value }, "chart title change", 140)} />
-          </label>
-          <div className="col" style={{ border: "1px dashed var(--line)", borderRadius: 8, padding: 8 }}>
-            <strong>快捷操作</strong>
-            <div className="row" style={{ flexWrap: "wrap" }}>
-              {(["line", "bar", "pie", "scatter", "combo", "radar"] as ChartSpec["chartType"][]).map((type) => (
-                <button
-                  key={`quick_type_${type}`}
-                  className={`btn mini-btn ${props.chartType === type ? "primary" : ""}`}
-                  title={`快速切换到 ${type}`}
-                  onClick={() => updateProps({ chartType: type }, `quick chart type ${type}`)}
-                >
-                  {type}
-                </button>
-              ))}
-            </div>
-            <div className="row" style={{ flexWrap: "wrap" }}>
-              <button className="btn mini-btn" title="一键切换暗色主题/恢复默认主题" onClick={toggleQuickDarkTheme}>
-                {String(props.themeRef ?? "").includes("dark") ? "恢复主题" : "暗色"}
-              </button>
-              <button className="btn mini-btn" title="一键切换网格显示" onClick={toggleQuickGrid}>
-                {props.gridShow === false ? "开网格" : "无网格"}
-              </button>
-              <button
-                className="btn mini-btn"
-                title="一键切换数据标签显示"
-                onClick={() => updateProps({ labelShow: !Boolean(props.labelShow) }, "quick toggle labels")}
-              >
-                {props.labelShow ? "关标签" : "开标签"}
-              </button>
-            </div>
-            <label className="row">
-              <input
-                type="checkbox"
-                checked={props.runtimeAskEnabled !== false}
-                onChange={(event) => updateProps({ runtimeAskEnabled: event.target.checked }, "toggle runtime ask entry")}
-              />
-              <span>运行态显示智能追问入口（头部图标）</span>
-            </label>
-          </div>
-          <div className="row">
-            <button className="btn primary" onClick={applySmartTypeRecommend}>
-              智能类型推荐
-            </button>
-            <button className="btn" onClick={autoRecommendBindings}>
-              自动字段推荐
-            </button>
-            <button className="btn" disabled={aiRecommendLoading} onClick={() => void applyAiRecommend()}>
-              {aiRecommendLoading ? "AI 推荐中..." : "AI 推荐"}
-            </button>
-            {recommendHint ? (
-              <button className="btn" onClick={rollbackRecommend}>
-                一键回退推荐
-              </button>
-            ) : null}
-          </div>
-          <div className="muted" style={{ fontSize: 12 }}>
-            字段识别: {fields.slice(0, 4).map((field) => `${formatSourceFieldLabel(field)}:${field.type}`).join(", ") || "无字段"}
-          </div>
-          <div className="muted" style={{ fontSize: 12 }}>
-            推荐解释: {recommendHint || recommend.reasons.join("；")}
-          </div>
-
-          <div className="col" style={{ borderTop: "1px dashed var(--line)", paddingTop: 8 }}>
-            <div className="row" style={{ justifyContent: "space-between" }}>
-              <strong>自动总结</strong>
-              <span className="muted">样本 {previewRows.length} 行</span>
-            </div>
-            <div className="muted" style={{ fontSize: 12 }}>
-              {buildSummary()}
-            </div>
-            <div className="row">
-              <button className="btn" onClick={applySummaryToSubtitle}>
-                写入副标题
-              </button>
-              <button className="btn" onClick={insertSummaryTextBlock}>
-                插入总结文本块
-              </button>
-            </div>
-            {summaryHint ? <div className="muted">{summaryHint}</div> : null}
-          </div>
-        </>
+        <ChartBasicTab
+          chartType={(props.chartType ?? "line") as ChartSpec["chartType"]}
+          titleText={props.titleText}
+          runtimeAskEnabled={props.runtimeAskEnabled !== false}
+          labelShow={Boolean(props.labelShow)}
+          fieldSummary={fieldSummaryText}
+          recommendReasonsText={recommendReasonsText}
+          previewRowCount={previewRows.length}
+          summaryText={summaryText}
+          recommendHint={recommendHint}
+          summaryHint={summaryHint}
+          aiRecommendLoading={aiRecommendLoading}
+          fields={fields}
+          onChangeChartType={(chartType) => updateProps({ chartType }, "chart type change")}
+          onChangeTitle={(value) => updateProps({ titleText: value }, "chart title change", 140)}
+          onToggleQuickDarkTheme={toggleQuickDarkTheme}
+          onToggleQuickGrid={toggleQuickGrid}
+          onToggleLabels={() => updateProps({ labelShow: !Boolean(props.labelShow) }, "quick toggle labels")}
+          onToggleRuntimeAsk={(checked) => updateProps({ runtimeAskEnabled: checked }, "toggle runtime ask entry")}
+          onApplySmartTypeRecommend={applySmartTypeRecommend}
+          onAutoRecommendBindings={autoRecommendBindings}
+          onApplyAiRecommend={() => void applyAiRecommend()}
+          onRollbackRecommend={rollbackRecommend}
+          onApplySummaryToSubtitle={applySummaryToSubtitle}
+          onInsertSummaryTextBlock={insertSummaryTextBlock}
+        />
       ) : null}
 
       {activeTab === "data" ? (
-        <>
-          <div className="col" style={{ border: "1px solid var(--line)", borderRadius: 8, padding: 8 }}>
-            <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-              <strong>{endpointId ? "动态数据接口" : "数据来源"}</strong>
-              {endpoint ? <span className="chip">{endpoint.providerType}</span> : null}
-            </div>
-            <div className="inspector-stat-summary">
-              <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-                <strong>数据概览</strong>
-                <button className="btn mini-btn" onClick={() => setDataGuideOpen(true)} disabled={!endpoint && !source}>
-                  查看数据说明
-                </button>
-              </div>
-              <div className="muted">
-                {fields.length > 0
-                  ? `${fields.length} 个字段，推荐 ${recommend.chartType}。${recommend.reasons.join("；")}`
-                  : "先选择数据接口或静态数据源，再查看字段与样例数据。"}
-              </div>
-            </div>
-            <label className="col">
-              <span>数据接口</span>
-              <select className="select" value={endpointId} onChange={(event) => setEndpointAndRecommend(event.target.value)} disabled={endpoints.length === 0}>
-                <option value="">不使用动态接口</option>
-                {endpoints.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name} ({item.id})
-                  </option>
-                ))}
-              </select>
-            </label>
-            {endpoint ? (
-              <>
-                <div className="muted" style={{ fontSize: 12 }}>
-                  {endpoint.method} {endpoint.path}
-                </div>
-                {endpoint.paramSchema.length > 0 ? (
-                  <div className="col inspector-param-summary" style={{ marginTop: 8 }}>
-                    <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-                      <strong>参数映射</strong>
-                      <button className="btn mini-btn" onClick={() => setParamEditorOpen(true)}>
-                        编辑参数映射
-                      </button>
-                    </div>
-                    <div className="muted" style={{ fontSize: 12 }}>
-                      {`共 ${endpoint.paramSchema.length} 个参数。设计器测试默认使用模板默认值 / 系统变量 / 筛选默认值。`}
-                    </div>
-                    <div className="col" style={{ gap: 4 }}>
-                      {paramSummary.map((item) => (
-                        <div key={`summary_${item}`} className="muted" style={{ fontSize: 12 }}>
-                          {item}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="muted" style={{ fontSize: 12 }}>
-                    当前接口无参数，可直接测试取数。
-                  </div>
-                )}
-                <div className="row" style={{ flexWrap: "wrap" }}>
-                  <button className="btn" onClick={() => void runEndpointTest()} disabled={endpointTesting}>
-                    {endpointTesting ? "测试中..." : "测试取数"}
-                  </button>
-                  <button className="btn" onClick={() => setDataGuideOpen(true)}>
-                    查看数据定义
-                  </button>
-                  <button className="btn" onClick={() => setEndpointAndRecommend("")}>
-                    切回静态数据源
-                  </button>
-                </div>
-                <div className="muted" style={{ fontSize: 12 }}>
-                  当前测试值: {describeResolvedParams(endpoint, resolvedParams)}
-                </div>
-                {endpointTestError ? <div className="chip" style={{ color: "#b91c1c" }}>{endpointTestError}</div> : null}
-                {endpointTestRows.length > 0 ? (
-                  <div className="muted" style={{ fontSize: 12 }}>
-                    测试返回 {endpointTestRows.length} 行，字段: {fields.slice(0, 6).map((field) => formatSourceFieldLabel(field)).join(", ") || "无"}
-                  </div>
-                ) : null}
-              </>
-            ) : (
-              <div className="muted" style={{ fontSize: 12 }}>
-                未绑定动态接口时，下面仍可使用静态 source/query。
-              </div>
-            )}
-          </div>
-          {!endpointId ? (
-            <label className="col">
-              <span>静态数据源</span>
-              <select className="select" value={sourceId} onChange={(event) => setSourceAndRecommend(event.target.value)} disabled={sourceOptions.length === 0}>
-                {sourceOptions.length > 0 ? (
-                  sourceOptions.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.id}
-                    </option>
-                  ))
-                ) : (
-                  <option value="">无数据源</option>
-                )}
-              </select>
-            </label>
-          ) : null}
-          <div className="col" style={{ borderTop: "1px dashed var(--line)", paddingTop: 8 }}>
-            <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-              <strong>推荐展示方式</strong>
-              <span className="muted">{`当前图表：${props.chartType ?? "line"}`}</span>
-            </div>
-            <div className="muted" style={{ fontSize: 12 }}>
-              先选择你想表达的分析意图，系统会自动给出更合适的图表类型和默认字段绑定。
-            </div>
-            <div className="col" style={{ gap: 8 }}>
-              {recommendationCards.length > 0 ? (
-                recommendationCards.map((item) => (
-                  <button
-                    key={item.id}
-                    className={`btn ${props.chartType === item.chartType ? "primary" : ""}`}
-                    onClick={() => applyDisplayRecommendation(item.chartType, item.description)}
-                    style={{ justifyContent: "space-between" }}
-                  >
-                    <span>{item.label}</span>
-                    <span className="muted" style={{ fontSize: 12 }}>
-                      {item.description}
-                    </span>
-                  </button>
-                ))
-              ) : (
-                <div className="muted">当前字段还不足以给出清晰的推荐展示方式，请先选择数据接口或补充字段。</div>
-              )}
-            </div>
-          </div>
-
-          <div className="col" style={{ borderTop: "1px dashed var(--line)", paddingTop: 8 }}>
-            <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-              <strong>基础字段绑定</strong>
-              <button className="btn mini-btn" onClick={autoRecommendBindings} disabled={fieldOptions.length === 0}>
-                自动匹配
-              </button>
-            </div>
-            <div className="muted" style={{ fontSize: 12 }}>
-              先确认“按什么维度看、看哪个指标”，这是大多数图表最常用的配置。
-            </div>
-            <label className="col">
-              <span>分析维度</span>
-              <select className="select" value={xBinding?.field ?? ""} onChange={(event) => setPrimaryXField(event.target.value)}>
-                <option value="">请选择</option>
-                {fieldOptions.map((field) => (
-                  <option key={field} value={field}>
-                    {renderFieldOptionLabel(field)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="col">
-              <span>统计指标</span>
-              <select className="select" value={primaryY?.field ?? ""} onChange={(event) => setPrimaryYField(event.target.value)}>
-                <option value="">请选择</option>
-                {numericFields.length > 0
-                  ? numericFields.map((field) => (
-                      <option key={field} value={field}>
-                        {renderFieldOptionLabel(field)}
-                      </option>
-                    ))
-                  : fieldOptions.map((field) => (
-                      <option key={field} value={field}>
-                        {renderFieldOptionLabel(field)}
-                      </option>
-                    ))}
-              </select>
-            </label>
-            <div className="inspector-stat-summary">
-              <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-                <strong>统计口径</strong>
-                <button className="btn mini-btn" onClick={() => setAggEditorOpen(true)} disabled={!primaryY}>
-                  编辑统计口径
-                </button>
-              </div>
-              <div className="muted">{describeStatNarrative(fields, primaryY, xBinding, seriesBindings)}</div>
-              {secondY ? <div className="muted">{describeStatNarrative(fields, secondY, xBinding, seriesBindings)}</div> : null}
-              <div className="muted">系统会自动推荐统计口径：数量/流量通常求和，比例/时延通常取平均。</div>
-            </div>
-          </div>
-
-          <div className="col" style={{ borderTop: "1px dashed var(--line)", paddingTop: 8 }}>
-            <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-              <strong>高级映射</strong>
-              <button className="btn mini-btn" onClick={() => setAdvancedMappingOpen((value) => !value)}>
-                {advancedMappingOpen ? "收起" : "展开"}
-              </button>
-            </div>
-            <div className="muted" style={{ fontSize: 12 }}>
-              第二轴、多 X 轴、多系列和计算字段会影响更复杂的分析表达，只有需要时再展开。
-            </div>
-            <label className="row">
-              <input type="checkbox" checked={Boolean(secondY)} onChange={(event) => setSecondAxis(event.target.checked)} />
-              <span>添加第二轴</span>
-            </label>
-            <div className="row" style={{ justifyContent: "space-between", alignItems: "center", flexWrap: "wrap" }}>
-              <div className="row">
-                {xBindings.length > 1 ? <span className="chip-warning">已启用多 X 轴</span> : <span className="muted">默认单 X 轴，适合大多数场景</span>}
-                {shouldSuggestMultiXAxis && xBindings.length <= 1 ? <span className="chip">建议启用多 X 轴</span> : null}
-              </div>
-              <div className="row">
-                <button className="btn mini-btn" onClick={autoMatchXAxis} disabled={fieldOptions.length === 0}>
-                  一键自动匹配 X 轴
-                </button>
-                <button className="btn mini-btn" onClick={toggleXAxisAdvanced}>
-                  {xAxisAdvancedOpen ? "收起高级X轴" : "显示高级X轴"}
-                </button>
-              </div>
-            </div>
-            <div className="col" style={{ border: "1px solid var(--line)", borderRadius: 8, padding: 8 }}>
-              <div className="row" style={{ justifyContent: "space-between" }}>
-                <strong>系列维度（可多个）</strong>
-                <button className="btn mini-btn" onClick={addSeriesBinding} disabled={fieldOptions.length === 0}>
-                  +系列
-                </button>
-              </div>
-              <div className="muted" style={{ fontSize: 12 }}>
-                {seriesBindings.length === 0 ? "未配置系列维度，当前仅单系列渲染。" : `已配置 ${seriesBindings.length} 个系列维度。`}
-              </div>
-            </div>
-            {advancedMappingOpen ? (
-              <>
-                {secondY ? (
-                  <label className="col">
-                    <span>第二指标（第二轴）</span>
-                    <select className="select" value={secondY.field} onChange={(event) => setSecondAxisField(event.target.value)}>
-                      {numericFields.map((field) => (
-                        <option key={field} value={field}>
-                          {renderFieldOptionLabel(field)}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                ) : null}
-                {xAxisAdvancedOpen ? (
-                  <div className="col" style={{ border: "1px solid var(--line)", borderRadius: 8, padding: 8 }}>
-                    <div className="row" style={{ justifyContent: "space-between" }}>
-                      <strong>多 X 轴配置（高级）</strong>
-                      <button className="btn mini-btn" onClick={addXAxisBinding} disabled={fieldOptions.length === 0}>
-                        +X 轴
-                      </button>
-                    </div>
-                    {xBindings.length === 0 ? <div className="muted">未配置 X 轴字段。</div> : null}
-                    {xBindings.map((binding, index) => (
-                      <div key={`x_binding_${index}`} className="row" style={{ alignItems: "flex-end", flexWrap: "wrap" }}>
-                        <label className="col" style={{ minWidth: 150 }}>
-                          <span>{`X 轴字段 #${index + 1}`}</span>
-                          <select className="select" value={binding.field} onChange={(event) => updateXAxisBinding(index, { field: event.target.value })}>
-                            {fieldOptions.map((field) => (
-                              <option key={field} value={field}>
-                                {renderFieldOptionLabel(field)}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        <label className="col" style={{ width: 96 }}>
-                          <span>轴序号</span>
-                          <input
-                            className="input"
-                            type="number"
-                            min={0}
-                            value={xAxisIndexOfBinding(binding, index)}
-                            onChange={(event) => updateXAxisBinding(index, { axis: Math.max(0, Number(event.target.value) || 0) })}
-                          />
-                        </label>
-                        <button className="btn mini-btn danger" onClick={() => removeXAxisBinding(index)}>
-                          删除
-                        </button>
-                      </div>
-                    ))}
-                    <label className="col">
-                      <span>主指标绑定 X 轴</span>
-                      <select className="select" value={Number(primaryY?.xAxis ?? 0)} onChange={(event) => setPrimaryYXAxis(Number(event.target.value) || 0)} disabled={xAxisEntries.length === 0}>
-                        {xAxisEntries.map((entry, index) => (
-                          <option key={`x_axis_map_${index}`} value={entry.axisIndex}>
-                            {`xAxis[${entry.axisIndex}] · ${entry.binding.as ?? entry.binding.field}`}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    {secondY ? (
-                      <label className="col">
-                        <span>第二轴指标绑定 X 轴</span>
-                        <select className="select" value={Number(secondY.xAxis ?? 0)} onChange={(event) => setSecondAxisX(Number(event.target.value) || 0)} disabled={xAxisEntries.length === 0}>
-                          {xAxisEntries.map((entry, index) => (
-                            <option key={`x_axis_map_second_${index}`} value={entry.axisIndex}>
-                              {`xAxis[${entry.axisIndex}] · ${entry.binding.as ?? entry.binding.field}`}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    ) : null}
-                    <div className="muted" style={{ fontSize: 12 }}>
-                      当前映射：{measureXAxisSummary}
-                    </div>
-                  </div>
-                ) : null}
-                <div className="col" style={{ border: "1px solid var(--line)", borderRadius: 8, padding: 8 }}>
-                  {seriesBindings.length === 0 ? <div className="muted">未配置系列维度，当前仅单系列渲染。</div> : null}
-                  {seriesBindings.map((binding, index) => (
-                    <div key={`${binding.role}_${binding.field}_${index}`} className="row" style={{ alignItems: "flex-end", flexWrap: "wrap" }}>
-                      <label className="col" style={{ minWidth: 120 }}>
-                        <span>角色</span>
-                        <select className="select" value={binding.role} onChange={(event) => updateSeriesBinding(index, { role: event.target.value as FieldBinding["role"] })}>
-                          <option value="series">series</option>
-                          <option value="color">color</option>
-                          <option value="facet">facet</option>
-                        </select>
-                      </label>
-                      <label className="col" style={{ minWidth: 140 }}>
-                        <span>字段</span>
-                        <select className="select" value={binding.field} onChange={(event) => updateSeriesBinding(index, { field: event.target.value })}>
-                          {fieldOptions.map((field) => (
-                            <option key={field} value={field}>
-                              {renderFieldOptionLabel(field)}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <button className="btn mini-btn danger" onClick={() => removeSeriesBinding(index)}>
-                        删除
-                      </button>
-                    </div>
-                  ))}
-                  <div className="muted" style={{ fontSize: 12 }}>
-                    支持多维拆分，渲染时按“维度1 / 维度2”组合系列，适用于多业务线、多地域等场景。
-                  </div>
-                </div>
-                <div className="col" style={{ borderTop: "1px dashed var(--line)", paddingTop: 8 }}>
-                  <div className="row" style={{ justifyContent: "space-between" }}>
-                    <strong>计算字段</strong>
-                    <button className="btn" onClick={addComputedField}>
-                      +计算字段
-                    </button>
-                  </div>
-                  {computedFields.length === 0 ? <div className="muted">暂无计算字段</div> : null}
-                  {computedFields.map((field, idx) => (
-                    <div key={`${field.name}_${idx}`} className="row">
-                      <input className="input" placeholder="字段名" value={field.name} onChange={(event) => updateComputedField(idx, { name: event.target.value })} />
-                      <input className="input" placeholder="表达式，例如: bytes / 1024" value={field.expression} onChange={(event) => updateComputedField(idx, { expression: event.target.value })} />
-                      <button className="btn danger" onClick={() => removeComputedField(idx)}>
-                        删除
-                      </button>
-                    </div>
-                  ))}
-                  <div className="muted" style={{ fontSize: 12 }}>
-                    表达式支持数字运算和字段名引用，例如 `in_bps / out_bps`。
-                  </div>
-                </div>
-              </>
-            ) : null}
-          </div>
-        </>
+        <ChartDataTab
+          propsChartType={(props.chartType ?? "line") as ChartSpec["chartType"]}
+          endpointId={endpointId}
+          endpoint={endpoint}
+          endpoints={endpoints}
+          sourceId={sourceId}
+          sourceOptions={sourceOptions}
+          fields={fields}
+          recommend={recommend}
+          recommendationCards={recommendationCards}
+          xBinding={xBinding}
+          primaryY={primaryY}
+          secondY={secondY}
+          xBindings={xBindings}
+          xAxisEntries={xAxisEntries}
+          seriesBindings={seriesBindings}
+          fieldOptions={fieldOptions}
+          numericFields={numericFields}
+          computedFields={computedFields}
+          xAxisAdvancedOpen={xAxisAdvancedOpen}
+          advancedMappingOpen={advancedMappingOpen}
+          shouldSuggestMultiXAxis={shouldSuggestMultiXAxis}
+          paramSummary={paramSummary}
+          endpointTesting={endpointTesting}
+          endpointTestError={endpointTestError}
+          endpointTestRows={endpointTestRows}
+          resolvedParamsText={describeResolvedParams(endpoint, resolvedParams)}
+          measureXAxisSummary={measureXAxisSummary}
+          renderFieldOptionLabel={renderFieldOptionLabel}
+          onOpenDataGuide={() => setDataGuideOpen(true)}
+          onOpenParamEditor={() => setParamEditorOpen(true)}
+          onSelectEndpoint={setEndpointAndRecommend}
+          onRunEndpointTest={() => void runEndpointTest()}
+          onResetEndpoint={() => setEndpointAndRecommend("")}
+          onSelectSource={setSourceAndRecommend}
+          onAutoRecommendBindings={autoRecommendBindings}
+          onApplyDisplayRecommendation={applyDisplayRecommendation}
+          onSetPrimaryXField={setPrimaryXField}
+          onSetPrimaryYField={setPrimaryYField}
+          onOpenAggEditor={() => setAggEditorOpen(true)}
+          onToggleAdvancedMapping={() => setAdvancedMappingOpen((value) => !value)}
+          onToggleSecondAxis={setSecondAxis}
+          onAutoMatchXAxis={autoMatchXAxis}
+          onToggleXAxisAdvanced={toggleXAxisAdvanced}
+          onAddSeriesBinding={addSeriesBinding}
+          onSetSecondAxisField={setSecondAxisField}
+          onAddXAxisBinding={addXAxisBinding}
+          onUpdateXAxisBinding={updateXAxisBinding}
+          onRemoveXAxisBinding={removeXAxisBinding}
+          onSetPrimaryYXAxis={setPrimaryYXAxis}
+          onSetSecondAxisX={setSecondAxisX}
+          onUpdateSeriesBinding={updateSeriesBinding}
+          onRemoveSeriesBinding={removeSeriesBinding}
+          onAddComputedField={addComputedField}
+          onUpdateComputedField={updateComputedField}
+          onRemoveComputedField={removeComputedField}
+        />
       ) : null}
 
       {activeTab === "style" ? (
-        <>
-          <div className="col" style={{ borderTop: "1px dashed var(--line)", paddingTop: 8 }}>
-            <strong>快捷样式</strong>
-            <div className="row">
-              <button className="btn" title="一键切换暗色主题/恢复默认主题" onClick={toggleQuickDarkTheme}>
-                {String(props.themeRef ?? "").includes("dark") ? "恢复主题" : "一键深色主题"}
-              </button>
-              <button className="btn" title="一键切换网格显示" onClick={toggleQuickGrid}>
-                {props.gridShow === false ? "开启网格" : "一键无网格"}
-              </button>
-              <button className="btn" onClick={() => updateProps({ labelShow: !Boolean(props.labelShow) }, "quick toggle labels style")}>
-                {props.labelShow ? "一键数据标签关闭" : "一键数据标签开启"}
-              </button>
-            </div>
-          </div>
-
-          <div className="col" style={{ borderTop: "1px dashed var(--line)", paddingTop: 8 }}>
-            <strong>主题与配色</strong>
-            <label className="col">
-              <span>主题</span>
-              <select className="select" value={props.themeRef ?? ""} onChange={(event) => updateProps({ themeRef: event.target.value }, "chart theme switch")}>
-                <option value="">跟随文档</option>
-                {themes.map((theme) => (
-                  <option key={theme.id} value={theme.id}>
-                    {theme.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="col">
-              <span>配色</span>
-              <select className="select" value={props.paletteRef ?? ""} onChange={(event) => updateProps({ paletteRef: event.target.value }, "chart palette switch")}>
-                <option value="">默认</option>
-                <option value="palette.tech">palette.tech</option>
-                <option value="palette.tech.dark">palette.tech.dark</option>
-                <option value="palette.business">palette.business</option>
-              </select>
-            </label>
-            <ColorPaletteField
-              label="自定义调色板"
-              value={paletteColors}
-              onChange={(colors) => {
-                setPaletteColors(colors);
-                applyCustomPalette(colors);
-              }}
-            />
-          </div>
-          <TextStyleEditor title="图表标题样式" value={props.titleStyle} onChange={(style) => updateProps({ titleStyle: style }, "chart title style")} />
-          <TextStyleEditor title="图表副标题样式" value={props.subtitleStyle} onChange={(style) => updateProps({ subtitleStyle: style }, "chart subtitle style")} />
-          <NodeStyleInspector node={node} title="图表容器样式" showTextControls={false} />
-        </>
+        <ChartStyleTab
+          node={node}
+          props={props}
+          paletteColors={paletteColors}
+          onToggleQuickDarkTheme={toggleQuickDarkTheme}
+          onToggleQuickGrid={toggleQuickGrid}
+          onToggleLabels={() => updateProps({ labelShow: !Boolean(props.labelShow) }, "quick toggle labels style")}
+          onChangeThemeRef={(value) => updateProps({ themeRef: value }, "chart theme switch")}
+          onChangePaletteRef={(value) => updateProps({ paletteRef: value }, "chart palette switch")}
+          onChangePaletteColors={(colors) => {
+            setPaletteColors(colors);
+            applyCustomPalette(colors);
+          }}
+          onChangeTitleStyle={(style) => updateProps({ titleStyle: style }, "chart title style")}
+          onChangeSubtitleStyle={(style) => updateProps({ subtitleStyle: style }, "chart subtitle style")}
+        />
       ) : null}
 
       {activeTab === "advanced" ? (
-        <div className="col" style={{ borderTop: "1px dashed var(--line)", paddingTop: 8 }}>
-          <strong>高级配置</strong>
-          <div className="row">
-            <label className="row">
-              <input type="checkbox" checked={Boolean(props.legendShow)} onChange={(event) => updateProps({ legendShow: event.target.checked }, "chart legend toggle")} />
-              <span>图例</span>
-            </label>
-            <label className="row">
-              <input type="checkbox" checked={props.tooltipShow !== false} onChange={(event) => updateProps({ tooltipShow: event.target.checked }, "chart tooltip toggle")} />
-              <span>提示框</span>
-            </label>
-            <label className="row">
-              <input type="checkbox" checked={props.gridShow !== false} onChange={(event) => updateProps({ gridShow: event.target.checked }, "chart grid toggle")} />
-              <span>网格</span>
-            </label>
-          </div>
-          <div className="row">
-            <label className="row">
-              <input type="checkbox" checked={Boolean(props.smooth)} onChange={(event) => updateProps({ smooth: event.target.checked }, "chart smooth toggle")} />
-              <span>平滑</span>
-            </label>
-            <label className="row">
-              <input type="checkbox" checked={Boolean(props.stack)} onChange={(event) => updateProps({ stack: event.target.checked }, "chart stack toggle")} />
-              <span>堆叠</span>
-            </label>
-            <label className="row">
-              <input type="checkbox" checked={Boolean(props.area)} onChange={(event) => updateProps({ area: event.target.checked }, "chart area toggle")} />
-              <span>面积</span>
-            </label>
-          </div>
-          <div className="row">
-            <label className="row">
-              <input type="checkbox" checked={props.xAxisShow !== false} onChange={(event) => updateProps({ xAxisShow: event.target.checked }, "chart x axis toggle")} />
-              <span>X 轴</span>
-            </label>
-            <label className="row">
-              <input type="checkbox" checked={props.yAxisShow !== false} onChange={(event) => updateProps({ yAxisShow: event.target.checked }, "chart y axis toggle")} />
-              <span>Y 轴</span>
-            </label>
-            <label className="row">
-              <input type="checkbox" checked={Boolean(props.labelShow)} onChange={(event) => updateProps({ labelShow: event.target.checked }, "chart label toggle")} />
-              <span>标签</span>
-            </label>
-          </div>
-          <label className="col">
-            <span>X 轴标题</span>
-            <input className="input" value={String(props.xAxisTitle ?? "")} onChange={(event) => updateProps({ xAxisTitle: event.target.value }, "chart x title", 120)} />
-          </label>
-          <label className="col">
-            <span>Y 轴标题</span>
-            <input className="input" value={String(props.yAxisTitle ?? "")} onChange={(event) => updateProps({ yAxisTitle: event.target.value }, "chart y title", 120)} />
-          </label>
-          <label className="col">
-            <span>值格式（valueFormat）</span>
-            <input className="input" value={String(props.valueFormat ?? "")} onChange={(event) => updateProps({ valueFormat: event.target.value }, "chart value format", 120)} />
-          </label>
-          <label className="col">
-            <span>时间格式（timeFormat）</span>
-            <input className="input" value={String(props.timeFormat ?? "")} onChange={(event) => updateProps({ timeFormat: event.target.value }, "chart time format", 120)} />
-          </label>
-        </div>
+        <ChartAdvancedTab
+          props={props}
+          onToggleLegend={(checked) => updateProps({ legendShow: checked }, "chart legend toggle")}
+          onToggleTooltip={(checked) => updateProps({ tooltipShow: checked }, "chart tooltip toggle")}
+          onToggleGrid={(checked) => updateProps({ gridShow: checked }, "chart grid toggle")}
+          onToggleSmooth={(checked) => updateProps({ smooth: checked }, "chart smooth toggle")}
+          onToggleStack={(checked) => updateProps({ stack: checked }, "chart stack toggle")}
+          onToggleArea={(checked) => updateProps({ area: checked }, "chart area toggle")}
+          onToggleXAxis={(checked) => updateProps({ xAxisShow: checked }, "chart x axis toggle")}
+          onToggleYAxis={(checked) => updateProps({ yAxisShow: checked }, "chart y axis toggle")}
+          onToggleLabel={(checked) => updateProps({ labelShow: checked }, "chart label toggle")}
+          onChangeXAxisTitle={(value) => updateProps({ xAxisTitle: value }, "chart x title", 120)}
+          onChangeYAxisTitle={(value) => updateProps({ yAxisTitle: value }, "chart y title", 120)}
+          onChangeValueFormat={(value) => updateProps({ valueFormat: value }, "chart value format", 120)}
+          onChangeTimeFormat={(value) => updateProps({ timeFormat: value }, "chart time format", 120)}
+        />
       ) : null}
       <DataGuideDialog
         open={dataGuideOpen}

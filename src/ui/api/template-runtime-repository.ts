@@ -1,5 +1,5 @@
 import type { TemplateVariableDef, VDoc } from "../../core/doc/types";
-import type { EditorDocType } from "./doc-repository";
+import type { EditorDocType } from "./template-repository";
 
 export type TemplateExportOutput = "dashboard_snapshot_json" | "report_docx" | "ppt_pptx";
 export type TemplateRunStatus = "queued" | "running" | "succeeded" | "failed";

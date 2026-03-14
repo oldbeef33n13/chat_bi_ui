@@ -1,0 +1,35 @@
+{
+  "id": "data_guide_basic_001",
+  "scene": "data_guide",
+  "title": "告警趋势接口说明",
+  "description": "标准时间序列接口。",
+  "tags": ["basic", "time-series"],
+  "input": {
+    "name": "ops_alarm_trend",
+    "description": "按时间统计告警趋势。",
+    "params": [
+      { "name": "region", "label": "区域", "type": "string", "required": true, "description": "过滤区域" },
+      { "name": "from", "label": "开始时间", "type": "date", "required": true, "description": "统计开始时间" }
+    ],
+    "fields": [
+      { "name": "stat_date", "label": "统计日期", "type": "time" },
+      { "name": "alarm_count", "label": "告警数", "type": "number" }
+    ],
+    "sampleRows": [
+      { "stat_date": "2026-03-01", "alarm_count": 10 }
+    ]
+  },
+  "expect": {
+    "mustHaveRecommendedCharts": ["line"],
+    "mustHaveFieldRoles": ["time", "metric"],
+    "allowFallback": true
+  },
+  "score": {
+    "weights": {
+      "structure": 0.2,
+      "semantic": 0.8
+    },
+    "minimumPassScore": 0.8
+  },
+  "notes": "标准时间序列接口说明。"
+}

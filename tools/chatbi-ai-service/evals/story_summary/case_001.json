@@ -1,0 +1,31 @@
+{
+  "id": "story_summary_basic_001",
+  "scene": "story_summary",
+  "title": "报告管理层摘要",
+  "description": "根据报告洞察生成管理层摘要。",
+  "tags": ["basic", "report", "management"],
+  "input": {
+    "docType": "report",
+    "title": "网络运行周报",
+    "focus": "管理层摘要",
+    "insights": [
+      "本周华东区域重大告警较上周上升 18%",
+      "容量风险主要集中在华南骨干链路",
+      "工单关闭效率较上周改善 12%"
+    ]
+  },
+  "expect": {
+    "mustHaveFields": ["headline", "conclusion", "evidence", "advice"],
+    "mustMentionAny": ["告警", "容量", "工单"],
+    "allowFallback": true
+  },
+  "score": {
+    "weights": {
+      "structure": 0.2,
+      "semantic": 0.6,
+      "expression": 0.2
+    },
+    "minimumPassScore": 0.8
+  },
+  "notes": "标准报告摘要。"
+}

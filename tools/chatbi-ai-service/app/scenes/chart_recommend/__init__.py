@@ -1,0 +1,1 @@
+"""Chart recommend scene."""

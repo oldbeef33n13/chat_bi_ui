@@ -25,6 +25,9 @@ describe("App library integrations", () => {
   it("opens schedule panel from template cards", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
+      if (url.includes("/api/v1/data-endpoints")) {
+        return createJsonResponse({ items: [] });
+      }
       if (url.endsWith("/api/v1/templates/seeds")) {
         return createJsonResponse({
           items: [
@@ -95,6 +98,9 @@ describe("App library integrations", () => {
 
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
+      if (url.includes("/api/v1/data-endpoints")) {
+        return createJsonResponse({ items: [] });
+      }
       if (url.endsWith("/api/v1/templates/seeds")) {
         return createJsonResponse({
           items: [
@@ -194,6 +200,9 @@ describe("App library integrations", () => {
     ];
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
+      if (url.includes("/api/v1/data-endpoints")) {
+        return createJsonResponse({ items: [] });
+      }
       if (url.endsWith("/api/v1/templates/seeds")) {
         return createJsonResponse({
           items: [
@@ -311,6 +320,9 @@ describe("App library integrations", () => {
     vi.stubGlobal("open", openMock);
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
+      if (url.includes("/api/v1/data-endpoints")) {
+        return createJsonResponse({ items: [] });
+      }
       if (url.includes("/api/v1/templates?")) {
         return createJsonResponse({
           items: [
@@ -432,6 +444,9 @@ describe("App library integrations", () => {
 
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
+      if (url.includes("/api/v1/data-endpoints")) {
+        return createJsonResponse({ items: [] });
+      }
       if (url.includes("/api/v1/templates?")) {
         return createJsonResponse({
           items: [currentMeta],

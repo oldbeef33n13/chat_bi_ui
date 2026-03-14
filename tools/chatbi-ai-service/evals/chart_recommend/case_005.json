@@ -1,0 +1,34 @@
+{
+  "id": "chart_recommend_multilingual_005",
+  "scene": "chart_recommend",
+  "title": "中英文字段混合",
+  "description": "字段 name 为英文，label 为中文，推荐仍应稳定。",
+  "tags": ["multilingual", "basic"],
+  "input": {
+    "requestedType": "auto",
+    "fields": [
+      { "name": "biz_date", "label": "业务日期", "type": "time" },
+      { "name": "availability_pct", "label": "可用率", "type": "number", "unit": "%" }
+    ],
+    "context": {
+      "docType": "report",
+      "trigger": "inspector"
+    }
+  },
+  "expect": {
+    "chartTypeIn": ["line", "combo"],
+    "mustHaveRoles": ["x", "y"],
+    "expectedAggFor": {
+      "availability_pct": ["avg"]
+    },
+    "allowFallback": true
+  },
+  "score": {
+    "weights": {
+      "structure": 0.2,
+      "semantic": 0.8
+    },
+    "minimumPassScore": 0.82
+  },
+  "notes": "比例类指标应优先平均口径。"
+}

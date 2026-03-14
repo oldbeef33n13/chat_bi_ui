@@ -1,0 +1,79 @@
+// 响应式：窄屏下三栏堆叠。
+@media (max-width: 1200px) {
+  .layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: 260px minmax(360px, 1fr) 320px;
+  }
+
+  .editor-toolbar-row {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+
+  .editor-workspace.doc-dashboard,
+  .editor-workspace.doc-report,
+  .editor-workspace.doc-ppt {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(420px, 1fr) auto;
+  }
+
+  .editor-side-left {
+    max-height: 240px;
+  }
+
+  .editor-main-stage {
+    min-height: 420px;
+  }
+
+  .editor-side-right {
+    min-height: 320px;
+  }
+
+  .editor-side-resizer {
+    display: none;
+  }
+
+  .data-endpoint-panel {
+    inset: 12px;
+    width: auto;
+  }
+
+  .schedule-panel {
+    inset: 12px;
+    width: auto;
+  }
+
+  .data-endpoint-panel-body {
+    grid-template-columns: 1fr;
+    grid-template-rows: 240px minmax(0, 1fr);
+  }
+
+  .schedule-panel-body {
+    grid-template-columns: 1fr;
+    grid-template-rows: 220px minmax(0, 1fr);
+  }
+
+  .data-endpoint-list {
+    border-right: none;
+    border-bottom: 1px solid #e2e8f0;
+  }
+
+  .schedule-list {
+    border-right: none;
+    border-bottom: 1px solid #e2e8f0;
+  }
+
+  .data-endpoint-form {
+    grid-template-columns: 1fr;
+  }
+
+  .schedule-form {
+    grid-template-columns: 1fr;
+  }
+
+  .template-variable-form,
+  .template-variable-form.compact {
+    grid-template-columns: 1fr;
+  }
+}

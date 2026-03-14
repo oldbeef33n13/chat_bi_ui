@@ -1,0 +1,34 @@
+{
+  "id": "data_guide_basic_002",
+  "scene": "data_guide",
+  "title": "区域容量排行接口",
+  "description": "分类对比接口。",
+  "tags": ["basic", "comparison"],
+  "input": {
+    "name": "ops_capacity_topn",
+    "description": "按区域或链路统计容量排行。",
+    "params": [
+      { "name": "topN", "label": "TopN", "type": "number", "required": false, "description": "返回前 N 条" }
+    ],
+    "fields": [
+      { "name": "region_name", "label": "区域", "type": "string" },
+      { "name": "utilization_pct", "label": "利用率", "type": "number", "unit": "%" }
+    ],
+    "sampleRows": [
+      { "region_name": "华东", "utilization_pct": 76 }
+    ]
+  },
+  "expect": {
+    "mustHaveRecommendedCharts": ["bar", "pie"],
+    "mustHaveFieldRoles": ["dimension", "metric"],
+    "allowFallback": true
+  },
+  "score": {
+    "weights": {
+      "structure": 0.2,
+      "semantic": 0.8
+    },
+    "minimumPassScore": 0.8
+  },
+  "notes": "分类对比与占比接口。"
+}

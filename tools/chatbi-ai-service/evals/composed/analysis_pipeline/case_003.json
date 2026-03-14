@@ -1,0 +1,75 @@
+{
+  "id": "composed_analysis_pipeline_003",
+  "scene": "composed",
+  "flowType": "analysis_pipeline",
+  "title": "周期对比分析闭环",
+  "description": "比较本周和上周工单关闭效率变化。",
+  "tags": ["analysis", "single-source", "period-compare", "ops"],
+  "input": {
+    "userQuestion": "比较本周和上周工单关闭效率变化",
+    "routerContext": {
+      "threadId": "thread_analysis_003",
+      "docId": "tpl_report_003",
+      "docType": "report",
+      "activeSectionId": "section_3",
+      "activePageId": null,
+      "selectedObjectIds": []
+    },
+    "plannerInput": {
+      "candidateSources": [
+        {
+          "sourceId": "ops_ticket_summary",
+          "name": "工单汇总",
+          "schema": [
+            { "name": "stat_date", "label": "统计日期", "type": "time" },
+            { "name": "closed_count", "label": "关闭工单数", "type": "number" },
+            { "name": "close_efficiency", "label": "关闭效率", "type": "number" }
+          ],
+          "rows": [
+            { "stat_date": "2026-02-23", "closed_count": 90, "close_efficiency": 0.84 },
+            { "stat_date": "2026-02-24", "closed_count": 95, "close_efficiency": 0.86 },
+            { "stat_date": "2026-02-25", "closed_count": 101, "close_efficiency": 0.87 },
+            { "stat_date": "2026-03-01", "closed_count": 112, "close_efficiency": 0.89 },
+            { "stat_date": "2026-03-02", "closed_count": 118, "close_efficiency": 0.91 },
+            { "stat_date": "2026-03-03", "closed_count": 121, "close_efficiency": 0.92 }
+          ]
+        }
+      ]
+    },
+    "executorFixtures": {
+      "sourceIds": ["ops_ticket_summary"],
+      "expectedInputRows": 3000
+    }
+  },
+  "expect": {
+    "router": {
+      "intent": "ask_analysis",
+      "scene": "analysis_planner"
+    },
+    "plan": {
+      "analysisMode": "single_source",
+      "mustUseSources": ["ops_ticket_summary"],
+      "mustContainOps": ["group_aggregate", "compare_period", "sort_rows"],
+      "mustNotContainOps": ["join_sources"]
+    },
+    "execution": {
+      "status": "succeeded",
+      "mustHaveTables": ["summary_table"],
+      "mustExposeStats": ["inputRows", "outputRows", "latencyMs"]
+    },
+    "summary": {
+      "mustHaveFields": ["headline", "conclusion", "evidence", "advice"],
+      "mustMentionAny": ["工单", "本周", "上周", "变化"]
+    }
+  },
+  "score": {
+    "weights": {
+      "router": 0.15,
+      "planning": 0.35,
+      "execution": 0.3,
+      "summary": 0.2
+    },
+    "minimumPassScore": 0.8
+  },
+  "notes": "用于验证 compare_period 算子的规划。"
+}

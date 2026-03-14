@@ -1,0 +1,30 @@
+{
+  "id": "story_summary_basic_003",
+  "scene": "story_summary",
+  "title": "Dashboard 一句话总结",
+  "description": "面向 dashboard 生成简洁摘要。",
+  "tags": ["basic", "dashboard"],
+  "input": {
+    "docType": "dashboard",
+    "title": "网络运维总览",
+    "focus": "一句话洞察",
+    "insights": [
+      "今日告警峰值出现在 10:00-11:00",
+      "华东区域健康度下降明显"
+    ]
+  },
+  "expect": {
+    "mustHaveFields": ["headline", "conclusion", "evidence", "advice"],
+    "mustMentionAny": ["告警", "健康度"],
+    "allowFallback": true
+  },
+  "score": {
+    "weights": {
+      "structure": 0.2,
+      "semantic": 0.6,
+      "expression": 0.2
+    },
+    "minimumPassScore": 0.78
+  },
+  "notes": "适合 dashboard 快速洞察。"
+}

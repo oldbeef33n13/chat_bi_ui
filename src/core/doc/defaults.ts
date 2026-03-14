@@ -3,6 +3,28 @@ import type { ChartSpec, DashboardPreset, DocType, VDoc, VNode } from "./types";
 
 const makeId = (prefix: string): string => prefixedId(prefix);
 
+const buildSampleAlarmData = (): Array<Record<string, unknown>> => [
+  { day: "Mon", alarm_count: 34, region: "East" },
+  { day: "Tue", alarm_count: 23, region: "East" },
+  { day: "Wed", alarm_count: 27, region: "West" },
+  { day: "Thu", alarm_count: 18, region: "North" },
+  { day: "Fri", alarm_count: 30, region: "South" },
+  { day: "Sat", alarm_count: 11, region: "South" },
+  { day: "Sun", alarm_count: 19, region: "East" }
+];
+
+const buildSampleAlarmDataSources = () => [
+  {
+    id: "ds_alarm",
+    type: "static" as const,
+    staticData: buildSampleAlarmData()
+  }
+];
+
+const buildSampleAlarmQueries = () => [{ queryId: "q_alarm_trend", sourceId: "ds_alarm", kind: "static" as const }];
+
+const hasChartNode = (node: VNode): boolean => node.kind === "chart" || (node.children ?? []).some((child) => hasChartNode(child));
+
 export const defaultChartSpec = (title: string): ChartSpec => ({
   chartType: "line",
   titleText: title,
@@ -72,22 +94,8 @@ export const createDashboardDoc = (preset: DashboardPreset = "wallboard"): VDoc 
   title: preset === "workbench" ? "网络运维工作台" : "网络运维总览",
   locale: "zh-CN",
   themeId: preset === "workbench" ? "theme.tech.light" : "theme.tech.dark",
-  dataSources: [
-    {
-      id: "ds_alarm",
-      type: "static",
-      staticData: [
-        { day: "Mon", alarm_count: 34, region: "East" },
-        { day: "Tue", alarm_count: 23, region: "East" },
-        { day: "Wed", alarm_count: 27, region: "West" },
-        { day: "Thu", alarm_count: 18, region: "North" },
-        { day: "Fri", alarm_count: 30, region: "South" },
-        { day: "Sat", alarm_count: 11, region: "South" },
-        { day: "Sun", alarm_count: 19, region: "East" }
-      ]
-    }
-  ],
-  queries: [{ queryId: "q_alarm_trend", sourceId: "ds_alarm", kind: "static" }],
+  dataSources: buildSampleAlarmDataSources(),
+  queries: buildSampleAlarmQueries(),
   filters: [
     {
       filterId: "f_time",
@@ -115,6 +123,8 @@ export const createReportDoc = (): VDoc => ({
   title: "网络周报",
   locale: "zh-CN",
   themeId: "theme.business.light",
+  dataSources: buildSampleAlarmDataSources(),
+  queries: buildSampleAlarmQueries(),
   root: {
     id: "root",
     kind: "container",
@@ -160,7 +170,7 @@ export const createReportDoc = (): VDoc => ({
             id: makeId("chart"),
             kind: "chart",
             props: defaultChartSpec("本周告警趋势"),
-            data: { sourceId: "ds_alarm" }
+            data: { sourceId: "ds_alarm", queryId: "q_alarm_trend" }
           }
         ]
       },
@@ -187,6 +197,8 @@ export const createPptDoc = (): VDoc => ({
   title: "网络运营汇报",
   locale: "zh-CN",
   themeId: "theme.tech.light",
+  dataSources: buildSampleAlarmDataSources(),
+  queries: buildSampleAlarmQueries(),
   root: {
     id: "root",
     kind: "container",
@@ -223,6 +235,7 @@ export const createPptDoc = (): VDoc => ({
             id: makeId("chart"),
             kind: "chart",
             layout: { mode: "absolute", x: 36, y: 94, w: 430, h: 260, z: 1 },
+            data: { sourceId: "ds_alarm", queryId: "q_alarm_trend" },
             props: defaultChartSpec("告警趋势")
           },
           {
@@ -251,4 +264,23 @@ export const createDefaultDoc = (docType: DocType): VDoc => {
     default:
       return createDashboardDoc();
   }
+};
+
+export const ensureSampleChartRuntimeData = (doc: VDoc): VDoc => {
+  if (!hasChartNode(doc.root)) {
+    return doc;
+  }
+  const hasDataSources = (doc.dataSources?.length ?? 0) > 0;
+  const hasQueries = (doc.queries?.length ?? 0) > 0;
+  if (hasDataSources && hasQueries) {
+    return doc;
+  }
+  const next = structuredClone(doc);
+  if (!hasDataSources) {
+    next.dataSources = buildSampleAlarmDataSources();
+  }
+  if (!hasQueries) {
+    next.queries = buildSampleAlarmQueries();
+  }
+  return next;
 };

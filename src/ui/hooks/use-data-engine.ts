@@ -1,14 +1,10 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { DataSourceDef, QueryDef } from "../../core/doc/types";
 import { DataEngine, type DataEngineOptions } from "../../runtime/data/data-engine";
 
-/** 用于判断数据定义是否变化的稳定签名。 */
-const normalizeDataDefs = (sources: DataSourceDef[] = [], queries: QueryDef[] = []): string =>
-  JSON.stringify({ sources, queries });
-
 export interface UseDataEngineResult {
   engine: DataEngine;
-  dataVersion: string;
+  dataVersion: number;
 }
 
 /** DataEngine Hook：负责实例复用、定义同步、卸载清理。 */
@@ -17,15 +13,23 @@ export const useDataEngine = (
   queries: QueryDef[] = [],
   options: DataEngineOptions = {}
 ): UseDataEngineResult => {
-  const dataVersion = useMemo(() => normalizeDataDefs(sources, queries), [sources, queries]);
   const engineRef = useRef<DataEngine | null>(null);
+  const defsRef = useRef<{ sources: DataSourceDef[]; queries: QueryDef[] } | null>(null);
+  const [dataVersion, setDataVersion] = useState(0);
   if (!engineRef.current) {
     engineRef.current = new DataEngine(sources, queries, options);
+    defsRef.current = { sources, queries };
   }
 
   useEffect(() => {
+    const currentDefs = defsRef.current;
+    if (currentDefs?.sources === sources && currentDefs.queries === queries) {
+      return;
+    }
+    defsRef.current = { sources, queries };
     engineRef.current?.syncSources(sources, queries);
-  }, [dataVersion, sources, queries]);
+    setDataVersion((value) => value + 1);
+  }, [queries, sources]);
 
   useEffect(
     () => () => {

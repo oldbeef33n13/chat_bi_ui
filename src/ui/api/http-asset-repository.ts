@@ -1,5 +1,5 @@
 import type { AssetRef } from "../../core/doc/types";
-import { DocApiError } from "./doc-repository";
+import { TemplateApiError } from "./template-repository";
 import type { AssetRepository, UploadedImageAsset } from "./asset-repository";
 
 const ensureObject = (value: unknown): Record<string, unknown> => (value && typeof value === "object" ? (value as Record<string, unknown>) : {});
@@ -45,7 +45,7 @@ export class HttpAssetRepository implements AssetRepository {
     }
     if (!response.ok) {
       const message = ensureObject(payload).message ? String(ensureObject(payload).message) : `HTTP ${response.status}`;
-      throw new DocApiError(message, response.status, payload);
+      throw new TemplateApiError(message, response.status, payload);
     }
     return parseImageAsset(payload);
   }

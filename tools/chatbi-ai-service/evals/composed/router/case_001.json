@@ -1,0 +1,56 @@
+{
+  "id": "composed_router_001",
+  "scene": "composed",
+  "flowType": "router",
+  "title": "当前选中图表的追问路由",
+  "description": "用户在 report 中选中图表后提问，系统应直接命中当前图表并路由到图表问答。",
+  "tags": ["router", "basic", "chart", "report"],
+  "input": {
+    "thread": {
+      "threadId": "thread_router_001",
+      "docId": "tpl_report_001",
+      "docType": "report",
+      "activeSectionId": "section_2",
+      "activePageId": null,
+      "selectedObjectIds": ["chart_1"],
+      "templateVariables": {
+        "region": "华东",
+        "from": "2026-03-01",
+        "to": "2026-03-07"
+      }
+    },
+    "objectRegistry": {
+      "docId": "tpl_report_001",
+      "docType": "report",
+      "objects": [
+        {
+          "objectId": "chart_1",
+          "kind": "chart",
+          "title": "区域告警趋势",
+          "sectionId": "section_2",
+          "pageId": null,
+          "chartType": "line",
+          "fieldKeywords": ["告警", "趋势", "区域", "日期"],
+          "sourceRefs": ["ops_alarm_trend"],
+          "displayText": "第二章 区域告警趋势 折线图"
+        }
+      ]
+    },
+    "userText": "这个图最高点是什么时候"
+  },
+  "expect": {
+    "router": {
+      "intent": "ask_chart",
+      "scene": "chart_ask",
+      "resolvedObjectIds": ["chart_1"],
+      "needsClarification": false
+    }
+  },
+  "score": {
+    "weights": {
+      "router": 1.0
+    },
+    "minimumPassScore": 0.95
+  },
+  "notes": "用于验证 selected object 优先级高于文本匹配。"
+}

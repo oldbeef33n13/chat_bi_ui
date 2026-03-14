@@ -1,0 +1,31 @@
+{
+  "id": "chart_recommend_basic_001",
+  "scene": "chart_recommend",
+  "title": "时间单指标趋势",
+  "description": "时间字段加单个指标字段，应优先推荐趋势图。",
+  "tags": ["basic", "trend", "time-series"],
+  "input": {
+    "requestedType": "auto",
+    "fields": [
+      { "name": "stat_date", "label": "统计日期", "type": "time" },
+      { "name": "alarm_count", "label": "告警数", "type": "number" }
+    ],
+    "context": {
+      "docType": "dashboard",
+      "trigger": "inspector"
+    }
+  },
+  "expect": {
+    "chartTypeIn": ["line", "combo"],
+    "mustHaveRoles": ["x", "y"],
+    "allowFallback": true
+  },
+  "score": {
+    "weights": {
+      "structure": 0.2,
+      "semantic": 0.8
+    },
+    "minimumPassScore": 0.8
+  },
+  "notes": "标准时间序列推荐。"
+}

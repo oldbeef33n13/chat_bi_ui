@@ -1,0 +1,35 @@
+{
+  "id": "chart_ask_basic_005",
+  "scene": "chart_ask",
+  "title": "问答触发改图计划",
+  "description": "用户明确要求改成柱状图并开标签，应返回 plan。",
+  "tags": ["basic", "plan", "edit"],
+  "input": {
+    "prompt": "改成柱状图并开启标签",
+    "nodeId": "chart_region_compare",
+    "spec": {
+      "chartType": "line",
+      "bindings": [
+        { "role": "x", "field": "region_name" },
+        { "role": "y", "field": "incident_count", "agg": "sum" }
+      ]
+    },
+    "rows": [
+      { "region_name": "华东", "incident_count": 18 },
+      { "region_name": "华南", "incident_count": 24 }
+    ]
+  },
+  "expect": {
+    "mustHavePlan": true,
+    "mustMentionAny": ["建议修改", "柱状图", "标签"],
+    "allowFallback": true
+  },
+  "score": {
+    "weights": {
+      "structure": 0.2,
+      "semantic": 0.8
+    },
+    "minimumPassScore": 0.82
+  },
+  "notes": "问答与编辑动作结合。"
+}

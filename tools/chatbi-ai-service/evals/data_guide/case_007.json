@@ -1,0 +1,39 @@
+{
+  "id": "data_guide_business_007",
+  "scene": "data_guide",
+  "title": "服务健康趋势接口说明",
+  "description": "时间+维度+多个指标字段的服务健康接口。",
+  "tags": ["business", "trend", "ops"],
+  "input": {
+    "name": "ops_service_health_trend",
+    "description": "服务健康趋势与时延指标",
+    "params": [
+      { "name": "region", "label": "区域", "type": "string", "required": false, "description": "可选区域过滤" },
+      { "name": "from", "label": "开始时间", "type": "string", "required": true, "description": "开始时间" },
+      { "name": "to", "label": "结束时间", "type": "string", "required": true, "description": "结束时间" }
+    ],
+    "fields": [
+      { "name": "stat_date", "label": "统计日期", "type": "time" },
+      { "name": "service_name", "label": "服务名称", "type": "string" },
+      { "name": "availability_pct", "label": "可用率", "type": "number", "unit": "%" },
+      { "name": "latency_ms", "label": "平均时延", "type": "number", "unit": "ms" }
+    ],
+    "sampleRows": [
+      { "stat_date": "2026-03-01", "service_name": "短信网关", "availability_pct": 99.95, "latency_ms": 120 },
+      { "stat_date": "2026-03-02", "service_name": "短信网关", "availability_pct": 99.70, "latency_ms": 165 }
+    ]
+  },
+  "expect": {
+    "mustHaveRecommendedCharts": ["line"],
+    "mustHaveFieldRoles": ["time", "dimension", "metric"],
+    "allowFallback": true
+  },
+  "score": {
+    "weights": {
+      "structure": 0.2,
+      "semantic": 0.8
+    },
+    "minimumPassScore": 0.8
+  },
+  "notes": "典型时间趋势类接口说明。"
+}

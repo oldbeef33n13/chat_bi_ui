@@ -1,0 +1,76 @@
+{
+  "id": "composed_analysis_pipeline_002",
+  "scene": "composed",
+  "flowType": "analysis_pipeline",
+  "title": "TopN 利用率分析闭环",
+  "description": "从容量利用率数据中找出华南区域最高的 5 条线路。",
+  "tags": ["analysis", "single-source", "topn", "ops"],
+  "input": {
+    "userQuestion": "帮我找出华南区域链路利用率最高的5条线路",
+    "routerContext": {
+      "threadId": "thread_analysis_002",
+      "docId": "tpl_dashboard_001",
+      "docType": "dashboard",
+      "activeSectionId": null,
+      "activePageId": "page_1",
+      "selectedObjectIds": []
+    },
+    "plannerInput": {
+      "candidateSources": [
+        {
+          "sourceId": "ops_capacity_topn",
+          "name": "链路容量利用率",
+          "schema": [
+            { "name": "region", "label": "区域", "type": "string" },
+            { "name": "link_name", "label": "链路名称", "type": "string" },
+            { "name": "utilization_pct", "label": "利用率", "type": "number" }
+          ],
+          "rows": [
+            { "region": "华南", "link_name": "广州-深圳A", "utilization_pct": 93.2 },
+            { "region": "华南", "link_name": "广州-深圳B", "utilization_pct": 91.4 },
+            { "region": "华南", "link_name": "广州-东莞", "utilization_pct": 88.6 },
+            { "region": "华南", "link_name": "深圳-珠海", "utilization_pct": 86.1 },
+            { "region": "华南", "link_name": "广州-佛山", "utilization_pct": 84.2 },
+            { "region": "华南", "link_name": "深圳-惠州", "utilization_pct": 79.8 },
+            { "region": "华东", "link_name": "上海-苏州", "utilization_pct": 72.3 }
+          ]
+        }
+      ]
+    },
+    "executorFixtures": {
+      "sourceIds": ["ops_capacity_topn"],
+      "expectedInputRows": 5000
+    }
+  },
+  "expect": {
+    "router": {
+      "intent": "ask_analysis",
+      "scene": "analysis_planner"
+    },
+    "plan": {
+      "analysisMode": "single_source",
+      "mustUseSources": ["ops_capacity_topn"],
+      "mustContainOps": ["filter_rows", "sort_rows", "top_n"],
+      "mustNotContainOps": ["join_sources"]
+    },
+    "execution": {
+      "status": "succeeded",
+      "mustHaveTables": ["summary_table"],
+      "mustExposeStats": ["inputRows", "outputRows", "latencyMs"]
+    },
+    "summary": {
+      "mustHaveFields": ["headline", "conclusion", "evidence", "advice"],
+      "mustMentionAny": ["华南", "链路", "利用率", "最高"]
+    }
+  },
+  "score": {
+    "weights": {
+      "router": 0.15,
+      "planning": 0.35,
+      "execution": 0.3,
+      "summary": 0.2
+    },
+    "minimumPassScore": 0.8
+  },
+  "notes": "用于验证 TopN 型问题的计划生成。"
+}

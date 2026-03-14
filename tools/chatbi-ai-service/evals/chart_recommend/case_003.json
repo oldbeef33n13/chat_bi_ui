@@ -1,0 +1,32 @@
+{
+  "id": "chart_recommend_basic_003",
+  "scene": "chart_recommend",
+  "title": "双指标时间序列",
+  "description": "时间字段加两个指标字段，应优先推荐双轴或组合图。",
+  "tags": ["basic", "combo", "multi-metric"],
+  "input": {
+    "requestedType": "auto",
+    "fields": [
+      { "name": "stat_date", "label": "统计日期", "type": "time" },
+      { "name": "alarm_count", "label": "告警数", "type": "number" },
+      { "name": "ticket_count", "label": "工单数", "type": "number" }
+    ],
+    "context": {
+      "docType": "ppt",
+      "trigger": "create-wizard"
+    }
+  },
+  "expect": {
+    "chartTypeIn": ["combo", "line"],
+    "mustHaveRoles": ["x", "y"],
+    "allowFallback": true
+  },
+  "score": {
+    "weights": {
+      "structure": 0.2,
+      "semantic": 0.8
+    },
+    "minimumPassScore": 0.8
+  },
+  "notes": "双指标推荐组合图。"
+}

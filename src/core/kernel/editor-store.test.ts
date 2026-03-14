@@ -8,6 +8,7 @@ describe("EditorStore", () => {
     const firstChart = doc.root.children?.find((node) => node.kind === "chart");
     expect(firstChart).toBeTruthy();
     const store = new EditorStore(doc);
+    expect(store.docRevision.value).toBe(1);
 
     const ok = store.executeCommand({
       type: "UpdateProps",
@@ -15,14 +16,17 @@ describe("EditorStore", () => {
       props: { chartType: "bar", labelShow: true }
     });
     expect(ok).toBe(true);
+    expect(store.docRevision.value).toBe(2);
     expect(store.doc.value?.root.children?.[0]?.props).toMatchObject({ chartType: "bar", labelShow: true });
 
     const undone = store.undo();
     expect(undone).toBe(true);
+    expect(store.docRevision.value).toBe(3);
     expect(store.doc.value?.root.children?.[0]?.props).toMatchObject({ chartType: "line" });
 
     const redone = store.redo();
     expect(redone).toBe(true);
+    expect(store.docRevision.value).toBe(4);
     expect(store.doc.value?.root.children?.[0]?.props).toMatchObject({ chartType: "bar", labelShow: true });
   });
 
@@ -46,6 +50,35 @@ describe("EditorStore", () => {
     expect(accepted).toBe(true);
     expect(store.pendingPlan.value).toBeNull();
     expect(store.doc.value?.root.children?.[0]?.props).toMatchObject({ smooth: false, labelShow: true });
+  });
+
+  it("tracks dirty state against an explicit baseline doc", () => {
+    const baseline = createDashboardDoc();
+    const localDraft = structuredClone(baseline);
+    localDraft.title = "本地草稿";
+    const firstChart = localDraft.root.children?.find((node) => node.kind === "chart");
+    expect(firstChart).toBeTruthy();
+
+    const store = new EditorStore(localDraft, { selectedIds: [] }, baseline);
+    expect(store.isDirty.value).toBe(true);
+
+    const reset = store.executeCommand({
+      type: "UpdateProps",
+      nodeId: firstChart!.id,
+      props: (baseline.root.children?.find((node) => node.id === firstChart!.id)?.props ?? {}) as Record<string, unknown>
+    });
+    expect(reset).toBe(true);
+    expect(store.isDirty.value).toBe(true);
+
+    const restoreTitle = store.executeCommand({
+      type: "UpdateDoc",
+      doc: { title: baseline.title }
+    });
+    expect(restoreTitle).toBe(true);
+    expect(store.isDirty.value).toBe(false);
+
+    store.setDoc(baseline);
+    expect(store.isDirty.value).toBe(false);
   });
 
   it("replaces selection ids while keeping a valid primary node", () => {

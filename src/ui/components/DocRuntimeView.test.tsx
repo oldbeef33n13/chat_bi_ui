@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDashboardDoc, createPptDoc, createReportDoc } from "../../core/doc/defaults";
+import { CopilotProvider, useCopilot } from "../copilot/copilot-context";
 import { DocRuntimeView } from "./DocRuntimeView";
 
 vi.mock("../../runtime/chart/EChartView", () => ({
@@ -18,6 +19,20 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+function CopilotSceneObserver(): JSX.Element {
+  const { scene } = useCopilot();
+  return (
+    <div data-testid="copilot-runtime-scene">
+      {JSON.stringify({
+        objectId: scene.objectId ?? null,
+        objectLabel: scene.objectLabel ?? null,
+        sectionLabel: scene.sectionLabel ?? null,
+        slideLabel: scene.slideLabel ?? null
+      })}
+    </div>
+  );
+}
+
 describe("DocRuntimeView global props", () => {
   it("does not render a duplicate runtime header for chart cards with intrinsic titles", async () => {
     const doc = createDashboardDoc();
@@ -27,6 +42,47 @@ describe("DocRuntimeView global props", () => {
     await waitFor(() => {
       expect(screen.queryByText("告警趋势")).toBeNull();
       expect(screen.getAllByTestId("echart-mock").length).toBeGreaterThan(0);
+    });
+  });
+
+  it("renders the built-in report chart with sample data", async () => {
+    const doc = createReportDoc();
+
+    render(<DocRuntimeView doc={doc} />);
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId("echart-mock").length).toBeGreaterThan(0);
+    });
+  });
+
+  it("renders the built-in ppt chart with sample data", async () => {
+    const doc = createPptDoc();
+
+    render(<DocRuntimeView doc={doc} />);
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId("echart-mock").length).toBeGreaterThan(0);
+    });
+  });
+
+  it("syncs dashboard runtime card selection into Copilot context", async () => {
+    const doc = createDashboardDoc();
+    const targetNode = doc.root.children?.[1];
+    expect(targetNode).toBeTruthy();
+
+    render(
+      <CopilotProvider>
+        <CopilotSceneObserver />
+        <DocRuntimeView doc={doc} />
+      </CopilotProvider>
+    );
+
+    const targetCard = await screen.findByTestId(`runtime-dashboard-node-${targetNode!.id}`);
+    fireEvent.click(targetCard);
+
+    await waitFor(() => {
+      expect(targetCard.classList.contains("is-runtime-selected")).toBe(true);
+      expect(screen.getByTestId("copilot-runtime-scene").textContent).toContain(targetNode!.id);
     });
   });
 
@@ -88,6 +144,30 @@ describe("DocRuntimeView global props", () => {
     await waitFor(() => {
       expect(screen.getAllByText("Report 页眉测试").length).toBeGreaterThanOrEqual(4);
       expect(screen.getAllByText("Report 页脚测试").length).toBeGreaterThanOrEqual(4);
+    });
+  });
+
+  it("syncs report runtime block selection into Copilot context", async () => {
+    const doc = createReportDoc();
+    const section = doc.root.children?.find((node) => node.kind === "section");
+    const targetNode = section?.children?.find((node) => node.kind === "chart" || node.kind === "text" || node.kind === "table");
+    expect(section).toBeTruthy();
+    expect(targetNode).toBeTruthy();
+
+    render(
+      <CopilotProvider>
+        <CopilotSceneObserver />
+        <DocRuntimeView doc={doc} />
+      </CopilotProvider>
+    );
+
+    const targetBlock = await screen.findByTestId(`runtime-report-node-${targetNode!.id}`);
+    fireEvent.click(targetBlock);
+
+    await waitFor(() => {
+      expect(targetBlock.classList.contains("is-runtime-selected")).toBe(true);
+      expect(screen.getByTestId("copilot-runtime-scene").textContent).toContain(targetNode!.id);
+      expect(screen.getByTestId("copilot-runtime-scene").textContent).toContain(String((section?.props as Record<string, unknown>)?.title ?? ""));
     });
   });
 
@@ -307,6 +387,49 @@ describe("DocRuntimeView global props", () => {
     });
   });
 
+  it("prefetches dashboard endpoint nodes on first runtime render", async () => {
+    const fetchMock = vi.fn(async () =>
+      createJsonResponse({
+        id: "ops_alarm_trend",
+        rows: [
+          { ts: "2026-03-01", critical: 12 },
+          { ts: "2026-03-02", critical: 18 }
+        ]
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const doc = createDashboardDoc();
+    doc.root.children = [
+      {
+        id: "runtime_dashboard_prefetch_text",
+        kind: "text",
+        props: { text: "说明", format: "plain" },
+        layout: { mode: "grid", gx: 0, gy: 0, gw: 4, gh: 3 }
+      },
+      {
+        id: "runtime_dashboard_prefetch_chart",
+        kind: "chart",
+        props: {
+          titleText: "趋势图",
+          chartType: "line",
+          bindings: [
+            { role: "x", field: "ts" },
+            { role: "y", field: "critical", agg: "sum" }
+          ]
+        },
+        data: { endpointId: "ops_alarm_trend" },
+        layout: { mode: "grid", gx: 4, gy: 0, gw: 8, gh: 6 }
+      }
+    ];
+
+    render(<DocRuntimeView doc={doc} />);
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it("shows remote loading state while endpoint rows are pending", async () => {
     let resolveResponse: ((value: Response) => void) | undefined;
     const fetchMock = vi.fn(
@@ -386,6 +509,39 @@ describe("DocRuntimeView global props", () => {
     });
   });
 
+  it("updates Copilot context after report outline navigation", async () => {
+    const doc = createReportDoc();
+    doc.root.children = [
+      {
+        id: "section_runtime_report_nav_a",
+        kind: "section",
+        props: { title: "总览" },
+        children: [{ id: "text_nav_a", kind: "text", props: { text: "a", format: "plain" } }]
+      },
+      {
+        id: "section_runtime_report_nav_b",
+        kind: "section",
+        props: { title: "趋势" },
+        children: [{ id: "text_nav_b", kind: "text", props: { text: "b", format: "plain" } }]
+      }
+    ];
+
+    render(
+      <CopilotProvider>
+        <CopilotSceneObserver />
+        <DocRuntimeView doc={doc} />
+      </CopilotProvider>
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /目录/ }));
+    fireEvent.click(screen.getByRole("button", { name: "2. 趋势" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("copilot-runtime-scene").textContent).toContain("text_nav_b");
+      expect(screen.getByTestId("copilot-runtime-scene").textContent).toContain("2. 趋势");
+    });
+  });
+
   it("supports ppt outline quick access in runtime", async () => {
     const doc = createPptDoc();
     const firstSlide = (doc.root.children ?? []).find((item) => item.kind === "slide");
@@ -416,6 +572,168 @@ describe("DocRuntimeView global props", () => {
     fireEvent.change(screen.getByPlaceholderText("搜索页面"), { target: { value: "不存在页面" } });
     await waitFor(() => {
       expect(screen.queryByText("未命中页面")).not.toBeNull();
+    });
+  });
+
+  it("prefetches the first later data ppt slide on first render", async () => {
+    const fetchMock = vi.fn(async () =>
+      createJsonResponse({
+        id: "ops_alarm_trend",
+        rows: [
+          { ts: "2026-03-01", critical: 12 },
+          { ts: "2026-03-02", critical: 18 }
+        ]
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const doc = createPptDoc();
+    const firstSlide = (doc.root.children ?? []).find((item) => item.kind === "slide");
+    if (!firstSlide) {
+      throw new Error("missing slide");
+    }
+    firstSlide.children = [
+      {
+        id: "text_prefetch_cover_runtime",
+        kind: "text",
+        props: { text: "封面", format: "plain" },
+        layout: { mode: "absolute", x: 60, y: 80, w: 220, h: 100, z: 1 }
+      }
+    ];
+    const introSlide = {
+      id: "slide_prefetch_runtime_intro",
+      kind: "slide" as const,
+      props: { title: "说明页" },
+      layout: { mode: "absolute" as const, x: 0, y: 0, w: 960, h: 540 },
+      children: [
+        {
+          id: "text_prefetch_runtime_intro",
+          kind: "text" as const,
+          props: { text: "说明", format: "plain" },
+          layout: { mode: "absolute" as const, x: 60, y: 80, w: 220, h: 100, z: 1 }
+        }
+      ]
+    };
+    doc.root.children = [
+      firstSlide,
+      introSlide,
+      {
+        id: "slide_prefetch_runtime_two",
+        kind: "slide",
+        props: { title: "趋势页" },
+        layout: { mode: "absolute", x: 0, y: 0, w: 960, h: 540 },
+        children: [
+          {
+            id: "chart_prefetch_runtime_two",
+            kind: "chart",
+            props: {
+              titleText: "趋势图",
+              chartType: "line",
+              bindings: [
+                { role: "x", field: "ts" },
+                { role: "y", field: "critical", agg: "sum" }
+              ]
+            },
+            data: { endpointId: "ops_alarm_trend" },
+            layout: { mode: "absolute", x: 40, y: 96, w: 400, h: 220, z: 1 }
+          }
+        ]
+      }
+    ];
+
+    render(<DocRuntimeView doc={doc} />);
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("prefetches the first later data report section on first render", async () => {
+    const fetchMock = vi.fn(async () =>
+      createJsonResponse({
+        id: "ops_alarm_trend",
+        rows: [
+          { ts: "2026-03-01", critical: 12 },
+          { ts: "2026-03-02", critical: 18 }
+        ]
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const doc = createReportDoc();
+    doc.root.children = [
+      {
+        id: "section_runtime_prefetch_cover",
+        kind: "section",
+        props: { title: "总览说明" },
+        children: [{ id: "text_runtime_prefetch_cover", kind: "text", props: { text: "说明", format: "plain" } }]
+      },
+      {
+        id: "section_runtime_prefetch_intro",
+        kind: "section",
+        props: { title: "口径说明" },
+        children: [{ id: "text_runtime_prefetch_intro", kind: "text", props: { text: "口径", format: "plain" } }]
+      },
+      {
+        id: "section_runtime_prefetch_data",
+        kind: "section",
+        props: { title: "趋势页" },
+        children: [
+          {
+            id: "chart_runtime_prefetch_data",
+            kind: "chart",
+            props: {
+              titleText: "趋势图",
+              chartType: "line",
+              bindings: [
+                { role: "x", field: "ts" },
+                { role: "y", field: "critical", agg: "sum" }
+              ]
+            },
+            data: { endpointId: "ops_alarm_trend" }
+          }
+        ]
+      }
+    ];
+
+    render(<DocRuntimeView doc={doc} />);
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("updates Copilot context after switching ppt slides", async () => {
+    const doc = createPptDoc();
+    doc.root.children = [
+      {
+        id: "slide_runtime_nav_1",
+        kind: "slide",
+        props: { title: "总览" },
+        layout: { mode: "absolute", x: 0, y: 0, w: 960, h: 540 },
+        children: [{ id: "text_runtime_nav_1", kind: "text", props: { text: "第一页", format: "plain" }, layout: { mode: "absolute", x: 60, y: 80, w: 220, h: 100, z: 1 } }]
+      },
+      {
+        id: "slide_runtime_nav_2",
+        kind: "slide",
+        props: { title: "趋势" },
+        layout: { mode: "absolute", x: 0, y: 0, w: 960, h: 540 },
+        children: [{ id: "text_runtime_nav_2", kind: "text", props: { text: "第二页", format: "plain" }, layout: { mode: "absolute", x: 60, y: 80, w: 220, h: 100, z: 1 } }]
+      }
+    ];
+
+    render(
+      <CopilotProvider>
+        <CopilotSceneObserver />
+        <DocRuntimeView doc={doc} />
+      </CopilotProvider>
+    );
+
+    fireEvent.click(screen.getByText("趋势"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("copilot-runtime-scene").textContent).toContain("text_runtime_nav_2");
+      expect(screen.getByTestId("copilot-runtime-scene").textContent).toContain("第 2 页");
     });
   });
 });

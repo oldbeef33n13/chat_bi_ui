@@ -209,10 +209,10 @@ export const resolveNextFloatingRect = (
   };
 };
 
-export const resolveImageAsset = (doc: VDoc, assetId: string | undefined): AssetRef | undefined =>
+export const resolveImageAsset = (doc: Pick<VDoc, "assets">, assetId: string | undefined): AssetRef | undefined =>
   (doc.assets ?? []).find((asset) => asset.assetId === assetId && asset.type === "image");
 
-export const resolveImageNodeTitle = (doc: VDoc, node: VNode): string => {
+export const resolveImageNodeTitle = (doc: Pick<VDoc, "assets">, node: VNode): string => {
   const props = (node.props ?? {}) as ImageProps;
   const asset = resolveImageAsset(doc, props.assetId);
   return props.title ?? asset?.name ?? node.name ?? "图片";

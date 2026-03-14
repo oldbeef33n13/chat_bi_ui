@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import { memo, type CSSProperties } from "react";
 import type { TableSpec } from "../../core/doc/types";
 import { buildTableRenderModel } from "./table-adapter";
 import { resolveTextContainerStyle, resolveTextContentStyle } from "../../ui/utils/node-style";
@@ -10,7 +10,7 @@ interface TableViewProps {
 }
 
 /** 表格渲染组件：消费 TableRenderModel，负责 DOM 表格输出。 */
-export function TableView({ spec, rows, height = "100%" }: TableViewProps): JSX.Element {
+function TableViewInner({ spec, rows, height = "100%" }: TableViewProps): JSX.Element {
   const model = buildTableRenderModel(spec, rows);
   const wrapperStyle: CSSProperties = {
     width: "100%",
@@ -82,3 +82,8 @@ export function TableView({ spec, rows, height = "100%" }: TableViewProps): JSX.
     </div>
   );
 }
+
+export const TableView = memo(
+  TableViewInner,
+  (prev, next) => prev.spec === next.spec && prev.rows === next.rows && prev.height === next.height
+);

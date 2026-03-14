@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { BarChart, GaugeChart, HeatmapChart, LineChart, PieChart, RadarChart, SankeyChart, ScatterChart, TreemapChart } from "echarts/charts";
 import { CalendarComponent, GridComponent, LegendComponent, RadarComponent, TitleComponent, TooltipComponent, VisualMapComponent } from "echarts/components";
 import { init, type ECharts, use } from "echarts/core";
@@ -34,7 +34,7 @@ interface EChartViewProps {
 }
 
 /** 图表运行态组件：负责实例生命周期与 option 更新。 */
-export function EChartView({ spec, rows, height = 240 }: EChartViewProps): JSX.Element {
+function EChartViewInner({ spec, rows, height = 240 }: EChartViewProps): JSX.Element {
   const rootRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<ECharts | null>(null);
   const [renderError, setRenderError] = useState<string | null>(null);
@@ -100,3 +100,8 @@ export function EChartView({ spec, rows, height = 240 }: EChartViewProps): JSX.E
     </div>
   );
 }
+
+export const EChartView = memo(
+  EChartViewInner,
+  (prev, next) => prev.spec === next.spec && prev.rows === next.rows && prev.height === next.height
+);

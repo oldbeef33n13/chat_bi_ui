@@ -1,0 +1,33 @@
+{
+  "id": "chart_recommend_complex_006",
+  "scene": "chart_recommend",
+  "title": "区域与告警等级对比",
+  "description": "区域维度、告警等级和指标字段，适合柱状分组对比。",
+  "tags": ["complex", "ops", "comparison", "business"],
+  "input": {
+    "requestedType": "auto",
+    "fields": [
+      { "name": "region_name", "label": "区域", "type": "string" },
+      { "name": "severity_level", "label": "告警等级", "type": "string" },
+      { "name": "alarm_count", "label": "告警数量", "type": "number" }
+    ],
+    "context": {
+      "docType": "dashboard",
+      "nodeId": "chart_region_alarm_compare",
+      "trigger": "inspector"
+    }
+  },
+  "expect": {
+    "chartTypeIn": ["bar"],
+    "mustHaveRoles": ["x", "y", "series"],
+    "allowFallback": true
+  },
+  "score": {
+    "weights": {
+      "structure": 0.2,
+      "semantic": 0.8
+    },
+    "minimumPassScore": 0.85
+  },
+  "notes": "典型维度+系列+指标对比图。"
+}

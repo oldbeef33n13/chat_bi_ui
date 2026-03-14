@@ -1,0 +1,65 @@
+{
+  "id": "composed_multi_source_002",
+  "scene": "composed",
+  "flowType": "multi_source",
+  "title": "容量与变更受控关联分析",
+  "description": "容量利用率异常和变更次数是否有时间上的关联，允许受控 join。",
+  "tags": ["analysis", "multi-source", "join", "ops"],
+  "input": {
+    "userQuestion": "容量利用率异常和变更次数有没有时间上的关系",
+    "plannerInput": {
+      "candidateSources": [
+        {
+          "sourceId": "ops_capacity_topn",
+          "name": "容量利用率",
+          "schema": [
+            { "name": "stat_date", "label": "统计日期", "type": "time" },
+            { "name": "region", "label": "区域", "type": "string" },
+            { "name": "utilization_pct", "label": "利用率", "type": "number" }
+          ],
+          "rows": [
+            { "stat_date": "2026-03-01", "region": "华东", "utilization_pct": 68.2 },
+            { "stat_date": "2026-03-02", "region": "华东", "utilization_pct": 79.4 },
+            { "stat_date": "2026-03-03", "region": "华东", "utilization_pct": 88.1 }
+          ],
+          "joinHints": [
+            {
+              "targetSourceId": "ops_change_calendar",
+              "joinKeys": ["region", "stat_date"],
+              "joinType": "left"
+            }
+          ]
+        },
+        {
+          "sourceId": "ops_change_calendar",
+          "name": "变更日历",
+          "schema": [
+            { "name": "stat_date", "label": "统计日期", "type": "time" },
+            { "name": "region", "label": "区域", "type": "string" },
+            { "name": "change_count", "label": "变更次数", "type": "number" }
+          ],
+          "rows": [
+            { "stat_date": "2026-03-01", "region": "华东", "change_count": 2 },
+            { "stat_date": "2026-03-02", "region": "华东", "change_count": 5 },
+            { "stat_date": "2026-03-03", "region": "华东", "change_count": 6 }
+          ]
+        }
+      ]
+    }
+  },
+  "expect": {
+    "plan": {
+      "analysisModeIn": ["multi_source_compare", "multi_source_join"],
+      "mustUseSources": ["ops_capacity_topn", "ops_change_calendar"],
+      "mustNotContainUnsafeJoin": true,
+      "allowedJoinKeys": ["region", "stat_date"]
+    }
+  },
+  "score": {
+    "weights": {
+      "planning": 1.0
+    },
+    "minimumPassScore": 0.8
+  },
+  "notes": "当前仍作为设计骨架，不参与第一批 composed runner。"
+}

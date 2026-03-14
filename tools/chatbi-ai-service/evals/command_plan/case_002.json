@@ -1,0 +1,23 @@
+{
+  "id": "command_plan_basic_002",
+  "scene": "command_plan",
+  "title": "切换暗色主题",
+  "description": "用户想把整份内容换成暗色主题。",
+  "tags": ["basic", "theme", "dark"],
+  "input": {
+    "input": "切成暗色风格",
+    "currentNodeId": "chart_ops_alarm"
+  },
+  "expect": {
+    "mustHaveCommandTypes": ["ApplyTheme"],
+    "allowFallback": true
+  },
+  "score": {
+    "weights": {
+      "structure": 0.3,
+      "semantic": 0.7
+    },
+    "minimumPassScore": 0.75
+  },
+  "notes": "主题切换意图。"
+}

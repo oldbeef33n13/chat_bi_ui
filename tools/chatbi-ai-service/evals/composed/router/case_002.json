@@ -1,0 +1,62 @@
+{
+  "id": "composed_router_002",
+  "scene": "composed",
+  "flowType": "router",
+  "title": "章节级修改路由",
+  "description": "用户直接说第二章，系统应优先命中章节对象而不是图表对象。",
+  "tags": ["router", "section", "edit", "report"],
+  "input": {
+    "thread": {
+      "threadId": "thread_router_002",
+      "docId": "tpl_report_002",
+      "docType": "report",
+      "activeSectionId": "section_2",
+      "activePageId": null,
+      "selectedObjectIds": [],
+      "lastResolvedObjectId": null
+    },
+    "objectRegistry": {
+      "docId": "tpl_report_002",
+      "docType": "report",
+      "objects": [
+        {
+          "objectId": "section_2",
+          "kind": "section",
+          "title": "第二章 告警概览",
+          "sectionId": "section_2",
+          "pageId": null,
+          "fieldKeywords": ["第二章", "告警", "概览"],
+          "sourceRefs": [],
+          "displayText": "第二章 告警概览"
+        },
+        {
+          "objectId": "chart_1",
+          "kind": "chart",
+          "title": "区域告警趋势",
+          "sectionId": "section_2",
+          "pageId": null,
+          "chartType": "line",
+          "fieldKeywords": ["告警", "趋势"],
+          "sourceRefs": ["ops_alarm_trend"],
+          "displayText": "第二章 区域告警趋势"
+        }
+      ]
+    },
+    "userText": "把第二章改成先结论再图表"
+  },
+  "expect": {
+    "router": {
+      "intent": "ask_edit",
+      "scene": "command_plan",
+      "resolvedObjectIds": ["section_2"],
+      "needsClarification": false
+    }
+  },
+  "score": {
+    "weights": {
+      "router": 1.0
+    },
+    "minimumPassScore": 0.95
+  },
+  "notes": "用于验证章节引用高于模糊关键词匹配。"
+}

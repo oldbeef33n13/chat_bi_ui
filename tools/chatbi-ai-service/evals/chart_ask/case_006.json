@@ -1,0 +1,36 @@
+{
+  "id": "chart_ask_business_006",
+  "scene": "chart_ask",
+  "title": "询问哪个区域告警最高",
+  "description": "柱状图场景下比较各区域告警数量。",
+  "tags": ["business", "comparison", "ops"],
+  "input": {
+    "prompt": "哪个区域告警最高",
+    "nodeId": "chart_region_alarm_compare",
+    "spec": {
+      "chartType": "bar",
+      "bindings": [
+        { "role": "x", "field": "region_name" },
+        { "role": "y", "field": "alarm_count", "agg": "sum" }
+      ]
+    },
+    "rows": [
+      { "region_name": "华东", "alarm_count": 142 },
+      { "region_name": "华北", "alarm_count": 98 },
+      { "region_name": "华南", "alarm_count": 121 }
+    ]
+  },
+  "expect": {
+    "mustMentionAny": ["华东", "最高", "峰值"],
+    "mustHaveSuggestions": true,
+    "allowFallback": true
+  },
+  "score": {
+    "weights": {
+      "structure": 0.2,
+      "semantic": 0.8
+    },
+    "minimumPassScore": 0.8
+  },
+  "notes": "分类对比问答。"
+}

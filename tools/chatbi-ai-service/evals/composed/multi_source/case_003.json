@@ -1,0 +1,56 @@
+{
+  "id": "composed_multi_source_003",
+  "scene": "composed",
+  "flowType": "multi_source",
+  "title": "服务健康与故障明细对比分析",
+  "description": "比较服务健康度下降和故障明细增加是否同步，优先采用并行对比。",
+  "tags": ["analysis", "multi-source", "compare", "ops"],
+  "input": {
+    "userQuestion": "服务健康度下降和故障明细增加是否同步",
+    "plannerInput": {
+      "candidateSources": [
+        {
+          "sourceId": "ops_service_health",
+          "name": "服务健康度",
+          "schema": [
+            { "name": "stat_date", "label": "统计日期", "type": "time" },
+            { "name": "service_name", "label": "服务名称", "type": "string" },
+            { "name": "health_score", "label": "健康度", "type": "number" }
+          ],
+          "rows": [
+            { "stat_date": "2026-03-01", "service_name": "网络调度", "health_score": 96 },
+            { "stat_date": "2026-03-02", "service_name": "网络调度", "health_score": 92 },
+            { "stat_date": "2026-03-03", "service_name": "网络调度", "health_score": 87 }
+          ]
+        },
+        {
+          "sourceId": "ops_incident_list",
+          "name": "故障明细",
+          "schema": [
+            { "name": "stat_date", "label": "统计日期", "type": "time" },
+            { "name": "service_name", "label": "服务名称", "type": "string" },
+            { "name": "incident_count", "label": "故障数", "type": "number" }
+          ],
+          "rows": [
+            { "stat_date": "2026-03-01", "service_name": "网络调度", "incident_count": 1 },
+            { "stat_date": "2026-03-02", "service_name": "网络调度", "incident_count": 2 },
+            { "stat_date": "2026-03-03", "service_name": "网络调度", "incident_count": 4 }
+          ]
+        }
+      ]
+    }
+  },
+  "expect": {
+    "plan": {
+      "analysisModeIn": ["multi_source_compare", "multi_source_join"],
+      "mustUseSources": ["ops_service_health", "ops_incident_list"]
+    }
+  },
+  "score": {
+    "weights": {
+      "planning": 1.0
+    },
+    "minimumPassScore": 0.8
+  },
+  "notes": "用于后续多源 compare runner。"
+}

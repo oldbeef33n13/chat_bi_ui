@@ -1,10 +1,13 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { useEffect } from "react";
+import { StrictMode, useEffect } from "react";
 import { describe, expect, it, vi } from "vitest";
 import type { VDoc } from "../../core/doc/types";
 import { createDashboardDoc } from "../../core/doc/defaults";
 import { EditorProvider, useEditorStore } from "../state/editor-context";
 import { useSignalValue } from "../state/use-signal-value";
+import { encodeCopilotArtifact } from "../copilot/copilot-artifact-dnd";
+import { CopilotProvider, useCopilot } from "../copilot/copilot-context";
+import type { CopilotArtifactResultItem } from "../copilot/copilot-results";
 import { DashboardEditor } from "./DashboardEditor";
 
 vi.mock("../../runtime/chart/EChartView", () => ({
@@ -20,6 +23,25 @@ function DocObserver({ onDoc }: { onDoc: (doc: VDoc) => void }): null {
     }
   }, [doc, onDoc]);
   return null;
+}
+
+function LiveDashboardEditor(): JSX.Element | null {
+  const store = useEditorStore();
+  const doc = useSignalValue(store.doc);
+  if (!doc) {
+    return null;
+  }
+  return <DashboardEditor doc={doc} />;
+}
+
+function CopilotSpotlightObserver(): JSX.Element {
+  const { spotlight } = useCopilot();
+  return <span data-testid="copilot-spotlight-node">{spotlight?.nodeId ?? ""}</span>;
+}
+
+function CopilotSpotlightTrigger({ docId, nodeId }: { docId: string; nodeId: string }): JSX.Element {
+  const { spotlightNode } = useCopilot();
+  return <button onClick={() => spotlightNode(docId, nodeId)}>触发 Copilot 高亮</button>;
 }
 
 function UiSeed({ insertPanelOpen }: { insertPanelOpen?: boolean }): null {
@@ -55,19 +77,27 @@ const createDataTransfer = (): DataTransfer => {
   } as DataTransfer;
 };
 
+const createJsonResponse = (payload: unknown): Response =>
+  new Response(JSON.stringify(payload), {
+    status: 200,
+    headers: { "Content-Type": "application/json" }
+  });
+
 describe("DashboardEditor direct manipulation", () => {
   it("does not render a duplicate floating title for chart cards with intrinsic titles", async () => {
     let latestDoc = createDashboardDoc();
 
     render(
-      <EditorProvider initialDoc={latestDoc}>
-        <DocObserver
-          onDoc={(doc) => {
-            latestDoc = structuredClone(doc);
-          }}
-        />
-        <DashboardEditor doc={latestDoc} />
-      </EditorProvider>
+      <CopilotProvider>
+        <EditorProvider initialDoc={latestDoc}>
+          <DocObserver
+            onDoc={(doc) => {
+              latestDoc = structuredClone(doc);
+            }}
+          />
+          <LiveDashboardEditor />
+        </EditorProvider>
+      </CopilotProvider>
     );
 
     await waitFor(() => {
@@ -80,14 +110,17 @@ describe("DashboardEditor direct manipulation", () => {
     let latestDoc = createDashboardDoc();
 
     render(
-      <EditorProvider initialDoc={latestDoc}>
-        <DocObserver
-          onDoc={(doc) => {
-            latestDoc = structuredClone(doc);
-          }}
-        />
-        <DashboardEditor doc={latestDoc} />
-      </EditorProvider>
+      <CopilotProvider>
+        <CopilotSpotlightObserver />
+        <EditorProvider initialDoc={latestDoc}>
+          <DocObserver
+            onDoc={(doc) => {
+              latestDoc = structuredClone(doc);
+            }}
+          />
+          <LiveDashboardEditor />
+        </EditorProvider>
+      </CopilotProvider>
     );
 
     const canvas = screen.getByTestId("dashboard-canvas");
@@ -108,14 +141,17 @@ describe("DashboardEditor direct manipulation", () => {
     }
 
     render(
-      <EditorProvider initialDoc={latestDoc}>
-        <DocObserver
-          onDoc={(doc) => {
-            latestDoc = structuredClone(doc);
-          }}
-        />
-        <DashboardEditor doc={latestDoc} />
-      </EditorProvider>
+      <CopilotProvider>
+        <CopilotSpotlightObserver />
+        <EditorProvider initialDoc={latestDoc}>
+          <DocObserver
+            onDoc={(doc) => {
+              latestDoc = structuredClone(doc);
+            }}
+          />
+          <LiveDashboardEditor />
+        </EditorProvider>
+      </CopilotProvider>
     );
 
     const card = screen.getByTestId(`dashboard-card-${chart.id}`);
@@ -139,14 +175,17 @@ describe("DashboardEditor direct manipulation", () => {
     let latestDoc = createDashboardDoc();
 
     render(
-      <EditorProvider initialDoc={latestDoc}>
-        <DocObserver
-          onDoc={(doc) => {
-            latestDoc = structuredClone(doc);
-          }}
-        />
-        <DashboardEditor doc={latestDoc} />
-      </EditorProvider>
+      <CopilotProvider>
+        <CopilotSpotlightObserver />
+        <EditorProvider initialDoc={latestDoc}>
+          <DocObserver
+            onDoc={(doc) => {
+              latestDoc = structuredClone(doc);
+            }}
+          />
+          <LiveDashboardEditor />
+        </EditorProvider>
+      </CopilotProvider>
     );
 
     const canvas = screen.getByTestId("dashboard-canvas");
@@ -176,14 +215,17 @@ describe("DashboardEditor direct manipulation", () => {
     }
 
     render(
-      <EditorProvider initialDoc={latestDoc}>
-        <DocObserver
-          onDoc={(doc) => {
-            latestDoc = structuredClone(doc);
-          }}
-        />
-        <DashboardEditor doc={latestDoc} />
-      </EditorProvider>
+      <CopilotProvider>
+        <CopilotSpotlightObserver />
+        <EditorProvider initialDoc={latestDoc}>
+          <DocObserver
+            onDoc={(doc) => {
+              latestDoc = structuredClone(doc);
+            }}
+          />
+          <LiveDashboardEditor />
+        </EditorProvider>
+      </CopilotProvider>
     );
 
     const canvas = screen.getByTestId("dashboard-canvas");
@@ -212,14 +254,17 @@ describe("DashboardEditor direct manipulation", () => {
     }
 
     render(
-      <EditorProvider initialDoc={latestDoc}>
-        <DocObserver
-          onDoc={(doc) => {
-            latestDoc = structuredClone(doc);
-          }}
-        />
-        <DashboardEditor doc={latestDoc} />
-      </EditorProvider>
+      <CopilotProvider>
+        <CopilotSpotlightObserver />
+        <EditorProvider initialDoc={latestDoc}>
+          <DocObserver
+            onDoc={(doc) => {
+              latestDoc = structuredClone(doc);
+            }}
+          />
+          <LiveDashboardEditor />
+        </EditorProvider>
+      </CopilotProvider>
     );
 
     const canvas = screen.getByTestId("dashboard-canvas");
@@ -293,6 +338,203 @@ describe("DashboardEditor direct manipulation", () => {
     await waitFor(() => {
       const tables = (latestDoc.root.children ?? []).filter((node) => node.kind === "table");
       expect(tables).toHaveLength(1);
+    });
+  });
+
+  it("drops a copilot artifact onto the dashboard canvas with regenerated node ids", async () => {
+    let latestDoc = createDashboardDoc();
+    const dataTransfer = createDataTransfer();
+    const artifact: CopilotArtifactResultItem = {
+      resultId: "artifact_result_dashboard_1",
+      sceneId: "detail:runtime:view",
+      threadId: "thread_demo",
+      docId: latestDoc.docId,
+      docType: "dashboard",
+      originSceneKind: "dashboard_runtime",
+      originRouteMode: "view",
+      originLabel: "Dashboard 运行态",
+      kind: "artifact",
+      title: "AI 文本模块草稿",
+      summary: "已从运行态洞察转成文本模块草稿",
+      createdAt: "2026-03-12T00:00:00Z",
+      updatedAt: "2026-03-12T00:00:00Z",
+      jobId: "job_runtime_artifact",
+      unitId: "unit_runtime_artifact",
+      artifactId: "artifact_dashboard_demo",
+      artifactKind: "block_region",
+      node: {
+        id: "container_artifact_demo",
+        kind: "container",
+        layout: { mode: "grid", gx: 0, gy: 0, gw: 4, gh: 4 },
+        props: { title: "AI 文本模块草稿" },
+        children: [
+          {
+            id: "text_artifact_demo",
+            kind: "text",
+            props: { text: "这是来自 Copilot 的运行态结论。", format: "plain" }
+          }
+        ]
+      },
+      notes: ["来自运行态深度分析"],
+      status: "ready"
+    };
+
+    render(
+      <CopilotProvider>
+        <CopilotSpotlightObserver />
+        <EditorProvider initialDoc={latestDoc}>
+          <DocObserver
+            onDoc={(doc) => {
+              latestDoc = structuredClone(doc);
+            }}
+          />
+          <LiveDashboardEditor />
+        </EditorProvider>
+      </CopilotProvider>
+    );
+
+    const canvas = screen.getByTestId("dashboard-canvas");
+    encodeCopilotArtifact(dataTransfer, artifact);
+
+    fireEvent.dragOver(canvas, { dataTransfer, clientX: 860, clientY: 260 });
+    await waitFor(() => {
+      expect(screen.getByTestId("dashboard-insert-preview-artifact_result_dashboard_1")).toBeTruthy();
+      expect(screen.getAllByText(/将插入到/).length).toBeGreaterThan(0);
+      expect(document.querySelectorAll(".dash-card.is-copilot-drop-guide")).toHaveLength(1);
+    });
+    fireEvent.drop(canvas, { dataTransfer, clientX: 860, clientY: 260 });
+
+    await waitFor(() => {
+      const inserted = (latestDoc.root.children ?? []).find(
+        (node) =>
+          node.kind === "container" &&
+          node.id !== "container_artifact_demo" &&
+          String((node.props as Record<string, unknown> | undefined)?.title ?? "") === "AI 文本模块草稿"
+      );
+      expect(inserted).toBeTruthy();
+      expect(inserted?.children?.[0]?.id).not.toBe("text_artifact_demo");
+      expect(inserted?.children?.[0]?.props).toMatchObject({ text: "这是来自 Copilot 的运行态结论。" });
+    });
+
+    const insertedId = (latestDoc.root.children ?? []).find(
+      (node) =>
+        node.kind === "container" &&
+        String((node.props as Record<string, unknown> | undefined)?.title ?? "") === "AI 文本模块草稿"
+    )?.id;
+    expect(insertedId).toBeTruthy();
+    await waitFor(() => expect(screen.getByTestId("copilot-spotlight-node").textContent).toBe(insertedId));
+  });
+
+  it("highlights an existing dashboard card when Copilot focuses it", async () => {
+    const latestDoc = createDashboardDoc();
+    const targetNodeId = latestDoc.root.children?.[0]?.id;
+    if (!targetNodeId) {
+      throw new Error("missing dashboard card");
+    }
+
+    render(
+      <CopilotProvider>
+        <CopilotSpotlightTrigger docId={latestDoc.docId} nodeId={targetNodeId} />
+        <EditorProvider initialDoc={latestDoc}>
+          <LiveDashboardEditor />
+        </EditorProvider>
+      </CopilotProvider>
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "触发 Copilot 高亮" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId(`dashboard-card-${targetNodeId}`).classList.contains("is-copilot-spotlight")).toBe(true);
+    });
+  });
+
+  it("prefetches dashboard endpoint nodes on first editor render", async () => {
+    const fetchMock = vi.fn(async () =>
+      createJsonResponse({
+        id: "ops_alarm_trend",
+        rows: [
+          { ts: "2026-03-01", critical: 12 },
+          { ts: "2026-03-02", critical: 18 }
+        ]
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const latestDoc = createDashboardDoc();
+    latestDoc.root.children = [
+      {
+        id: "dashboard_prefetch_text",
+        kind: "text",
+        props: { text: "首屏说明", format: "plain" },
+        layout: { mode: "grid", gx: 0, gy: 0, gw: 4, gh: 3 }
+      },
+      {
+        id: "dashboard_prefetch_chart",
+        kind: "chart",
+        props: {
+          titleText: "趋势图",
+          chartType: "line",
+          bindings: [
+            { role: "x", field: "ts" },
+            { role: "y", field: "critical", agg: "sum" }
+          ]
+        },
+        data: { endpointId: "ops_alarm_trend" },
+        layout: { mode: "grid", gx: 4, gy: 0, gw: 8, gh: 6 }
+      }
+    ];
+
+    render(
+      <EditorProvider initialDoc={latestDoc}>
+        <DashboardEditor doc={latestDoc} />
+      </EditorProvider>
+    );
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("still loads dashboard endpoint data on first render under StrictMode", async () => {
+    const fetchMock = vi.fn(async () =>
+      createJsonResponse({
+        id: "ops_alarm_trend",
+        rows: [
+          { ts: "2026-03-01", critical: 12 },
+          { ts: "2026-03-02", critical: 18 }
+        ]
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const latestDoc = createDashboardDoc();
+    latestDoc.root.children = [
+      {
+        id: "dashboard_strict_prefetch_chart",
+        kind: "chart",
+        props: {
+          titleText: "趋势图",
+          chartType: "line",
+          bindings: [
+            { role: "x", field: "ts" },
+            { role: "y", field: "critical", agg: "sum" }
+          ]
+        },
+        data: { endpointId: "ops_alarm_trend" },
+        layout: { mode: "grid", gx: 0, gy: 0, gw: 8, gh: 6 }
+      }
+    ];
+
+    render(
+      <StrictMode>
+        <EditorProvider initialDoc={latestDoc}>
+          <DashboardEditor doc={latestDoc} />
+        </EditorProvider>
+      </StrictMode>
+    );
+
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.length).toBeGreaterThan(0);
     });
   });
 });

@@ -24,7 +24,7 @@ const resolveSystemVar = (key?: string): unknown => {
   }
 };
 
-const resolveFilterValue = (doc: VDoc, key?: string): unknown => {
+const resolveFilterValue = (doc: Pick<VDoc, "filters">, key?: string): unknown => {
   if (!key) {
     return undefined;
   }
@@ -32,7 +32,7 @@ const resolveFilterValue = (doc: VDoc, key?: string): unknown => {
   return filter?.defaultValue;
 };
 
-export const resolveDataEndpointParams = (doc: VDoc, node: VNode): Record<string, unknown> => {
+export const resolveDataEndpointParams = (doc: Pick<VDoc, "filters" | "templateVariables">, node: VNode): Record<string, unknown> => {
   const baseParams = { ...(node.data?.params ?? {}) };
   const templateVars = buildTemplateVariableDefaults(doc.templateVariables);
   for (const [paramName, binding] of Object.entries(node.data?.paramBindings ?? {})) {

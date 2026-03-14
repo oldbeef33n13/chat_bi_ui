@@ -1,0 +1,25 @@
+{
+  "id": "command_plan_basic_003",
+  "scene": "command_plan",
+  "title": "切换折线图并开启平滑",
+  "description": "用户希望改成折线图并开启平滑。",
+  "tags": ["basic", "line", "smooth"],
+  "input": {
+    "input": "改成折线图，顺便开平滑",
+    "currentNodeId": "chart_capacity_trend"
+  },
+  "expect": {
+    "mustHaveCommandTypes": ["UpdateProps"],
+    "mustTargetIds": ["chart_capacity_trend"],
+    "shouldContainProps": ["chartType", "smooth"],
+    "allowFallback": true
+  },
+  "score": {
+    "weights": {
+      "structure": 0.2,
+      "semantic": 0.8
+    },
+    "minimumPassScore": 0.8
+  },
+  "notes": "多属性组合修改。"
+}

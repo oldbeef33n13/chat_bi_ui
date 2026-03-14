@@ -1,0 +1,1 @@
+"""Scene-oriented AI capabilities."""

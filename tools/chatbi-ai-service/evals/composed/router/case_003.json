@@ -1,0 +1,62 @@
+{
+  "id": "composed_router_003",
+  "scene": "composed",
+  "flowType": "router",
+  "title": "模糊对象追问",
+  "description": "同页有两个告警图时，系统应要求用户澄清。",
+  "tags": ["router", "ambiguous", "clarification", "report"],
+  "input": {
+    "thread": {
+      "threadId": "thread_router_003",
+      "docId": "tpl_report_003",
+      "docType": "report",
+      "activeSectionId": "section_2",
+      "activePageId": null,
+      "selectedObjectIds": [],
+      "lastResolvedObjectId": null
+    },
+    "objectRegistry": {
+      "docId": "tpl_report_003",
+      "docType": "report",
+      "objects": [
+        {
+          "objectId": "chart_1",
+          "kind": "chart",
+          "title": "区域告警趋势",
+          "sectionId": "section_2",
+          "pageId": null,
+          "chartType": "line",
+          "fieldKeywords": ["告警", "趋势"],
+          "sourceRefs": ["ops_alarm_trend"],
+          "displayText": "第二章 区域告警趋势"
+        },
+        {
+          "objectId": "chart_2",
+          "kind": "chart",
+          "title": "告警等级占比",
+          "sectionId": "section_2",
+          "pageId": null,
+          "chartType": "pie",
+          "fieldKeywords": ["告警", "占比"],
+          "sourceRefs": ["ops_alarm_distribution"],
+          "displayText": "第二章 告警等级占比"
+        }
+      ]
+    },
+    "userText": "看一下告警图"
+  },
+  "expect": {
+    "router": {
+      "intent": "ask_chart",
+      "scene": null,
+      "needsClarification": true
+    }
+  },
+  "score": {
+    "weights": {
+      "router": 1.0
+    },
+    "minimumPassScore": 0.95
+  },
+  "notes": "用于验证对象不明确时不应误命中。"
+}

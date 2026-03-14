@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import type { ChartSpec, DashboardProps, ImageProps, TableSpec, VDoc, VNode } from "../../core/doc/types";
 import { DataEngine } from "../../runtime/data/data-engine";
 import { EChartView } from "../../runtime/chart/EChartView";
@@ -7,12 +7,23 @@ import { FloatingLayer, type FloatingLayerArgs } from "../components/FloatingLay
 import { EditorInsertPanel, type EditorInsertPanelItem } from "../components/EditorInsertPanel";
 import { NodeDataState } from "../components/NodeDataState";
 import { NodeTextBlock } from "../components/NodeTextBlock";
+import {
+  buildDashboardArtifactDropNode,
+  clearCopilotArtifactDrag,
+  decodeCopilotArtifact,
+  resolveDashboardArtifactDropPreview,
+  supportsDashboardArtifactDrop
+} from "../copilot/copilot-artifact-dnd";
+import { useMaybeCopilot } from "../copilot/copilot-context";
+import { withArtifactAppliedNode, type CopilotArtifactResultItem } from "../copilot/copilot-results";
 import { useNodeRows } from "../hooks/use-node-rows";
+import { useNodeDataPrefetch } from "../hooks/use-node-data-prefetch";
 import { useDataEngine } from "../hooks/use-data-engine";
 import { useEditorStore } from "../state/editor-context";
 import { useSignalValue } from "../state/use-signal-value";
 import { buildCanvasSelectionRect, isCanvasSelectionGesture, resolveCanvasSelectionIds } from "../utils/canvas-selection";
 import { HttpAssetRepository } from "../api/http-asset-repository";
+import { resolveDashboardPrefetchNodes } from "../utils/data-fetch-strategy";
 import {
   buildDashboardInsertNode,
   clearDashboardInsertItemDrag,
@@ -67,18 +78,94 @@ interface DashboardGroupDragPreview {
   duplicateOnDrop: boolean;
 }
 
+interface DashboardArtifactPlacementPreview {
+  guideNodeId?: string;
+  summary: string;
+}
+
+const resolveDashboardArtifactPlacementPreview = (
+  doc: VDoc,
+  nodes: VNode[],
+  metrics: DashboardSurfaceMetrics,
+  previewRect: DashboardRect
+): DashboardArtifactPlacementPreview => {
+  if (nodes.length === 0) {
+    return {
+      summary: "将插入到空白画布区域"
+    };
+  }
+  const previewCenterX = previewRect.left + previewRect.width / 2;
+  const previewCenterY = previewRect.top + previewRect.height / 2;
+  let targetNode: VNode | null = null;
+  let targetDistance = Number.POSITIVE_INFINITY;
+
+  for (const node of nodes) {
+    const rect = resolveDashboardNodeRect(node, metrics);
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    const distance = Math.hypot(previewCenterX - centerX, previewCenterY - centerY);
+    if (distance < targetDistance) {
+      targetDistance = distance;
+      targetNode = node;
+    }
+  }
+
+  if (!targetNode) {
+    return {
+      summary: "将插入到空白画布区域"
+    };
+  }
+
+  const targetRect = resolveDashboardNodeRect(targetNode, metrics);
+  const dx = previewCenterX - (targetRect.left + targetRect.width / 2);
+  const dy = previewCenterY - (targetRect.top + targetRect.height / 2);
+  const relationLabel =
+    Math.abs(dx) >= Math.abs(dy)
+      ? dx >= 0
+        ? "右侧"
+        : "左侧"
+      : dy >= 0
+        ? "下方"
+        : "上方";
+  const targetLabel = targetNode.kind === "image" ? resolveImageNodeTitle(doc, targetNode) : resolveNodeDisplayTitle(targetNode);
+  return {
+    guideNodeId: targetNode.id,
+    summary: `将插入到「${targetLabel}」${relationLabel}`
+  };
+};
+
 export function DashboardEditor({ doc }: DashboardEditorProps): JSX.Element {
   const store = useEditorStore();
+  const copilot = useMaybeCopilot();
   const selection = useSignalValue(store.selection);
   const ui = useSignalValue(store.ui);
   const assetRepoRef = useRef(new HttpAssetRepository("/api/v1"));
-  const { engine, dataVersion } = useDataEngine(doc.dataSources ?? [], doc.queries ?? [], { debounceMs: 120 });
+  const { engine, dataVersion } = useDataEngine(doc.dataSources ?? [], doc.queries ?? []);
+  const prefetchNodes = useMemo(() => resolveDashboardPrefetchNodes(doc), [doc]);
+  const nodeDataDoc = useMemo(
+    () => ({
+      dataSources: doc.dataSources ?? [],
+      queries: doc.queries ?? [],
+      filters: doc.filters ?? [],
+      templateVariables: doc.templateVariables ?? []
+    }),
+    [doc.dataSources, doc.filters, doc.queries, doc.templateVariables]
+  );
+  const assetDoc = useMemo(() => ({ assets: doc.assets ?? [] }), [doc.assets]);
   const root = doc.root;
   const rootProps = (root.props ?? {}) as DashboardProps;
   const children = root.children ?? [];
   const [layoutHint, setLayoutHint] = useState("");
   const [gridPreview, setGridPreview] = useState<{ nodeId: string; layout: GridRect; conflictIds: string[] } | null>(null);
-  const [insertPreview, setInsertPreview] = useState<{ itemId: string; label: string; layoutMode: "grid" | "absolute"; rect: DashboardRect } | null>(null);
+  const [insertPreview, setInsertPreview] = useState<{
+    itemId: string;
+    label: string;
+    layoutMode: "grid" | "absolute";
+    rect: DashboardRect;
+    hint?: string;
+    source?: "copilot" | "insert-panel";
+  } | null>(null);
+  const [artifactGuideNodeId, setArtifactGuideNodeId] = useState<string | null>(null);
   const [insertSearch, setInsertSearch] = useState("");
   const [marquee, setMarquee] = useState<DashboardMarqueeState | null>(null);
   const [groupDragPreview, setGroupDragPreview] = useState<DashboardGroupDragPreview | null>(null);
@@ -87,6 +174,19 @@ export function DashboardEditor({ doc }: DashboardEditorProps): JSX.Element {
   const canvasRef = useRef<HTMLDivElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const pendingImagePointRef = useRef<{ x: number; y: number } | undefined>(undefined);
+  const insertPreviewFrameRef = useRef<number | null>(null);
+  const pendingInsertPreviewRef = useRef<{
+    preview: {
+      itemId: string;
+      label: string;
+      layoutMode: "grid" | "absolute";
+      rect: DashboardRect;
+      hint?: string;
+      source?: "copilot" | "insert-panel";
+    } | null;
+    guideNodeId: string | null;
+    hint: string;
+  } | null>(null);
   const [viewportSize, setViewportSize] = useState({ width: 1280, height: 720 });
   const metrics = resolveDashboardSurfaceMetrics({
     doc,
@@ -119,6 +219,9 @@ export function DashboardEditor({ doc }: DashboardEditorProps): JSX.Element {
   }));
   const displayModeLabel = metrics.displayMode === "fit_screen" ? "全屏适配" : "页面滚动";
   const filterSummary = (doc.filters ?? []).map((filter) => filter.title ?? filter.filterId).slice(0, 2).join(" / ");
+  const spotlight = copilot?.spotlight?.docId === doc.docId ? copilot.spotlight : null;
+  const spotlightNodeId = spotlight?.nodeId;
+  const spotlightPulseClass = spotlight ? `spotlight-pulse-${spotlight.pulseKey % 2}` : undefined;
 
   useEffect(() => {
     const host = viewportRef.current;
@@ -141,6 +244,63 @@ export function DashboardEditor({ doc }: DashboardEditorProps): JSX.Element {
     observer.observe(host);
     return () => observer.disconnect();
   }, []);
+
+  useNodeDataPrefetch(doc, prefetchNodes, engine, dataVersion, "dashboard editor");
+
+  const flushInsertPreview = (): void => {
+    const next = pendingInsertPreviewRef.current;
+    if (!next) {
+      return;
+    }
+    pendingInsertPreviewRef.current = null;
+    setInsertPreview((current) => (sameDashboardInsertPreviewState(current, next.preview) ? current : next.preview));
+    setArtifactGuideNodeId((current) => (current === next.guideNodeId ? current : next.guideNodeId));
+    setLayoutHint((current) => (current === next.hint ? current : next.hint));
+  };
+
+  const scheduleInsertPreview = (
+    preview: {
+      itemId: string;
+      label: string;
+      layoutMode: "grid" | "absolute";
+      rect: DashboardRect;
+      hint?: string;
+      source?: "copilot" | "insert-panel";
+    } | null,
+    guideNodeId: string | null,
+    hint: string
+  ): void => {
+    pendingInsertPreviewRef.current = { preview, guideNodeId, hint };
+    if (insertPreviewFrameRef.current !== null) {
+      return;
+    }
+    insertPreviewFrameRef.current = window.requestAnimationFrame(() => {
+      insertPreviewFrameRef.current = null;
+      flushInsertPreview();
+    });
+  };
+
+  const clearInsertPreviewState = (clearHint = false): void => {
+    if (insertPreviewFrameRef.current !== null) {
+      window.cancelAnimationFrame(insertPreviewFrameRef.current);
+      insertPreviewFrameRef.current = null;
+    }
+    pendingInsertPreviewRef.current = null;
+    setInsertPreview((current) => (current ? null : current));
+    setArtifactGuideNodeId((current) => (current ? null : current));
+    if (clearHint) {
+      setLayoutHint((current) => (current ? "" : current));
+    }
+  };
+
+  useEffect(
+    () => () => {
+      if (insertPreviewFrameRef.current !== null) {
+        window.cancelAnimationFrame(insertPreviewFrameRef.current);
+      }
+    },
+    []
+  );
 
   const pushHint = (text: string): void => {
     setLayoutHint(text);
@@ -179,7 +339,48 @@ export function DashboardEditor({ doc }: DashboardEditorProps): JSX.Element {
     store.rememberDashboardInsertItem(item.id);
     store.setSelection(node.id, false);
     pushHint(`已插入${item.label}`);
-    setInsertPreview(null);
+    clearInsertPreviewState();
+  };
+
+  const insertDashboardArtifact = (
+    artifact: NonNullable<ReturnType<typeof decodeCopilotArtifact>>,
+    point?: { x: number; y: number }
+  ): void => {
+    if (!supportsDashboardArtifactDrop(artifact)) {
+      return;
+    }
+    const nextPoint = point ?? {
+      x: Math.round(metrics.canvasWidth / 2),
+      y: Math.round(metrics.canvasHeight / 2)
+    };
+    const node = buildDashboardArtifactDropNode({
+      root,
+      artifact,
+      metrics,
+      point: nextPoint
+    });
+    const inserted = store.executeCommand(
+      {
+        type: "InsertNode",
+        parentId: root.id,
+        node
+      },
+      { summary: `dashboard insert artifact ${artifact.artifactId}` }
+    );
+    if (!inserted) {
+      pushHint("拖拽插入失败");
+      return;
+    }
+    store.setSelection(node.id, false);
+    const result = copilot?.results.find(
+      (item): item is CopilotArtifactResultItem => item.kind === "artifact" && item.resultId === artifact.resultId
+    );
+    if (result && copilot) {
+      copilot.upsertResult(withArtifactAppliedNode(result, node.id));
+    }
+    copilot?.spotlightNode(doc.docId, node.id);
+    pushHint(`已插入${artifact.title}`);
+    clearInsertPreviewState();
   };
 
   const handleDashboardImagePicked = async (file?: File): Promise<void> => {
@@ -250,7 +451,7 @@ export function DashboardEditor({ doc }: DashboardEditorProps): JSX.Element {
 
   const updateInsertPreview = (item: DashboardInsertItem | undefined, point?: { x: number; y: number } | null): void => {
     if (!item || item.kind === "image" || !point) {
-      setInsertPreview(null);
+      clearInsertPreviewState();
       return;
     }
     const placement = resolveDashboardInsertPlacement({
@@ -259,12 +460,16 @@ export function DashboardEditor({ doc }: DashboardEditorProps): JSX.Element {
       item,
       point
     });
-    setInsertPreview({
-      itemId: item.id,
-      label: item.label,
-      layoutMode: placement.layout.mode === "absolute" ? "absolute" : "grid",
-      rect: placement.rect
-    });
+    scheduleInsertPreview(
+      {
+        itemId: item.id,
+        label: item.label,
+        layoutMode: placement.layout.mode === "absolute" ? "absolute" : "grid",
+        rect: placement.rect
+      },
+      null,
+      ""
+    );
   };
 
   const applyDashboardSelection = (nodeIds: string[], additive: boolean): void => {
@@ -277,18 +482,18 @@ export function DashboardEditor({ doc }: DashboardEditorProps): JSX.Element {
       if (event.key !== "Escape" || isTypingTarget(event.target)) {
         return;
       }
-      if (selectedNodeIds.length === 0 && !marquee && !groupDragPreview && !gridPreview && !insertPreview) {
+      if (selectedNodeIds.length === 0 && !marquee && !groupDragPreview && !gridPreview && !insertPreview && !artifactGuideNodeId) {
         return;
       }
       setMarquee(null);
       setGroupDragPreview(null);
       setGridPreview(null);
-      setInsertPreview(null);
+      clearInsertPreviewState();
       store.clearSelection();
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [gridPreview, groupDragPreview, insertPreview, marquee, selectedNodeIds.length, store]);
+  }, [artifactGuideNodeId, gridPreview, groupDragPreview, insertPreview, marquee, selectedNodeIds.length, store]);
 
   const resolveSelectedDashboardNodeIds = (anchorNode: VNode, includeLocked = false): string[] => {
     const layoutMode = anchorNode.layout?.mode ?? "grid";
@@ -482,7 +687,10 @@ export function DashboardEditor({ doc }: DashboardEditorProps): JSX.Element {
               onDragStart={(item, event) => {
                 encodeDashboardInsertItem(event.dataTransfer, item.source.id);
               }}
-              onDragEnd={() => clearDashboardInsertItemDrag()}
+              onDragEnd={() => {
+                clearDashboardInsertItemDrag();
+                clearInsertPreviewState();
+              }}
             />
           </FloatingLayer>
         ) : null}
@@ -506,8 +714,38 @@ export function DashboardEditor({ doc }: DashboardEditorProps): JSX.Element {
                 transformOrigin: "top left"
               }}
               onDragOver={(event) => {
+                const artifact = decodeCopilotArtifact(event.dataTransfer);
+                if (artifact && supportsDashboardArtifactDrop(artifact)) {
+                  event.preventDefault();
+                  event.dataTransfer.dropEffect = "copy";
+                  const point = getCanvasPoint(event.clientX, event.clientY) ?? {
+                    x: Math.round(metrics.canvasWidth / 2),
+                    y: Math.round(metrics.canvasHeight / 2)
+                  };
+                  const preview = resolveDashboardArtifactDropPreview({
+                    root,
+                    artifact,
+                    metrics,
+                    point
+                  });
+                  const placement = resolveDashboardArtifactPlacementPreview(doc, children, metrics, preview.rect);
+                  scheduleInsertPreview(
+                    {
+                      itemId: artifact.resultId,
+                      label: artifact.title,
+                      layoutMode: preview.layoutMode,
+                      rect: preview.rect,
+                      hint: placement.summary,
+                      source: "copilot"
+                    },
+                    placement.guideNodeId ?? null,
+                    placement.summary
+                  );
+                  return;
+                }
                 const item = decodeDashboardInsertItem(event.dataTransfer);
                 if (!item || item.kind === "image") {
+                  clearInsertPreviewState();
                   return;
                 }
                 event.preventDefault();
@@ -516,9 +754,21 @@ export function DashboardEditor({ doc }: DashboardEditorProps): JSX.Element {
                 updateInsertPreview(item, point);
               }}
               onDrop={(event) => {
+                const artifact = decodeCopilotArtifact(event.dataTransfer);
                 const item = decodeDashboardInsertItem(event.dataTransfer);
+                if (artifact && supportsDashboardArtifactDrop(artifact)) {
+                  event.preventDefault();
+                  const point = getCanvasPoint(event.clientX, event.clientY) ?? undefined;
+                  clearCopilotArtifactDrag();
+                  clearDashboardInsertItemDrag();
+                  clearInsertPreviewState();
+                  insertDashboardArtifact(artifact, point);
+                  return;
+                }
+                clearCopilotArtifactDrag();
                 clearDashboardInsertItemDrag();
                 if (!item) {
+                  clearInsertPreviewState();
                   return;
                 }
                 event.preventDefault();
@@ -529,7 +779,7 @@ export function DashboardEditor({ doc }: DashboardEditorProps): JSX.Element {
                 if (event.currentTarget.contains(event.relatedTarget as Node | null)) {
                   return;
                 }
-                setInsertPreview(null);
+                clearInsertPreviewState(true);
               }}
               onMouseDown={(event) => {
                 if (event.target !== event.currentTarget) {
@@ -539,7 +789,7 @@ export function DashboardEditor({ doc }: DashboardEditorProps): JSX.Element {
                 if (!point) {
                   return;
                 }
-                setInsertPreview(null);
+                clearInsertPreviewState(true);
                 setMarquee({
                   startX: point.x,
                   startY: point.y,
@@ -604,12 +854,16 @@ export function DashboardEditor({ doc }: DashboardEditorProps): JSX.Element {
               {children.map((node) => (
                 <DashboardCard
                   key={node.id}
-                  doc={doc}
+                  dataDoc={nodeDataDoc}
+                  assetDoc={assetDoc}
                   node={node}
                   metrics={metrics}
                   engine={engine}
                   dataVersion={dataVersion}
                   active={selection.selectedIds.includes(node.id)}
+                  dropGuide={artifactGuideNodeId === node.id}
+                  spotlight={spotlightNodeId === node.id}
+                  spotlightClassName={spotlightNodeId === node.id ? spotlightPulseClass : undefined}
                   onSelect={(multi) => store.setSelection(node.id, multi)}
                   onCommitGrid={(layout, op) => {
                     if (op === "move" && moveDashboardSelection(node, layout, "grid")) {
@@ -680,13 +934,14 @@ export function DashboardEditor({ doc }: DashboardEditorProps): JSX.Element {
                       setGroupDragPreview(null);
                       return;
                     }
-                    setGroupDragPreview({
+                    const nextPreview = {
                       anchorId: node.id,
                       nodeIds: selectedIds,
                       deltaX,
                       deltaY,
                       duplicateOnDrop
-                    });
+                    };
+                    setGroupDragPreview((current) => (sameDashboardGroupDragPreview(current, nextPreview) ? current : nextPreview));
                   }}
                   onClearGroupDragPreview={() => setGroupDragPreview((current) => (current?.anchorId === node.id ? null : current))}
                   onCommitAbsoluteResize={(rect) =>
@@ -722,7 +977,8 @@ export function DashboardEditor({ doc }: DashboardEditorProps): JSX.Element {
                         })
                       )
                       .map((item) => item.id);
-                    setGridPreview({ nodeId: node.id, layout, conflictIds });
+                    const nextPreview = { nodeId: node.id, layout, conflictIds };
+                    setGridPreview((current) => (sameGridPreviewState(current, nextPreview) ? current : nextPreview));
                   }}
                 />
               ))}
@@ -739,11 +995,19 @@ export function DashboardEditor({ doc }: DashboardEditorProps): JSX.Element {
 function DashboardInsertPreviewOverlay({
   preview
 }: {
-  preview: { itemId: string; label: string; layoutMode: "grid" | "absolute"; rect: DashboardRect };
+  preview: {
+    itemId: string;
+    label: string;
+    layoutMode: "grid" | "absolute";
+    rect: DashboardRect;
+    hint?: string;
+    source?: "copilot" | "insert-panel";
+  };
 }): JSX.Element {
   return (
     <div
       className={`dashboard-insert-preview ${preview.layoutMode === "absolute" ? "floating" : "card"}`}
+      data-testid={`dashboard-insert-preview-${preview.itemId}`}
       style={{
         left: preview.rect.left,
         top: preview.rect.top,
@@ -751,18 +1015,29 @@ function DashboardInsertPreviewOverlay({
         height: preview.rect.height
       }}
     >
+      {preview.source === "copilot" ? <span className="dashboard-insert-preview-badge">Copilot 成果</span> : null}
       <span className="dashboard-insert-preview-label">{preview.label}</span>
+      {preview.hint ? <span className="dashboard-insert-preview-copy">{preview.hint}</span> : null}
     </div>
   );
 }
 
 interface DashboardCardProps {
-  doc: VDoc;
+  dataDoc: {
+    dataSources: VDoc["dataSources"];
+    queries: VDoc["queries"];
+    filters: VDoc["filters"];
+    templateVariables: VDoc["templateVariables"];
+  };
+  assetDoc: Pick<VDoc, "assets">;
   node: VNode;
   metrics: DashboardSurfaceMetrics;
   engine: DataEngine;
-  dataVersion: string;
+  dataVersion: number | string;
   active: boolean;
+  dropGuide?: boolean;
+  spotlight?: boolean;
+  spotlightClassName?: string;
   onSelect: (multi: boolean) => void;
   onCommitGrid: (layout: GridRect, op: "move" | "resize") => void;
   onDuplicateGrid: (layout: GridRect) => void;
@@ -777,13 +1052,92 @@ interface DashboardCardProps {
 
 type CardDragMode = "move" | "resize-east" | "resize-south" | "resize-corner" | null;
 
-function DashboardCard({
-  doc,
+const sameDashboardOffset = (
+  left?: { x: number; y: number },
+  right?: { x: number; y: number }
+): boolean => left?.x === right?.x && left?.y === right?.y;
+
+const sameDashboardGroupDragPreview = (
+  left: DashboardGroupDragPreview | null,
+  right: DashboardGroupDragPreview | null
+): boolean =>
+  left?.anchorId === right?.anchorId &&
+  left?.duplicateOnDrop === right?.duplicateOnDrop &&
+  left?.deltaX === right?.deltaX &&
+  left?.deltaY === right?.deltaY &&
+  (left?.nodeIds.length ?? 0) === (right?.nodeIds.length ?? 0) &&
+  (left?.nodeIds ?? []).every((item, index) => item === right?.nodeIds[index]);
+
+const sameGridPreviewState = (
+  left: { nodeId: string; layout: GridRect; conflictIds: string[] } | null,
+  right: { nodeId: string; layout: GridRect; conflictIds: string[] } | null
+): boolean =>
+  left?.nodeId === right?.nodeId &&
+  left?.layout.gx === right?.layout.gx &&
+  left?.layout.gy === right?.layout.gy &&
+  left?.layout.gw === right?.layout.gw &&
+  left?.layout.gh === right?.layout.gh &&
+  (left?.conflictIds.length ?? 0) === (right?.conflictIds.length ?? 0) &&
+  (left?.conflictIds ?? []).every((item, index) => item === right?.conflictIds[index]);
+
+const sameDashboardInsertPreviewState = (
+  left: {
+    itemId: string;
+    label: string;
+    layoutMode: "grid" | "absolute";
+    rect: DashboardRect;
+    hint?: string;
+    source?: "copilot" | "insert-panel";
+  } | null,
+  right: {
+    itemId: string;
+    label: string;
+    layoutMode: "grid" | "absolute";
+    rect: DashboardRect;
+    hint?: string;
+    source?: "copilot" | "insert-panel";
+  } | null
+): boolean =>
+  left?.itemId === right?.itemId &&
+  left?.label === right?.label &&
+  left?.layoutMode === right?.layoutMode &&
+  left?.hint === right?.hint &&
+  left?.source === right?.source &&
+  left?.rect.left === right?.rect.left &&
+  left?.rect.top === right?.rect.top &&
+  left?.rect.width === right?.rect.width &&
+  left?.rect.height === right?.rect.height;
+
+const areDashboardCardPropsEqual = (prev: DashboardCardProps, next: DashboardCardProps): boolean =>
+  prev.dataDoc === next.dataDoc &&
+  prev.assetDoc === next.assetDoc &&
+  prev.node === next.node &&
+  prev.engine === next.engine &&
+  prev.dataVersion === next.dataVersion &&
+  prev.active === next.active &&
+  prev.dropGuide === next.dropGuide &&
+  prev.spotlight === next.spotlight &&
+  prev.spotlightClassName === next.spotlightClassName &&
+  sameDashboardOffset(prev.groupPreviewOffset, next.groupPreviewOffset) &&
+  prev.metrics.canvasWidth === next.metrics.canvasWidth &&
+  prev.metrics.canvasHeight === next.metrics.canvasHeight &&
+  prev.metrics.scale === next.metrics.scale &&
+  prev.metrics.gridCols === next.metrics.gridCols &&
+  prev.metrics.rowH === next.metrics.rowH &&
+  prev.metrics.gap === next.metrics.gap &&
+  prev.metrics.pageMarginPx === next.metrics.pageMarginPx;
+
+const DashboardCard = memo(function DashboardCard({
+  dataDoc,
+  assetDoc,
   node,
   metrics,
   engine,
   dataVersion,
   active,
+  dropGuide = false,
+  spotlight = false,
+  spotlightClassName,
   onSelect,
   onCommitGrid,
   onDuplicateGrid,
@@ -806,10 +1160,12 @@ function DashboardCard({
   const startRef = useRef(start);
   const dragModeRef = useRef(dragMode);
   const duplicateOnDropRef = useRef(duplicateOnDrop);
-  const { rows, loading, error } = useNodeRows(doc, node, engine, dataVersion);
+  const previewEventRef = useRef<{ clientX: number; clientY: number; altKey: boolean } | null>(null);
+  const previewFrameRef = useRef<number | null>(null);
+  const { rows, loading, error } = useNodeRows(dataDoc, node, engine, dataVersion);
   const placementLabel = isAbsolute ? "浮动元素" : "卡片布局";
   const showOuterTitle = shouldRenderOuterNodeTitle(node);
-  const title = node.kind === "image" ? resolveImageNodeTitle(doc, node) : resolveNodeDisplayTitle(node);
+  const title = node.kind === "image" ? resolveImageNodeTitle(assetDoc, node) : resolveNodeDisplayTitle(node);
 
   useEffect(() => {
     setRect(baseRect);
@@ -850,17 +1206,18 @@ function DashboardCard({
     if (!start || !dragMode) {
       return;
     }
-    const handleMouseMove = (event: MouseEvent): void => {
+    const flushPreview = (): void => {
+      const event = previewEventRef.current;
       const currentStart = startRef.current;
       const currentDragMode = dragModeRef.current;
-      if (!currentStart || !currentDragMode) {
+      if (!event || !currentStart || !currentDragMode) {
         return;
       }
       const dx = (event.clientX - currentStart.x) / metrics.scale;
       const dy = (event.clientY - currentStart.y) / metrics.scale;
       const nextDuplicateOnDrop = currentDragMode === "move" && (duplicateOnDropRef.current || Boolean(event.altKey));
       duplicateOnDropRef.current = nextDuplicateOnDrop;
-      setDuplicateOnDrop(nextDuplicateOnDrop);
+      setDuplicateOnDrop((current) => (current === nextDuplicateOnDrop ? current : nextDuplicateOnDrop));
 
       if (currentDragMode === "move") {
         onPreviewGroupDrag(dx, dy, nextDuplicateOnDrop);
@@ -889,7 +1246,31 @@ function DashboardCard({
       setRect(nextRect);
     };
 
+    const schedulePreview = (event: MouseEvent): void => {
+      previewEventRef.current = {
+        clientX: event.clientX,
+        clientY: event.clientY,
+        altKey: Boolean(event.altKey)
+      };
+      if (previewFrameRef.current !== null) {
+        return;
+      }
+      previewFrameRef.current = window.requestAnimationFrame(() => {
+        previewFrameRef.current = null;
+        flushPreview();
+      });
+    };
+
+    const handleMouseMove = (event: MouseEvent): void => {
+      schedulePreview(event);
+    };
+
     const handleMouseUp = (): void => {
+      if (previewFrameRef.current !== null) {
+        window.cancelAnimationFrame(previewFrameRef.current);
+        previewFrameRef.current = null;
+      }
+      flushPreview();
       const currentStart = startRef.current;
       const currentDragMode = dragModeRef.current;
       const currentRect = rectRef.current;
@@ -923,6 +1304,7 @@ function DashboardCard({
       dragModeRef.current = null;
       startRef.current = null;
       duplicateOnDropRef.current = false;
+      previewEventRef.current = null;
       onClearGroupDragPreview();
       onPreviewGrid(null);
     };
@@ -932,6 +1314,11 @@ function DashboardCard({
     window.addEventListener("mousemove", handleMouseMove);
     window.addEventListener("mouseup", handleMouseUp);
     return () => {
+      if (previewFrameRef.current !== null) {
+        window.cancelAnimationFrame(previewFrameRef.current);
+        previewFrameRef.current = null;
+      }
+      previewEventRef.current = null;
       document.body.style.userSelect = previousUserSelect;
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
@@ -954,7 +1341,7 @@ function DashboardCard({
 
   return (
     <div
-      className={`dash-card ${active ? "active" : ""} ${layout.lock ? "is-locked" : ""} ${node.kind === "text" ? "dash-card-text" : ""} ${node.kind === "image" ? "dash-card-image" : ""}`}
+      className={`dash-card ${active ? "active" : ""} ${dropGuide ? "is-copilot-drop-guide" : ""} ${spotlight ? "is-copilot-spotlight" : ""} ${spotlightClassName ?? ""} ${layout.lock ? "is-locked" : ""} ${node.kind === "text" ? "dash-card-text" : ""} ${node.kind === "image" ? "dash-card-image" : ""}`}
       data-testid={`dashboard-card-${node.id}`}
       style={{
         ...resolveNodeSurfaceStyle(node.style, {
@@ -981,13 +1368,13 @@ function DashboardCard({
       ) : null}
       <div className="card-body" style={{ height: "100%" }}>
         {node.kind === "chart" ? (
-          loading || error ? <NodeDataState loading={loading} error={error} remote={isRemoteDataNode(doc, node)} /> : <EChartView spec={node.props as ChartSpec} rows={rows} height="100%" />
+          loading || error ? <NodeDataState loading={loading} error={error} remote={isRemoteDataNode(dataDoc, node)} /> : <EChartView spec={node.props as ChartSpec} rows={rows} height="100%" />
         ) : node.kind === "table" ? (
-          loading || error ? <NodeDataState loading={loading} error={error} remote={isRemoteDataNode(doc, node)} /> : <TableView spec={node.props as TableSpec} rows={rows} height="100%" />
+          loading || error ? <NodeDataState loading={loading} error={error} remote={isRemoteDataNode(dataDoc, node)} /> : <TableView spec={node.props as TableSpec} rows={rows} height="100%" />
         ) : node.kind === "text" ? (
           <NodeTextBlock node={node} style={{ height: "100%" }} />
         ) : node.kind === "image" ? (
-          <DashboardImageNode doc={doc} node={node} />
+          <DashboardImageNode doc={assetDoc} node={node} />
         ) : (
           <div className="muted">暂未支持: {node.kind}</div>
         )}
@@ -997,9 +1384,9 @@ function DashboardCard({
       <div className="dashboard-resize-hit dashboard-resize-hit-corner" onMouseDown={(event) => beginDrag(event, "resize-corner")} />
     </div>
   );
-}
+}, areDashboardCardPropsEqual);
 
-function DashboardImageNode({ doc, node }: { doc: VDoc; node: VNode }): JSX.Element {
+function DashboardImageNode({ doc, node }: { doc: Pick<VDoc, "assets">; node: VNode }): JSX.Element {
   const props = (node.props ?? {}) as ImageProps;
   const asset = resolveImageAsset(doc, props.assetId);
   if (!asset?.uri) {

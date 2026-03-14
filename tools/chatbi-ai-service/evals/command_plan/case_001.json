@@ -1,0 +1,25 @@
+{
+  "id": "command_plan_basic_001",
+  "scene": "command_plan",
+  "title": "切换柱状图并开启标签",
+  "description": "用户要求把图切成柱状图并显示标签。",
+  "tags": ["basic", "chart-edit", "bar"],
+  "input": {
+    "input": "改成柱状图并开启标签",
+    "currentNodeId": "chart_ops_alarm"
+  },
+  "expect": {
+    "mustHaveCommandTypes": ["UpdateProps"],
+    "mustTargetIds": ["chart_ops_alarm"],
+    "shouldContainProps": ["chartType", "labelShow"],
+    "allowFallback": true
+  },
+  "score": {
+    "weights": {
+      "structure": 0.2,
+      "semantic": 0.8
+    },
+    "minimumPassScore": 0.8
+  },
+  "notes": "基础图表编辑 happy path。"
+}

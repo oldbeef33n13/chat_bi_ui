@@ -1,0 +1,34 @@
+{
+  "id": "data_guide_multilingual_004",
+  "scene": "data_guide",
+  "title": "中英文字段说明",
+  "description": "字段名英文、字段 label 中文。",
+  "tags": ["multilingual", "basic"],
+  "input": {
+    "name": "ops_service_health",
+    "description": "服务健康度接口。",
+    "params": [
+      { "name": "service_group", "label": "服务分组", "type": "string", "required": false, "description": "服务所属分组" }
+    ],
+    "fields": [
+      { "name": "biz_date", "label": "业务日期", "type": "time" },
+      { "name": "availability_pct", "label": "可用率", "type": "number", "unit": "%" }
+    ],
+    "sampleRows": [
+      { "biz_date": "2026-03-01", "availability_pct": 99.2 }
+    ]
+  },
+  "expect": {
+    "mustHaveRecommendedCharts": ["line"],
+    "mustHaveFieldRoles": ["time", "metric"],
+    "allowFallback": true
+  },
+  "score": {
+    "weights": {
+      "structure": 0.2,
+      "semantic": 0.8
+    },
+    "minimumPassScore": 0.82
+  },
+  "notes": "中英文字段解释能力。"
+}

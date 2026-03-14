@@ -1,0 +1,76 @@
+{
+  "id": "composed_multi_source_001",
+  "scene": "composed",
+  "flowType": "multi_source",
+  "title": "告警与工单量关系分析",
+  "description": "比较告警上升和工单量变化是否存在关联，优先走多源对比，必要时才允许受控 join。",
+  "tags": ["analysis", "multi-source", "compare", "ops"],
+  "input": {
+    "userQuestion": "告警上升和工单量有没有关系",
+    "plannerInput": {
+      "candidateSources": [
+        {
+          "sourceId": "ops_alarm_trend",
+          "name": "告警趋势",
+          "schema": [
+            { "name": "stat_date", "label": "统计日期", "type": "time" },
+            { "name": "region", "label": "区域", "type": "string" },
+            { "name": "alarm_count", "label": "告警数", "type": "number" }
+          ],
+          "rows": [
+            { "stat_date": "2026-03-01", "region": "华东", "alarm_count": 120 },
+            { "stat_date": "2026-03-02", "region": "华东", "alarm_count": 132 },
+            { "stat_date": "2026-03-03", "region": "华东", "alarm_count": 168 },
+            { "stat_date": "2026-03-01", "region": "华南", "alarm_count": 81 }
+          ],
+          "joinHints": [
+            {
+              "targetSourceId": "ops_ticket_summary",
+              "joinKeys": ["region", "stat_date"],
+              "joinType": "left"
+            }
+          ]
+        },
+        {
+          "sourceId": "ops_ticket_summary",
+          "name": "工单汇总",
+          "schema": [
+            { "name": "stat_date", "label": "统计日期", "type": "time" },
+            { "name": "region", "label": "区域", "type": "string" },
+            { "name": "ticket_count", "label": "工单量", "type": "number" }
+          ],
+          "rows": [
+            { "stat_date": "2026-03-01", "region": "华东", "ticket_count": 56 },
+            { "stat_date": "2026-03-02", "region": "华东", "ticket_count": 61 },
+            { "stat_date": "2026-03-03", "region": "华东", "ticket_count": 79 },
+            { "stat_date": "2026-03-01", "region": "华南", "ticket_count": 33 }
+          ]
+        }
+      ]
+    }
+  },
+  "expect": {
+    "router": {
+      "intent": "ask_analysis",
+      "scene": "analysis_planner"
+    },
+    "plan": {
+      "analysisModeIn": ["multi_source_compare", "multi_source_join"],
+      "mustUseSources": ["ops_alarm_trend", "ops_ticket_summary"],
+      "mustNotContainUnsafeJoin": true,
+      "allowedJoinKeys": ["region", "stat_date"]
+    },
+    "summary": {
+      "mustMentionAny": ["告警", "工单", "关系", "关联"]
+    }
+  },
+  "score": {
+    "weights": {
+      "router": 0.15,
+      "planning": 0.45,
+      "summary": 0.4
+    },
+    "minimumPassScore": 0.8
+  },
+  "notes": "用于约束多源分析不能自由乱 join。"
+}

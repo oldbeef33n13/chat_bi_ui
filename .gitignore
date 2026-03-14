@@ -11,6 +11,11 @@ tools/**/target/
 tools/**/showcase-out/
 tools/chatbi-app-server/storage/
 tools/chatbi-app-server/logs/
+tools/chatbi-ai-service/.pytest_cache/
+tools/chatbi-ai-service/**/__pycache__/
+tools/chatbi-ai-service/.venv/
+tools/chatbi-ai-service/.env.local
+tools/chatbi-ai-service/*.egg-info/
 
 # Local editor and runtime noise
 *.log

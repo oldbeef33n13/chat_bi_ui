@@ -1,0 +1,53 @@
+{
+  "id": "composed_conversation_002",
+  "scene": "composed",
+  "flowType": "conversation",
+  "title": "章节总结后再改写风格",
+  "description": "用户先要求总结章节，再要求把同一章改成领导汇报风格。",
+  "tags": ["conversation", "multi-turn", "section", "report"],
+  "input": {
+    "threadSeed": {
+      "threadId": "thread_conversation_002",
+      "docId": "tpl_report_002",
+      "docType": "report",
+      "activeSectionId": "section_2",
+      "selectedObjectIds": [],
+      "lastResolvedObjectId": "section_2"
+    },
+    "objectRegistry": {
+      "docId": "tpl_report_002",
+      "docType": "report",
+      "objects": [
+        {
+          "objectId": "section_2",
+          "kind": "section",
+          "title": "第二章 告警概览",
+          "sectionId": "section_2",
+          "pageId": null,
+          "fieldKeywords": ["第二章", "告警", "概览"],
+          "sourceRefs": [],
+          "displayText": "第二章 告警概览"
+        }
+      ]
+    },
+    "turns": [
+      { "userText": "总结第二章" },
+      { "userText": "再把这章改成领导汇报风格" }
+    ]
+  },
+  "expect": {
+    "turns": [
+      { "intent": "ask_doc_summary", "scene": "story_summary", "resolvedObjectIds": ["section_2"] },
+      { "intent": "ask_edit", "scene": "command_plan", "resolvedObjectIds": ["section_2"] }
+    ]
+  },
+  "score": {
+    "weights": {
+      "router": 0.35,
+      "memory": 0.35,
+      "scene_switch": 0.3
+    },
+    "minimumPassScore": 0.85
+  },
+  "notes": "用于后续 conversation runner。"
+}

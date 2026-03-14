@@ -1,0 +1,17 @@
+{
+  "scene": "command_plan",
+  "activeVersion": "v2",
+  "versions": {
+    "v2": {
+      "status": "active",
+      "goal": "把用户自然语言意图转换成结构化命令计划",
+      "systemPrompt": "你是 ChatBI 的命令规划器。\n你的任务是把用户意图转换成结构化 JSON:\n- source 固定为 provider\n- plan 必须包含 intent, targets, commands, explain\n- reasoning 是简短的中文数组\n\n只输出 JSON，不要输出 markdown。",
+      "outputContract": {
+        "plan": "object",
+        "reasoning": "array"
+      },
+      "notes": "当前稳定版命令规划 prompt，强调输出结构稳定。",
+      "updatedAt": "2026-03-10T00:00:00Z"
+    }
+  }
+}

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import type { ChartSpec, DeckProps, ImageProps, TableSpec, VDoc, VNode } from "../../core/doc/types";
 import { DataEngine } from "../../runtime/data/data-engine";
 import { EChartView } from "../../runtime/chart/EChartView";
@@ -8,11 +8,21 @@ import { FloatingLayer } from "../components/FloatingLayer";
 import { EditorInsertPanel, type EditorInsertPanelItem } from "../components/EditorInsertPanel";
 import { NodeDataState } from "../components/NodeDataState";
 import { NodeTextBlock } from "../components/NodeTextBlock";
+import {
+  buildPptArtifactDropNode,
+  clearCopilotArtifactDrag,
+  decodeCopilotArtifact,
+  supportsPptArtifactDrop
+} from "../copilot/copilot-artifact-dnd";
+import { useMaybeCopilot } from "../copilot/copilot-context";
+import { withArtifactAppliedNode, type CopilotArtifactResultItem } from "../copilot/copilot-results";
 import { useNodeRows } from "../hooks/use-node-rows";
+import { useNodeDataPrefetch } from "../hooks/use-node-data-prefetch";
 import { useDataEngine } from "../hooks/use-data-engine";
 import { useEditorStore } from "../state/editor-context";
 import { useSignalValue } from "../state/use-signal-value";
 import { upsertDocAsset } from "../utils/doc-assets";
+import { resolvePptPrefetchNodes } from "../utils/data-fetch-strategy";
 import { resolveAncestorIdByKind } from "../utils/node-tree";
 import { buildCanvasSelectionRect, isCanvasSelectionGesture, resolveCanvasSelectionIds } from "../utils/canvas-selection";
 import { buildDuplicateNodesPlan } from "../utils/duplicate-nodes";
@@ -64,6 +74,38 @@ interface SlideGroupDragPreview {
   duplicateOnDrop: boolean;
 }
 
+const sameSlideGroupDragPreview = (
+  left: SlideGroupDragPreview | null,
+  right: SlideGroupDragPreview | null
+): boolean =>
+  left?.anchorId === right?.anchorId &&
+  left?.duplicateOnDrop === right?.duplicateOnDrop &&
+  left?.deltaX === right?.deltaX &&
+  left?.deltaY === right?.deltaY &&
+  (left?.nodeIds.length ?? 0) === (right?.nodeIds.length ?? 0) &&
+  (left?.nodeIds ?? []).every((item, index) => item === right?.nodeIds[index]);
+
+const samePptInsertPreviewState = (
+  left: { itemId: string; label: string; rect: { x: number; y: number; w: number; h: number } } | null,
+  right: { itemId: string; label: string; rect: { x: number; y: number; w: number; h: number } } | null
+): boolean =>
+  left?.itemId === right?.itemId &&
+  left?.label === right?.label &&
+  left?.rect.x === right?.rect.x &&
+  left?.rect.y === right?.rect.y &&
+  left?.rect.w === right?.rect.w &&
+  left?.rect.h === right?.rect.h;
+
+const samePptArtifactDropTarget = (left: PptArtifactDropTarget | null, right: PptArtifactDropTarget | null): boolean =>
+  left?.slideId === right?.slideId && left?.position === right?.position;
+
+type PptArtifactDropPosition = "before" | "after";
+
+interface PptArtifactDropTarget {
+  slideId: string;
+  position: PptArtifactDropPosition;
+}
+
 /**
  * PPT 编辑器：
  * - 页面管理（缩略图导航）
@@ -72,10 +114,21 @@ interface SlideGroupDragPreview {
  */
 export function PptEditor({ doc, showNavigator = true }: PptEditorProps): JSX.Element {
   const store = useEditorStore();
+  const copilot = useMaybeCopilot();
   const selection = useSignalValue(store.selection);
   const ui = useSignalValue(store.ui);
   const assetRepoRef = useRef(new HttpAssetRepository("/api/v1"));
-  const { engine, dataVersion } = useDataEngine(doc.dataSources ?? [], doc.queries ?? [], { debounceMs: 120 });
+  const { engine, dataVersion } = useDataEngine(doc.dataSources ?? [], doc.queries ?? []);
+  const nodeDataDoc = useMemo(
+    () => ({
+      dataSources: doc.dataSources ?? [],
+      queries: doc.queries ?? [],
+      filters: doc.filters ?? [],
+      templateVariables: doc.templateVariables ?? []
+    }),
+    [doc.dataSources, doc.filters, doc.queries, doc.templateVariables]
+  );
+  const assetDoc = useMemo(() => ({ assets: doc.assets ?? [] }), [doc.assets]);
   const slides = (doc.root.children ?? []).filter((node) => node.kind === "slide");
   const selectedSlideId = resolveAncestorIdByKind(doc.root, selection.primaryId, "slide");
   const [activeSlideId, setActiveSlideId] = useState(selectedSlideId ?? slides[0]?.id);
@@ -99,9 +152,18 @@ export function PptEditor({ doc, showNavigator = true }: PptEditorProps): JSX.El
   const masterFooterBottomPx = Math.max(0, Number(rootProps.masterFooterBottomPx ?? 10) || 10);
   const masterFooterHeightPx = Math.max(12, Number(rootProps.masterFooterHeightPx ?? 22) || 22);
   const [layoutHint, setLayoutHint] = useState("");
+  const [artifactDropTarget, setArtifactDropTarget] = useState<PptArtifactDropTarget | null>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const pendingImagePointRef = useRef<{ x: number; y: number } | undefined>(undefined);
+  const insertPreviewFrameRef = useRef<number | null>(null);
+  const pendingInsertPreviewRef = useRef<{ itemId: string; label: string; rect: { x: number; y: number; w: number; h: number } } | null>(null);
+  const spotlight = copilot?.spotlight?.docId === doc.docId ? copilot.spotlight : null;
+  const spotlightSlideId =
+    spotlight
+      ? slides.find((slide) => slide.id === spotlight.nodeId)?.id ?? resolveAncestorIdByKind(doc.root, spotlight.nodeId, "slide")
+      : undefined;
+  const spotlightPulseClass = spotlight ? `spotlight-pulse-${spotlight.pulseKey % 2}` : undefined;
 
   useEffect(() => {
     if (selectedSlideId && selectedSlideId !== activeSlideId) {
@@ -112,6 +174,50 @@ export function PptEditor({ doc, showNavigator = true }: PptEditorProps): JSX.El
       setActiveSlideId(slides[0].id);
     }
   }, [activeSlideId, selectedSlideId, slides]);
+
+  const prefetchNodes = useMemo(
+    () => resolvePptPrefetchNodes(doc, activeSlide?.id ?? activeSlideId ?? slides[0]?.id, 1),
+    [activeSlide?.id, activeSlideId, doc, slides]
+  );
+  useNodeDataPrefetch(doc, prefetchNodes, engine, dataVersion, "ppt editor");
+
+  const flushInsertPreview = (): void => {
+    const next = pendingInsertPreviewRef.current;
+    if (!next) {
+      return;
+    }
+    pendingInsertPreviewRef.current = null;
+    setInsertPreview((current) => (samePptInsertPreviewState(current, next) ? current : next));
+  };
+
+  const scheduleInsertPreview = (next: { itemId: string; label: string; rect: { x: number; y: number; w: number; h: number } } | null): void => {
+    pendingInsertPreviewRef.current = next;
+    if (insertPreviewFrameRef.current !== null) {
+      return;
+    }
+    insertPreviewFrameRef.current = window.requestAnimationFrame(() => {
+      insertPreviewFrameRef.current = null;
+      flushInsertPreview();
+    });
+  };
+
+  const clearInsertPreviewState = (): void => {
+    if (insertPreviewFrameRef.current !== null) {
+      window.cancelAnimationFrame(insertPreviewFrameRef.current);
+      insertPreviewFrameRef.current = null;
+    }
+    pendingInsertPreviewRef.current = null;
+    setInsertPreview((current) => (current ? null : current));
+  };
+
+  useEffect(
+    () => () => {
+      if (insertPreviewFrameRef.current !== null) {
+        window.cancelAnimationFrame(insertPreviewFrameRef.current);
+      }
+    },
+    []
+  );
 
   const activeIds = new Set((activeSlide?.children ?? []).map((item) => item.id));
   const activeSelectedIds = selection.selectedIds.filter((id) => activeIds.has(id));
@@ -169,10 +275,51 @@ export function PptEditor({ doc, showNavigator = true }: PptEditorProps): JSX.El
     }
     store.rememberPptInsertItem(item.id);
     store.setSelection(node.id, false);
-    setInsertPreview(null);
+    clearInsertPreviewState();
     setLayoutHint(`已插入${item.label}`);
     setTimeout(() => setLayoutHint(""), 1600);
   };
+
+  const insertPptArtifact = (
+    anchorSlideId: string,
+    artifact: NonNullable<ReturnType<typeof decodeCopilotArtifact>>,
+    position: PptArtifactDropPosition = "after"
+  ): void => {
+    if (!supportsPptArtifactDrop(artifact)) {
+      return;
+    }
+    const anchorIndex = slides.findIndex((slide) => slide.id === anchorSlideId);
+    const node = buildPptArtifactDropNode(artifact);
+    const inserted = store.executeCommand(
+      {
+        type: "InsertNode",
+        parentId: doc.root.id,
+        index: anchorIndex >= 0 ? anchorIndex + (position === "after" ? 1 : 0) : slides.length,
+        node
+      },
+      { summary: `ppt insert artifact ${artifact.artifactId}` }
+    );
+    if (!inserted) {
+      setLayoutHint("页面插入失败");
+      setTimeout(() => setLayoutHint(""), 1600);
+      return;
+    }
+    const result = copilot?.results.find(
+      (item): item is CopilotArtifactResultItem => item.kind === "artifact" && item.resultId === artifact.resultId
+    );
+    if (result && copilot) {
+      copilot.upsertResult(withArtifactAppliedNode(result, node.id));
+    }
+    setActiveSlideId(node.id);
+    store.setSelection(node.id, false);
+    copilot?.spotlightNode(doc.docId, node.id);
+    setLayoutHint(`已${position === "before" ? "前插" : "后插"}页面：${artifact.title}`);
+    setTimeout(() => setLayoutHint(""), 1600);
+  };
+
+  const getPptArtifactDropLabel = useCallback((position: PptArtifactDropPosition): string => {
+    return position === "before" ? "松开后插入到此页前" : "松开后插入到此页后";
+  }, []);
 
   const handlePptImagePicked = async (file?: File): Promise<void> => {
     const point = pendingImagePointRef.current;
@@ -243,10 +390,10 @@ export function PptEditor({ doc, showNavigator = true }: PptEditorProps): JSX.El
 
   const updateInsertPreview = (item: PptInsertItem | undefined, point?: { x: number; y: number } | null): void => {
     if (!item || !activeSlide || !point) {
-      setInsertPreview(null);
+      clearInsertPreviewState();
       return;
     }
-    setInsertPreview({
+    scheduleInsertPreview({
       itemId: item.id,
       label: item.label,
       rect: resolvePptInsertRect({ slide: activeSlide, item, point })
@@ -263,18 +410,19 @@ export function PptEditor({ doc, showNavigator = true }: PptEditorProps): JSX.El
       if (event.key !== "Escape" || isTypingTarget(event.target)) {
         return;
       }
-      if (activeSelectedIds.length === 0 && !marquee && !groupDragPreview && !insertPreview) {
+      if (activeSelectedIds.length === 0 && !marquee && !groupDragPreview && !insertPreview && !artifactDropTarget) {
         return;
       }
       setMarquee(null);
       setGroupDragPreview(null);
       setGuides({});
-      setInsertPreview(null);
+      clearInsertPreviewState();
+      setArtifactDropTarget(null);
       store.clearSelection();
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [activeSelectedIds.length, groupDragPreview, insertPreview, marquee, store]);
+  }, [activeSelectedIds.length, artifactDropTarget, groupDragPreview, insertPreview, marquee, store]);
 
   const resolveSelectedSlideNodeIds = (anchorNodeId: string): string[] => {
     const selectedIds = activeSelectedIds.includes(anchorNodeId) ? activeSelectedIds : [anchorNodeId];
@@ -402,17 +550,101 @@ export function PptEditor({ doc, showNavigator = true }: PptEditorProps): JSX.El
             <span className="chip">{slides.length}</span>
           </div>
           {slides.map((slide, index) => (
-            <div
-              key={slide.id}
-              className={`tree-item ${activeSlide?.id === slide.id ? "active" : ""}`}
-              onClick={() => {
-                setActiveSlideId(slide.id);
-                store.setSelection(slide.id, false);
-              }}
-            >
-              <div>#{index + 1}</div>
-              <div className="muted">{String((slide.props as Record<string, unknown>)?.title ?? slide.id)}</div>
-            </div>
+            (() => {
+              const activeArtifactDrop = artifactDropTarget?.slideId === slide.id ? artifactDropTarget : null;
+              return (
+                <div key={slide.id} className="ppt-nav-drop-stack">
+                  <div
+                    className={`ppt-nav-drop-anchor ${activeArtifactDrop?.position === "before" ? "active" : ""}`}
+                    data-testid={`ppt-artifact-drop-before-${slide.id}`}
+                    onDragOver={(event) => {
+                      const artifact = decodeCopilotArtifact(event.dataTransfer);
+                      if (!artifact || !supportsPptArtifactDrop(artifact)) {
+                        return;
+                      }
+                      event.preventDefault();
+                      event.dataTransfer.dropEffect = "copy";
+                      const nextTarget = { slideId: slide.id, position: "before" as const };
+                      setArtifactDropTarget((current) => (samePptArtifactDropTarget(current, nextTarget) ? current : nextTarget));
+                    }}
+                    onDragLeave={(event) => {
+                      if (event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                        return;
+                      }
+                      setArtifactDropTarget((current) => (current?.slideId === slide.id && current.position === "before" ? null : current));
+                    }}
+                    onDrop={(event) => {
+                      const artifact = decodeCopilotArtifact(event.dataTransfer);
+                      clearCopilotArtifactDrag();
+                      setArtifactDropTarget(null);
+                      if (!artifact || !supportsPptArtifactDrop(artifact)) {
+                        return;
+                      }
+                      event.preventDefault();
+                      insertPptArtifact(slide.id, artifact, "before");
+                    }}
+                  >
+                    <span className="ppt-nav-drop-anchor-line" />
+                    <span className="ppt-nav-drop-anchor-label">
+                      {activeArtifactDrop?.position === "before" ? getPptArtifactDropLabel("before") : "拖到此处可前插页面"}
+                    </span>
+                  </div>
+                  <div
+                    className={`tree-item ${activeSlide?.id === slide.id ? "active" : ""} ${activeArtifactDrop ? "is-drop-target" : ""} ${spotlightSlideId === slide.id ? `is-copilot-spotlight ${spotlightPulseClass ?? ""}` : ""}`}
+                    style={
+                      activeArtifactDrop
+                        ? {
+                            borderColor: "#1d4ed8",
+                            background: "rgba(29, 78, 216, 0.08)"
+                          }
+                        : undefined
+                    }
+                    onClick={() => {
+                      setActiveSlideId(slide.id);
+                      store.setSelection(slide.id, false);
+                    }}
+                  >
+                    <div>#{index + 1}</div>
+                    <div className="muted">{String((slide.props as Record<string, unknown>)?.title ?? slide.id)}</div>
+                  </div>
+                  <div
+                    className={`ppt-nav-drop-anchor ${activeArtifactDrop?.position === "after" ? "active" : ""}`}
+                    data-testid={`ppt-artifact-drop-after-${slide.id}`}
+                    onDragOver={(event) => {
+                      const artifact = decodeCopilotArtifact(event.dataTransfer);
+                      if (!artifact || !supportsPptArtifactDrop(artifact)) {
+                        return;
+                      }
+                      event.preventDefault();
+                      event.dataTransfer.dropEffect = "copy";
+                      const nextTarget = { slideId: slide.id, position: "after" as const };
+                      setArtifactDropTarget((current) => (samePptArtifactDropTarget(current, nextTarget) ? current : nextTarget));
+                    }}
+                    onDragLeave={(event) => {
+                      if (event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                        return;
+                      }
+                      setArtifactDropTarget((current) => (current?.slideId === slide.id && current.position === "after" ? null : current));
+                    }}
+                    onDrop={(event) => {
+                      const artifact = decodeCopilotArtifact(event.dataTransfer);
+                      clearCopilotArtifactDrag();
+                      setArtifactDropTarget(null);
+                      if (!artifact || !supportsPptArtifactDrop(artifact)) {
+                        return;
+                      }
+                      event.preventDefault();
+                      insertPptArtifact(slide.id, artifact, "after");
+                    }}
+                  >
+                    <span className="ppt-nav-drop-anchor-line" />
+                    <span className="ppt-nav-drop-anchor-label">
+                      {activeArtifactDrop?.position === "after" ? getPptArtifactDropLabel("after") : "拖到此处可后插页面"}
+                    </span>
+                  </div>
+                </div>
+              );
+            })()
           ))}
         </div>
       ) : null}
@@ -447,7 +679,10 @@ export function PptEditor({ doc, showNavigator = true }: PptEditorProps): JSX.El
                 }
                 encodePptInsertItem(event.dataTransfer, item.source.id);
               }}
-              onDragEnd={() => clearPptInsertItemDrag()}
+              onDragEnd={() => {
+                clearPptInsertItemDrag();
+                clearInsertPreviewState();
+              }}
             />
           </FloatingLayer>
         ) : null}
@@ -460,7 +695,7 @@ export function PptEditor({ doc, showNavigator = true }: PptEditorProps): JSX.El
         </div>
         {activeSlide ? (
           <div
-            className="slide"
+            className={`slide ${spotlightSlideId === activeSlide.id ? `is-copilot-spotlight ${spotlightPulseClass ?? ""}` : ""}`}
             data-testid={`ppt-slide-canvas-${activeSlide.id}`}
             onDragOver={(event) => {
               const item = decodePptInsertItem(event.dataTransfer);
@@ -474,7 +709,7 @@ export function PptEditor({ doc, showNavigator = true }: PptEditorProps): JSX.El
             onDrop={(event) => {
               const item = decodePptInsertItem(event.dataTransfer);
               clearPptInsertItemDrag();
-              setInsertPreview(null);
+              clearInsertPreviewState();
               if (!item) {
                 return;
               }
@@ -485,7 +720,7 @@ export function PptEditor({ doc, showNavigator = true }: PptEditorProps): JSX.El
               if (event.currentTarget.contains(event.relatedTarget as Node | null)) {
                 return;
               }
-              setInsertPreview(null);
+              clearInsertPreviewState();
             }}
             onMouseDown={(event) => {
               if (event.target !== event.currentTarget) {
@@ -574,7 +809,8 @@ export function PptEditor({ doc, showNavigator = true }: PptEditorProps): JSX.El
             {(activeSlide.children ?? []).map((node) => (
               <SlideNode
                 key={node.id}
-                doc={doc}
+                dataDoc={nodeDataDoc}
+                assetDoc={assetDoc}
                 node={node}
                 allNodes={activeSlide.children ?? []}
                 selected={selection.selectedIds.includes(node.id)}
@@ -602,13 +838,14 @@ export function PptEditor({ doc, showNavigator = true }: PptEditorProps): JSX.El
                     setGroupDragPreview(null);
                     return;
                   }
-                  setGroupDragPreview({
+                  const nextPreview = {
                     anchorId: node.id,
                     nodeIds: selectedIds,
                     deltaX,
                     deltaY,
                     duplicateOnDrop
-                  });
+                  };
+                  setGroupDragPreview((current) => (sameSlideGroupDragPreview(current, nextPreview) ? current : nextPreview));
                 }}
                 onClearGroupDragPreview={() =>
                   setGroupDragPreview((current) => (current?.anchorId === node.id ? null : current))
@@ -649,7 +886,8 @@ export function PptEditor({ doc, showNavigator = true }: PptEditorProps): JSX.El
 }
 
 function SlideNode({
-  doc,
+  dataDoc,
+  assetDoc,
   node,
   allNodes,
   selected,
@@ -667,7 +905,13 @@ function SlideNode({
   dataVersion,
   snapEnabled
 }: {
-  doc: VDoc;
+  dataDoc: {
+    dataSources: VDoc["dataSources"];
+    queries: VDoc["queries"];
+    filters: VDoc["filters"];
+    templateVariables: VDoc["templateVariables"];
+  };
+  assetDoc: Pick<VDoc, "assets">;
   node: VNode;
   allNodes: VNode[];
   selected: boolean;
@@ -682,13 +926,13 @@ function SlideNode({
   onSendBack: () => void;
   onSetGuides: (guides: Guides) => void;
   engine: DataEngine;
-  dataVersion: string;
+  dataVersion: number | string;
   snapEnabled: boolean;
 }): JSX.Element {
-  const { rows, loading, error } = useNodeRows(doc, node, engine, dataVersion);
+  const { rows, loading, error } = useNodeRows(dataDoc, node, engine, dataVersion);
   const layout = node.layout ?? { mode: "absolute", x: 80, y: 80, w: 200, h: 120, z: 1 };
   const showOuterTitle = shouldRenderOuterNodeTitle(node);
-  const nodeTitle = node.kind === "image" ? resolveImageNodeTitle(doc, node) : resolveNodeDisplayTitle(node);
+  const nodeTitle = node.kind === "image" ? resolveImageNodeTitle(assetDoc, node) : resolveNodeDisplayTitle(node);
   const [rect, setRect] = useState({
     x: Number(layout.x ?? 80),
     y: Number(layout.y ?? 80),
@@ -702,6 +946,8 @@ function SlideNode({
   const startRef = useRef(start);
   const modeRef = useRef(mode);
   const duplicateOnDropRef = useRef(duplicateOnDrop);
+  const previewEventRef = useRef<{ clientX: number; clientY: number; altKey: boolean } | null>(null);
+  const previewFrameRef = useRef<number | null>(null);
   const editorZIndex = Number(node.layout?.z ?? 1) + (selected ? 2000 : 0);
 
   useEffect(() => {
@@ -787,17 +1033,18 @@ function SlideNode({
     if (!start || !mode) {
       return;
     }
-    const handleMouseMove = (event: MouseEvent): void => {
+    const flushPreview = (): void => {
+      const event = previewEventRef.current;
       const currentStart = startRef.current;
       const currentMode = modeRef.current;
-      if (!currentStart || !currentMode) {
+      if (!event || !currentStart || !currentMode) {
         return;
       }
       const dx = event.clientX - currentStart.x;
       const dy = event.clientY - currentStart.y;
       const nextDuplicateOnDrop = duplicateOnDropRef.current || Boolean(event.altKey);
       duplicateOnDropRef.current = nextDuplicateOnDrop;
-      setDuplicateOnDrop(nextDuplicateOnDrop);
+      setDuplicateOnDrop((current) => (current === nextDuplicateOnDrop ? current : nextDuplicateOnDrop));
       if (currentMode === "move") {
         onPreviewGroupDrag(dx, dy, nextDuplicateOnDrop);
         const nextRect = snap({ ...currentStart.rect, x: Math.max(0, currentStart.rect.x + dx), y: Math.max(0, currentStart.rect.y + dy) });
@@ -809,7 +1056,29 @@ function SlideNode({
       rectRef.current = nextRect;
       setRect(nextRect);
     };
+    const schedulePreview = (event: MouseEvent): void => {
+      previewEventRef.current = {
+        clientX: event.clientX,
+        clientY: event.clientY,
+        altKey: Boolean(event.altKey)
+      };
+      if (previewFrameRef.current !== null) {
+        return;
+      }
+      previewFrameRef.current = window.requestAnimationFrame(() => {
+        previewFrameRef.current = null;
+        flushPreview();
+      });
+    };
+    const handleMouseMove = (event: MouseEvent): void => {
+      schedulePreview(event);
+    };
     const handleMouseUp = (): void => {
+      if (previewFrameRef.current !== null) {
+        window.cancelAnimationFrame(previewFrameRef.current);
+        previewFrameRef.current = null;
+      }
+      flushPreview();
       const currentStart = startRef.current;
       const currentMode = modeRef.current;
       const currentRect = rectRef.current;
@@ -832,6 +1101,7 @@ function SlideNode({
       modeRef.current = null;
       startRef.current = null;
       duplicateOnDropRef.current = false;
+      previewEventRef.current = null;
       onClearGroupDragPreview();
       onSetGuides({});
     };
@@ -840,6 +1110,11 @@ function SlideNode({
     window.addEventListener("mousemove", handleMouseMove);
     window.addEventListener("mouseup", handleMouseUp);
     return () => {
+      if (previewFrameRef.current !== null) {
+        window.cancelAnimationFrame(previewFrameRef.current);
+        previewFrameRef.current = null;
+      }
+      previewEventRef.current = null;
       document.body.style.userSelect = previousUserSelect;
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
@@ -892,17 +1167,17 @@ function SlideNode({
         {node.kind === "text" ? (
           <NodeTextBlock node={node} style={{ width: "100%", height: "100%" }} />
         ) : node.kind === "table" ? (
-          loading || error ? <NodeDataState loading={loading} error={error} remote={isRemoteDataNode(doc, node)} /> : <TableView spec={node.props as TableSpec} rows={rows} height="100%" />
+          loading || error ? <NodeDataState loading={loading} error={error} remote={isRemoteDataNode(dataDoc, node)} /> : <TableView spec={node.props as TableSpec} rows={rows} height="100%" />
         ) : node.kind === "chart" ? (
           loading || error ? (
-            <NodeDataState loading={loading} error={error} remote={isRemoteDataNode(doc, node)} />
+            <NodeDataState loading={loading} error={error} remote={isRemoteDataNode(dataDoc, node)} />
           ) : (
             <div style={{ width: "100%", height: "100%", position: "relative" }}>
               <EChartView spec={node.props as ChartSpec} rows={rows} height="100%" />
             </div>
           )
         ) : node.kind === "image" ? (
-          <PptImageNode doc={doc} node={node} />
+          <PptImageNode doc={assetDoc} node={node} />
         ) : (
           <div className="muted">unsupported: {node.kind}</div>
         )}
@@ -912,7 +1187,7 @@ function SlideNode({
   );
 }
 
-function PptImageNode({ doc, node }: { doc: VDoc; node: VNode }): JSX.Element {
+function PptImageNode({ doc, node }: { doc: Pick<VDoc, "assets">; node: VNode }): JSX.Element {
   const props = (node.props ?? {}) as ImageProps;
   const asset = resolveImageAsset(doc, props.assetId);
   if (!asset?.uri) {

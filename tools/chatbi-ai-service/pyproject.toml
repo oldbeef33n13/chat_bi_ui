@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chatbi-ai-service"
+version = "0.1.0"
+description = "Dedicated Python service for ChatBI AI capabilities"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.115,<1",
+  "uvicorn[standard]>=0.34,<1",
+  "pydantic>=2.10,<3",
+  "httpx>=0.28,<1",
+  "pandas>=3.0,<4"
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3,<9"
+]
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.setuptools.package-data]
+"app.core.prompt_registry.scenes" = ["*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

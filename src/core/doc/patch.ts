@@ -40,6 +40,90 @@ export const getAtPath = (obj: unknown, path: string): unknown => {
   return cursor;
 };
 
+const cloneContainer = (value: unknown): any => {
+  if (Array.isArray(value)) {
+    return value.slice();
+  }
+  return { ...(value as Record<string, unknown> | undefined) };
+};
+
+const toContainerKey = (container: unknown, raw: string): string | number => {
+  if (Array.isArray(container)) {
+    return raw === "-" ? container.length : Number(raw);
+  }
+  return raw;
+};
+
+const updateAtPathImmutable = (
+  obj: unknown,
+  segs: string[],
+  updater: (container: unknown, key: string | number) => unknown
+): unknown => {
+  if (segs.length === 0) {
+    const wrapped = updater({ root: obj }, "root") as { root: unknown };
+    return wrapped.root;
+  }
+  if (segs.length === 1) {
+    return updater(obj, toContainerKey(obj, segs[0]!));
+  }
+  const head = segs[0]!;
+  const key = toContainerKey(obj, head);
+  const currentChild = Array.isArray(obj) ? obj[key as number] : (obj as Record<string, unknown> | undefined)?.[key as string];
+  const nextChild = updateAtPathImmutable(currentChild, segs.slice(1), updater);
+  if (nextChild === currentChild) {
+    return obj;
+  }
+  const next = cloneContainer(obj);
+  next[key] = nextChild;
+  return next;
+};
+
+const addAtPathImmutable = (obj: unknown, path: string, value: unknown, cloneValue = true): unknown => {
+  const segs = pathToSegments(path);
+  const nextValue = cloneValue ? structuredClone(value) : value;
+  return updateAtPathImmutable(obj, segs, (container, key) => {
+    if (Array.isArray(container)) {
+      const next = container.slice();
+      next.splice(key as number, 0, nextValue);
+      return next;
+    }
+    return {
+      ...((container as Record<string, unknown> | undefined) ?? {}),
+      [key]: nextValue,
+    };
+  });
+};
+
+const replaceAtPathImmutable = (obj: unknown, path: string, value: unknown): unknown => {
+  const segs = pathToSegments(path);
+  const nextValue = structuredClone(value);
+  return updateAtPathImmutable(obj, segs, (container, key) => {
+    if (Array.isArray(container)) {
+      const next = container.slice();
+      next[key as number] = nextValue;
+      return next;
+    }
+    return {
+      ...((container as Record<string, unknown> | undefined) ?? {}),
+      [key]: nextValue,
+    };
+  });
+};
+
+const removeAtPathImmutable = (obj: unknown, path: string): unknown => {
+  const segs = pathToSegments(path);
+  return updateAtPathImmutable(obj, segs, (container, key) => {
+    if (Array.isArray(container)) {
+      const next = container.slice();
+      next.splice(key as number, 1);
+      return next;
+    }
+    const next = { ...((container as Record<string, unknown> | undefined) ?? {}) };
+    delete next[key as keyof typeof next];
+    return next;
+  });
+};
+
 const addAtPath = (obj: unknown, path: string, value: unknown): void => {
   const { parent, key } = getRef(obj, path);
   if (key === undefined) {
@@ -101,9 +185,32 @@ export const applyPatchInPlace = (doc: VDoc, patch: PatchOp): void => {
 };
 
 export const applyPatches = (doc: VDoc, patches: PatchOp[]): VDoc => {
-  const next = structuredClone(doc);
+  let next: VDoc = doc;
   for (const patch of patches) {
-    applyPatchInPlace(next, patch);
+    switch (patch.op) {
+      case "add":
+        next = addAtPathImmutable(next, patch.path, patch.value) as VDoc;
+        break;
+      case "replace":
+        next = replaceAtPathImmutable(next, patch.path, patch.value) as VDoc;
+        break;
+      case "remove":
+        next = removeAtPathImmutable(next, patch.path) as VDoc;
+        break;
+      case "move": {
+        if (!patch.from) {
+          throw new Error("move patch missing from");
+        }
+        const movedValue = getAtPath(next, patch.from);
+        const withoutMovedValue = removeAtPathImmutable(next, patch.from);
+        next = addAtPathImmutable(withoutMovedValue, patch.path, movedValue, false) as VDoc;
+        break;
+      }
+      default: {
+        const exhaustive: never = patch.op;
+        throw new Error(`unsupported patch op: ${String(exhaustive)}`);
+      }
+    }
   }
   return next;
 };

@@ -1,0 +1,31 @@
+{
+  "id": "story_summary_basic_002",
+  "scene": "story_summary",
+  "title": "PPT 汇报摘要",
+  "description": "针对汇报稿生成简洁讲述结论。",
+  "tags": ["basic", "ppt"],
+  "input": {
+    "docType": "ppt",
+    "title": "网络运营汇报",
+    "focus": "汇报结论",
+    "insights": [
+      "核心风险集中在华南和西南区域",
+      "告警总体数量稳定，但重大事件集中在周三",
+      "容量利用率接近阈值的链路增加"
+    ]
+  },
+  "expect": {
+    "mustHaveFields": ["headline", "conclusion", "evidence", "advice"],
+    "mustMentionAny": ["风险", "告警", "容量"],
+    "allowFallback": true
+  },
+  "score": {
+    "weights": {
+      "structure": 0.2,
+      "semantic": 0.6,
+      "expression": 0.2
+    },
+    "minimumPassScore": 0.8
+  },
+  "notes": "适合汇报场景。"
+}

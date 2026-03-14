@@ -2,14 +2,18 @@ import type { DataSourceDef, QueryDef } from "../../core/doc/types";
 
 /** 查询执行请求参数。 */
 export interface QueryRequest {
-  sourceId: string;
+  sourceId?: string;
   queryId?: string;
-  params?: Record<string, string | number | boolean | string[]>;
+  endpointId?: string;
+  params?: Record<string, unknown>;
 }
 
 /** DataEngine 运行参数。 */
 export interface DataEngineOptions {
   debounceMs?: number;
+  endpointBaseUrl?: string;
+  endpointCacheEnabled?: boolean;
+  endpointCacheTtlMs?: number;
 }
 
 interface CacheEntry {
@@ -20,6 +24,12 @@ interface CacheEntry {
 interface DebounceEntry {
   timer: ReturnType<typeof setTimeout>;
   resolve: (ready: boolean) => void;
+}
+
+export interface QuerySnapshot {
+  status: "empty" | "pending" | "ready" | "error";
+  value?: unknown;
+  error?: string;
 }
 
 /** 简单异步等待，用于重试退避。 */
@@ -39,6 +49,8 @@ export class DataEngine {
   private readonly inFlight = new Map<string, AbortController>();
   private readonly pendingExecutions = new Map<string, Promise<unknown>>();
   private readonly pendingDebounces = new Map<string, DebounceEntry>();
+  private readonly querySnapshots = new Map<string, QuerySnapshot>();
+  private readonly queryListeners = new Map<string, Set<() => void>>();
   private defsSignature = "";
 
   constructor(
@@ -59,6 +71,7 @@ export class DataEngine {
     this.cancel();
     this.clearPendingDebounces();
     this.cache.clear();
+    this.clearQuerySnapshots();
     this.sources.clear();
     this.queries.clear();
     sources.forEach((item) => this.sources.set(item.id, item));
@@ -68,18 +81,27 @@ export class DataEngine {
   /** 取消指定请求或全部在途请求。 */
   cancel(requestKey?: string): void {
     if (requestKey) {
-      this.inFlight.get(requestKey)?.abort();
-      this.inFlight.delete(requestKey);
+      this.abortInFlight(requestKey);
+      this.pendingExecutions.delete(requestKey);
       this.cancelDebounce(requestKey);
+      this.setQuerySnapshot(requestKey, { status: "empty" });
       return;
     }
     this.inFlight.forEach((ctrl) => ctrl.abort());
     this.inFlight.clear();
+    this.pendingExecutions.clear();
     this.clearPendingDebounces();
+    this.clearQuerySnapshots();
   }
 
   /** 执行查询：缓存命中 -> 防抖 -> 发起请求 -> 重试 -> 回填缓存。 */
   async execute(request: QueryRequest): Promise<unknown> {
+    if (request.endpointId) {
+      return this.executeEndpoint(request);
+    }
+    if (!request.sourceId) {
+      throw new Error("data source id is required");
+    }
     const source = this.sources.get(request.sourceId);
     if (!source) {
       throw new Error(`data source not found: ${request.sourceId}`);
@@ -88,14 +110,16 @@ export class DataEngine {
     const key = this.buildCacheKey(source, query, request.params);
 
     if (source.cacheEnabled) {
-      const cached = this.cache.get(key);
-      if (cached && Date.now() - cached.at <= (source.cacheTtl ?? 0)) {
-        return cached.value;
+      const cached = this.resolveFreshCacheValue(key, source.cacheTtl ?? 0);
+      if (cached !== undefined) {
+        this.setQuerySnapshot(key, { status: "ready", value: cached });
+        return cached;
       }
     }
     const pending = this.pendingExecutions.get(key);
     if (pending) {
       // 同 key 请求复用同一执行链，避免多个图表互相取消/防抖打架。
+      this.setQuerySnapshot(key, { status: "pending" });
       return pending;
     }
 
@@ -106,17 +130,20 @@ export class DataEngine {
         if (source.cacheEnabled) {
           this.cache.set(key, { at: Date.now(), value });
         }
+        this.setQuerySnapshot(key, { status: "ready", value });
         return value;
       }
 
+      this.setQuerySnapshot(key, { status: "pending" });
       if (this.options.debounceMs && this.options.debounceMs > 0) {
         const ready = await this.debounce(key, this.options.debounceMs);
         if (!ready) {
+          this.setQuerySnapshot(key, { status: "empty" });
           throw new Error("request debounced");
         }
       }
 
-      this.cancel(key);
+      this.abortInFlight(key);
       const controller = new AbortController();
       this.inFlight.set(key, controller);
 
@@ -125,7 +152,16 @@ export class DataEngine {
         if (source.cacheEnabled) {
           this.cache.set(key, { at: Date.now(), value });
         }
+        this.setQuerySnapshot(key, { status: "ready", value });
         return value;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (message === "request cancelled" || message === "request debounced") {
+          this.setQuerySnapshot(key, { status: "empty" });
+        } else {
+          this.setQuerySnapshot(key, { status: "error", error: message });
+        }
+        throw error;
       } finally {
         this.inFlight.delete(key);
       }
@@ -139,6 +175,147 @@ export class DataEngine {
     );
 
     return this.pendingExecutions.get(key)!;
+  }
+
+  inspect(request: QueryRequest): QuerySnapshot {
+    if (request.endpointId) {
+      return this.inspectEndpoint(request);
+    }
+    if (!request.sourceId) {
+      return { status: "empty" };
+    }
+    const source = this.sources.get(request.sourceId);
+    if (!source) {
+      return { status: "empty" };
+    }
+    if (source.type === "static") {
+      return {
+        status: "ready",
+        value: source.staticData ?? []
+      };
+    }
+    const query = request.queryId ? this.queries.get(request.queryId) : undefined;
+    const key = this.buildCacheKey(source, query, request.params);
+    const current = this.querySnapshots.get(key);
+    if (current) {
+      return current;
+    }
+    const cached = source.cacheEnabled ? this.resolveFreshCacheValue(key, source.cacheTtl ?? 0) : undefined;
+    if (cached !== undefined) {
+      return { status: "ready", value: cached };
+    }
+    if (this.pendingExecutions.has(key)) {
+      return { status: "pending" };
+    }
+    return { status: "empty" };
+  }
+
+  subscribe(request: QueryRequest, listener: () => void): () => void {
+    const key = this.resolveRequestKey(request);
+    if (!key) {
+      return () => undefined;
+    }
+    const listeners = this.queryListeners.get(key) ?? new Set<() => void>();
+    listeners.add(listener);
+    this.queryListeners.set(key, listeners);
+    return () => {
+      const current = this.queryListeners.get(key);
+      if (!current) {
+        return;
+      }
+      current.delete(listener);
+      if (current.size === 0) {
+        this.queryListeners.delete(key);
+      }
+    };
+  }
+
+  private async executeEndpoint(request: QueryRequest): Promise<unknown> {
+    const endpointId = request.endpointId;
+    if (!endpointId) {
+      throw new Error("endpoint id is required");
+    }
+    const key = this.buildEndpointCacheKey(endpointId, request.params);
+    const endpointCacheEnabled = this.options.endpointCacheEnabled ?? true;
+    const endpointCacheTtlMs = this.options.endpointCacheTtlMs ?? 10_000;
+
+    if (endpointCacheEnabled) {
+      const cached = this.resolveFreshCacheValue(key, endpointCacheTtlMs);
+      if (cached !== undefined) {
+        this.setQuerySnapshot(key, { status: "ready", value: cached });
+        return cached;
+      }
+    }
+    const pending = this.pendingExecutions.get(key);
+    if (pending) {
+      this.setQuerySnapshot(key, { status: "pending" });
+      return pending;
+    }
+
+    const run = (async (): Promise<unknown> => {
+      this.setQuerySnapshot(key, { status: "pending" });
+      if (this.options.debounceMs && this.options.debounceMs > 0) {
+        const ready = await this.debounce(key, this.options.debounceMs);
+        if (!ready) {
+          this.setQuerySnapshot(key, { status: "empty" });
+          throw new Error("request debounced");
+        }
+      }
+
+      this.abortInFlight(key);
+      const controller = new AbortController();
+      this.inFlight.set(key, controller);
+
+      try {
+        const value = await this.fetchEndpointRows(endpointId, request.params, controller.signal);
+        if (endpointCacheEnabled) {
+          this.cache.set(key, { at: Date.now(), value });
+        }
+        this.setQuerySnapshot(key, { status: "ready", value });
+        return value;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (message === "request cancelled" || message === "request debounced") {
+          this.setQuerySnapshot(key, { status: "empty" });
+        } else {
+          this.setQuerySnapshot(key, { status: "error", error: message });
+        }
+        throw error;
+      } finally {
+        this.inFlight.delete(key);
+      }
+    })();
+
+    this.pendingExecutions.set(
+      key,
+      run.finally(() => {
+        this.pendingExecutions.delete(key);
+      })
+    );
+
+    return this.pendingExecutions.get(key)!;
+  }
+
+  private inspectEndpoint(request: QueryRequest): QuerySnapshot {
+    const endpointId = request.endpointId;
+    if (!endpointId) {
+      return { status: "empty" };
+    }
+    const key = this.buildEndpointCacheKey(endpointId, request.params);
+    const current = this.querySnapshots.get(key);
+    if (current) {
+      return current;
+    }
+    const endpointCacheEnabled = this.options.endpointCacheEnabled ?? true;
+    const endpointCacheTtlMs = this.options.endpointCacheTtlMs ?? 10_000;
+    const cached = endpointCacheEnabled ? this.resolveFreshCacheValue(key, endpointCacheTtlMs) : undefined;
+    if (cached !== undefined) {
+      return { status: "ready", value: cached };
+    }
+    if (this.pendingExecutions.has(key)) {
+      return { status: "pending" };
+    }
+    return { status: "empty" };
   }
 
   /** 请求执行器：静态源直接返回；远端源按重试策略请求。 */
@@ -190,6 +367,29 @@ export class DataEngine {
     throw latestError instanceof Error ? latestError : new Error(String(latestError));
   }
 
+  private async fetchEndpointRows(endpointId: string, params: QueryRequest["params"], signal: AbortSignal): Promise<unknown> {
+    const baseUrl = this.options.endpointBaseUrl ?? "/api/v1";
+    try {
+      const response = await fetch(`${baseUrl}/data-endpoints/${encodeURIComponent(endpointId)}/test`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ params: params ?? {} }),
+        signal
+      });
+      if (!response.ok) {
+        throw new Error(`http ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      if (signal.aborted) {
+        throw new Error("request cancelled");
+      }
+      throw error instanceof Error ? error : new Error(String(error));
+    }
+  }
+
   /** GET 请求拼装查询参数；POST 原样返回 base。 */
   private buildUrl(base: string, method: "GET" | "POST", params?: QueryRequest["params"]): string {
     if (method === "POST" || !params || Object.keys(params).length === 0) {
@@ -213,6 +413,60 @@ export class DataEngine {
     params?: QueryRequest["params"]
   ): string {
     return `${source.id}::${query?.queryId ?? "na"}::${JSON.stringify(params ?? {})}`;
+  }
+
+  private buildEndpointCacheKey(endpointId: string, params?: QueryRequest["params"]): string {
+    return `endpoint::${endpointId}::${JSON.stringify(params ?? {})}`;
+  }
+
+  private resolveRequestKey(request: QueryRequest): string | null {
+    if (request.endpointId) {
+      return this.buildEndpointCacheKey(request.endpointId, request.params);
+    }
+    if (!request.sourceId) {
+      return null;
+    }
+    const source = this.sources.get(request.sourceId);
+    if (!source) {
+      return null;
+    }
+    const query = request.queryId ? this.queries.get(request.queryId) : undefined;
+    return this.buildCacheKey(source, query, request.params);
+  }
+
+  private resolveFreshCacheValue(key: string, ttlMs: number): unknown {
+    const cached = this.cache.get(key);
+    if (!cached) {
+      return undefined;
+    }
+    if (ttlMs <= 0 || Date.now() - cached.at > ttlMs) {
+      this.cache.delete(key);
+      return undefined;
+    }
+    return cached.value;
+  }
+
+  private abortInFlight(key: string): void {
+    this.inFlight.get(key)?.abort();
+    this.inFlight.delete(key);
+  }
+
+  private setQuerySnapshot(key: string, next: QuerySnapshot): void {
+    const prev = this.querySnapshots.get(key);
+    if (prev?.status === next.status && prev?.value === next.value && prev?.error === next.error) {
+      return;
+    }
+    this.querySnapshots.set(key, next);
+    this.queryListeners.get(key)?.forEach((listener) => listener());
+  }
+
+  private clearQuerySnapshots(): void {
+    if (this.querySnapshots.size === 0) {
+      return;
+    }
+    const keys = [...this.querySnapshots.keys()];
+    this.querySnapshots.clear();
+    keys.forEach((key) => this.queryListeners.get(key)?.forEach((listener) => listener()));
   }
 
   /** 序列化定义，用于判定 sources/queries 是否发生实质变化。 */

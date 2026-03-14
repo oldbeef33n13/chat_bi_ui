@@ -1,0 +1,36 @@
+{
+  "id": "chart_ask_basic_002",
+  "scene": "chart_ask",
+  "title": "询问低点",
+  "description": "用户询问图表最低点。",
+  "tags": ["basic", "trough"],
+  "input": {
+    "prompt": "最低点在哪一天",
+    "nodeId": "chart_alarm_trend",
+    "spec": {
+      "chartType": "line",
+      "bindings": [
+        { "role": "x", "field": "stat_date" },
+        { "role": "y", "field": "alarm_count", "agg": "sum" }
+      ]
+    },
+    "rows": [
+      { "stat_date": "2026-03-01", "alarm_count": 10 },
+      { "stat_date": "2026-03-02", "alarm_count": 30 },
+      { "stat_date": "2026-03-03", "alarm_count": 8 }
+    ]
+  },
+  "expect": {
+    "mustMentionAny": ["2026-03-03", "低点"],
+    "mustHaveSuggestions": true,
+    "allowFallback": true
+  },
+  "score": {
+    "weights": {
+      "structure": 0.2,
+      "semantic": 0.8
+    },
+    "minimumPassScore": 0.8
+  },
+  "notes": "标准低点问答。"
+}

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { TemplateVariableDef } from "../../core/doc/types";
-import type { EditorDocType } from "../api/doc-repository";
+import type { EditorDocType } from "../api/template-repository";
 import { HttpScheduleRepository } from "../api/http-schedule-repository";
 import type { ScheduleJobMeta, ScheduleOutputType, ScheduleRun, UpsertScheduleInput } from "../api/schedule-repository";
 import { buildTemplateVariableDefaults } from "../utils/template-variables";

@@ -1,0 +1,19 @@
+{
+  "scene": "chart_ask",
+  "activeVersion": "v2",
+  "versions": {
+    "v2": {
+      "status": "active",
+      "goal": "根据图表配置、样例数据和问题生成结论、建议与可选改动计划",
+      "systemPrompt": "你是 ChatBI 的图表智能分析助手。\n根据图表配置、样例数据和用户问题，输出 JSON:\n- answer: 中文结论\n- suggestions: 建议追问\n- plan: 可选的结构化改动计划\n- planSummary: 可选摘要\n\n要求：\n- answer 要短而清楚\n- 如果不适合改图，plan 为空\n- 只输出 JSON",
+      "outputContract": {
+        "answer": "string",
+        "suggestions": "array",
+        "plan": "object|null",
+        "planSummary": "string|null"
+      },
+      "notes": "当前稳定版图表问答 prompt，兼顾解释与轻量改图建议。",
+      "updatedAt": "2026-03-10T00:00:00Z"
+    }
+  }
+}

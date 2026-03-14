@@ -1,0 +1,25 @@
+{
+  "id": "command_plan_complex_006",
+  "scene": "command_plan",
+  "title": "容量趋势图切换折线并增强可读性",
+  "description": "用户希望把容量趋势图改成折线图，同时打开平滑和标签。",
+  "tags": ["complex", "ops", "chart-edit", "trend"],
+  "input": {
+    "input": "把这张容量趋势图改成折线图，打开平滑和标签",
+    "currentNodeId": "chart_capacity_trend"
+  },
+  "expect": {
+    "mustHaveCommandTypes": ["UpdateProps"],
+    "mustTargetIds": ["chart_capacity_trend"],
+    "shouldContainProps": ["chartType", "smooth", "labelShow"],
+    "allowFallback": true
+  },
+  "score": {
+    "weights": {
+      "structure": 0.2,
+      "semantic": 0.8
+    },
+    "minimumPassScore": 0.85
+  },
+  "notes": "多属性复合编辑命令。"
+}

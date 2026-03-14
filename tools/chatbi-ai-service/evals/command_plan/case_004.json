@@ -1,0 +1,24 @@
+{
+  "id": "command_plan_ambiguous_004",
+  "scene": "command_plan",
+  "title": "模糊优化意图",
+  "description": "用户只说优化一下，需要系统给出保守默认方案。",
+  "tags": ["ambiguous", "fallback"],
+  "input": {
+    "input": "帮我优化一下这个图",
+    "currentNodeId": "chart_service_health"
+  },
+  "expect": {
+    "mustHaveCommandTypes": ["UpdateProps"],
+    "mustTargetIds": ["chart_service_health"],
+    "allowFallback": true
+  },
+  "score": {
+    "weights": {
+      "structure": 0.4,
+      "semantic": 0.6
+    },
+    "minimumPassScore": 0.65
+  },
+  "notes": "主要用于验证无法识别时仍有保守计划。"
+}

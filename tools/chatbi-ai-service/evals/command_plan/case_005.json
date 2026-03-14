@@ -1,0 +1,25 @@
+{
+  "id": "command_plan_basic_005",
+  "scene": "command_plan",
+  "title": "改成饼图",
+  "description": "用户希望当前图改成占比表达。",
+  "tags": ["basic", "pie"],
+  "input": {
+    "input": "把它改成饼图看看占比",
+    "currentNodeId": "chart_region_compare"
+  },
+  "expect": {
+    "mustHaveCommandTypes": ["UpdateProps"],
+    "mustTargetIds": ["chart_region_compare"],
+    "shouldContainProps": ["chartType"],
+    "allowFallback": true
+  },
+  "score": {
+    "weights": {
+      "structure": 0.3,
+      "semantic": 0.7
+    },
+    "minimumPassScore": 0.75
+  },
+  "notes": "基础图类型切换。"
+}

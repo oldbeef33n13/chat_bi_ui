@@ -1,4 +1,4 @@
-import { getAtPath, joinPath } from "../doc/patch";
+import { applyPatches, getAtPath, joinPath } from "../doc/patch";
 import { findNodeById } from "../doc/tree";
 import type { Command, CommandResult, PatchOp, VDoc, VNode } from "../doc/types";
 import { prefixedId } from "../utils/id";
@@ -385,7 +385,7 @@ const executeOne = (doc: VDoc, command: Command, ctx: ExecutorContext): CommandR
 };
 
 export const executeCommands = (doc: VDoc, commands: Command[], ctx: ExecutorContext): CommandResult => {
-  let current = clone(doc);
+  let current = doc;
   const patches: PatchOp[] = [];
   const inverse: PatchOp[] = [];
   const summaries: string[] = [];
@@ -410,7 +410,7 @@ export const executeCommands = (doc: VDoc, commands: Command[], ctx: ExecutorCon
     if (result.sideEffects?.rerender) {
       rerender = true;
     }
-    current = applyLocalPatches(current, result.patches);
+    current = applyPatches(current, result.patches);
   }
 
   return {
@@ -419,73 +419,6 @@ export const executeCommands = (doc: VDoc, commands: Command[], ctx: ExecutorCon
     sideEffects: { reflow, requery, rerender },
     summary: summaries.join(" | ")
   };
-};
-
-const applyLocalPatches = (doc: VDoc, patches: PatchOp[]): VDoc => {
-  const next = clone(doc);
-  for (const patch of patches) {
-    switch (patch.op) {
-      case "add":
-      case "replace":
-        setByPath(next, patch.path, patch.value, patch.op === "add");
-        break;
-      case "remove":
-        removeByPath(next, patch.path);
-        break;
-      case "move": {
-        if (!patch.from) {
-          throw new Error("move patch missing from");
-        }
-        const value = getAtPath(next, patch.from);
-        removeByPath(next, patch.from);
-        setByPath(next, patch.path, value, true);
-        break;
-      }
-      default:
-        break;
-    }
-  }
-  return next;
-};
-
-const pathParts = (path: string): string[] => path.split("/").slice(1);
-
-const setByPath = (obj: unknown, path: string, value: unknown, isAdd: boolean): void => {
-  const parts = pathParts(path);
-  const last = parts.pop();
-  if (!last) {
-    throw new Error("invalid path");
-  }
-  let cursor: any = obj;
-  for (const part of parts) {
-    const key = Array.isArray(cursor) ? Number(part) : part;
-    cursor = cursor[key];
-  }
-  const key = Array.isArray(cursor) ? Number(last) : last;
-  if (Array.isArray(cursor) && isAdd) {
-    cursor.splice(key as number, 0, clone(value));
-    return;
-  }
-  cursor[key] = clone(value);
-};
-
-const removeByPath = (obj: unknown, path: string): void => {
-  const parts = pathParts(path);
-  const last = parts.pop();
-  if (!last) {
-    throw new Error("invalid path");
-  }
-  let cursor: any = obj;
-  for (const part of parts) {
-    const key = Array.isArray(cursor) ? Number(part) : part;
-    cursor = cursor[key];
-  }
-  const key = Array.isArray(cursor) ? Number(last) : last;
-  if (Array.isArray(cursor)) {
-    cursor.splice(key as number, 1);
-    return;
-  }
-  delete cursor[key];
 };
 
 export const guessChangedNodeIds = (doc: VDoc, patches: PatchOp[]): string[] => {

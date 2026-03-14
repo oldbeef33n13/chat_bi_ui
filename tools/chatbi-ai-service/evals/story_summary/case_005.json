@@ -1,0 +1,30 @@
+{
+  "id": "story_summary_basic_005",
+  "scene": "story_summary",
+  "title": "风险与建议导向摘要",
+  "description": "用户 focus 指向风险与建议。",
+  "tags": ["basic", "risk", "focus"],
+  "input": {
+    "docType": "report",
+    "title": "容量风险专题",
+    "focus": "风险与建议",
+    "insights": [
+      "容量利用率超过 80% 的链路数量增加",
+      "华南骨干链路在晚高峰出现持续拥塞"
+    ]
+  },
+  "expect": {
+    "mustHaveFields": ["headline", "conclusion", "evidence", "advice"],
+    "mustMentionAny": ["风险", "建议", "容量"],
+    "allowFallback": true
+  },
+  "score": {
+    "weights": {
+      "structure": 0.2,
+      "semantic": 0.6,
+      "expression": 0.2
+    },
+    "minimumPassScore": 0.8
+  },
+  "notes": "聚焦风险与建议输出。"
+}

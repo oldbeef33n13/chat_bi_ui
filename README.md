@@ -7,6 +7,7 @@
 ```bash
 npm install
 mvn -f tools/pom.xml -pl chatbi-app-server -am org.springframework.boot:spring-boot-maven-plugin:run
+python -m uvicorn app.main:app --host 127.0.0.1 --port 18180 --app-dir tools/chatbi-ai-service
 npm run dev
 ```
 
@@ -23,6 +24,7 @@ npm run stack:dev
 
 - 运行时数据目录
 - 后端日志文件路径
+- AI 服务日志文件路径
 - 前端日志文件路径
 
 如果本地 `.runtime/storage/dev` 中的 SQLite/Flyway 状态和当前代码不兼容，脚本会自动重置该目录并重试一次。
@@ -39,15 +41,22 @@ npm run stack:showcase
 npm run test:all
 ```
 
-更多说明见 [本地启动初始化与自动化测试](./doc/%E6%9C%AC%E5%9C%B0%E5%90%AF%E5%8A%A8%E5%88%9D%E5%A7%8B%E5%8C%96%E4%B8%8E%E8%87%AA%E5%8A%A8%E5%8C%96%E6%B5%8B%E8%AF%95.md)。
-开发分工和本地调试说明见 [开发与测试指南](./doc/%E5%BC%80%E5%8F%91%E4%B8%8E%E6%B5%8B%E8%AF%95%E6%8C%87%E5%8D%97.md)。
+更多说明见：
+- [文档索引](./doc/README.md)
+- [本地启动初始化与自动化测试](./doc/%E6%9C%AC%E5%9C%B0%E5%90%AF%E5%8A%A8%E5%88%9D%E5%A7%8B%E5%8C%96%E4%B8%8E%E8%87%AA%E5%8A%A8%E5%8C%96%E6%B5%8B%E8%AF%95.md)
+- [开发与测试指南](./doc/%E5%BC%80%E5%8F%91%E4%B8%8E%E6%B5%8B%E8%AF%95%E6%8C%87%E5%8D%97.md)
+- [AI-Copilot交互设计规范](./doc/AI-Copilot%E4%BA%A4%E4%BA%92%E8%AE%BE%E8%AE%A1%E8%A7%84%E8%8C%83.md)
+- [数据获取与预取策略](./doc/%E6%95%B0%E6%8D%AE%E8%8E%B7%E5%8F%96%E4%B8%8E%E9%A2%84%E5%8F%96%E7%AD%96%E7%95%A5.md)
 
 ### 本地联调
 
 - 前端默认代理 `/api`、`/files` 到 `http://localhost:18080`
+- 前端默认代理 `/ai-api` 到 `http://localhost:18180`
 - 后端 App 入口：`tools/chatbi-app-server`
+- AI 服务入口：`tools/chatbi-ai-service`
 - 如需改目标地址：
   - PowerShell: `$env:VITE_API_TARGET='http://localhost:18080'; npm run dev`
+  - PowerShell: `$env:VITE_AI_TARGET='http://localhost:18180'; npm run dev`
 - `localexample/` 现在仅保留为离线种子数据与样例参考，不再作为主联调通道
 
 ## 已落地模块

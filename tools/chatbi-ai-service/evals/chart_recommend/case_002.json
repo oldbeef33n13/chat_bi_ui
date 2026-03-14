@@ -1,0 +1,31 @@
+{
+  "id": "chart_recommend_basic_002",
+  "scene": "chart_recommend",
+  "title": "分类对比单指标",
+  "description": "区域字段和数值字段，应优先推荐柱状对比。",
+  "tags": ["basic", "comparison", "category"],
+  "input": {
+    "requestedType": "auto",
+    "fields": [
+      { "name": "region_name", "label": "区域", "type": "string" },
+      { "name": "incident_count", "label": "事件数", "type": "number" }
+    ],
+    "context": {
+      "docType": "report",
+      "trigger": "inspector"
+    }
+  },
+  "expect": {
+    "chartTypeIn": ["bar", "pie"],
+    "mustHaveRoles": ["x", "y"],
+    "allowFallback": true
+  },
+  "score": {
+    "weights": {
+      "structure": 0.2,
+      "semantic": 0.8
+    },
+    "minimumPassScore": 0.8
+  },
+  "notes": "分类对比与占比都可接受，但优先柱图。"
+}

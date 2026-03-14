@@ -1,0 +1,33 @@
+{
+  "id": "chart_recommend_flow_007",
+  "scene": "chart_recommend",
+  "title": "服务依赖流向",
+  "description": "source/target/value 字段，适合关系流向图。",
+  "tags": ["complex", "flow", "sankey", "ops"],
+  "input": {
+    "requestedType": "auto",
+    "fields": [
+      { "name": "source_service", "label": "源服务", "type": "string" },
+      { "name": "target_service", "label": "目标服务", "type": "string" },
+      { "name": "call_count", "label": "调用量", "type": "number" }
+    ],
+    "context": {
+      "docType": "report",
+      "nodeId": "chart_service_dependency_flow",
+      "trigger": "inspector"
+    }
+  },
+  "expect": {
+    "chartTypeIn": ["sankey"],
+    "mustHaveRoles": ["linkSource", "linkTarget", "linkValue"],
+    "allowFallback": true
+  },
+  "score": {
+    "weights": {
+      "structure": 0.2,
+      "semantic": 0.8
+    },
+    "minimumPassScore": 0.9
+  },
+  "notes": "关系型图表推荐。"
+}

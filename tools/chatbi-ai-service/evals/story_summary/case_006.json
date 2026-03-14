@@ -1,0 +1,31 @@
+{
+  "id": "story_summary_business_006",
+  "scene": "story_summary",
+  "title": "大屏管理层摘要",
+  "description": "面向管理层的大屏整体摘要。",
+  "tags": ["business", "management", "dashboard"],
+  "input": {
+    "docType": "dashboard",
+    "title": "网络运营总览大屏",
+    "focus": "管理层摘要",
+    "insights": [
+      "本周华东区域告警量高于其他区域",
+      "骨干链路利用率在晚高峰持续超过 80%",
+      "核心短信网关时延较上周上升 22%"
+    ]
+  },
+  "expect": {
+    "mustHaveFields": ["headline", "conclusion", "evidence", "advice"],
+    "mustMentionAny": ["告警", "链路", "时延"],
+    "allowFallback": true
+  },
+  "score": {
+    "weights": {
+      "structure": 0.2,
+      "semantic": 0.6,
+      "expression": 0.2
+    },
+    "minimumPassScore": 0.8
+  },
+  "notes": "偏管理层表达的综合摘要。"
+}

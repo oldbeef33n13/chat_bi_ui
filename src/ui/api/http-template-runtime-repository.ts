@@ -1,5 +1,5 @@
 import type { VDoc } from "../../core/doc/types";
-import { DocApiError } from "./doc-repository";
+import { TemplateApiError } from "./template-repository";
 import type {
   CreateTemplateExportInput,
   TemplateArtifact,
@@ -47,7 +47,7 @@ const parsePreview = (value: unknown): TemplatePreviewResult => {
   const raw = ensureObject(value);
   const snapshot = raw.snapshot as VDoc | undefined;
   if (!snapshot || typeof snapshot !== "object") {
-    throw new DocApiError("响应缺少 snapshot", 500, value);
+    throw new TemplateApiError("响应缺少 snapshot", 500, value);
   }
   return {
     templateId: String(raw.templateId ?? ""),
@@ -106,7 +106,7 @@ export class HttpTemplateRuntimeRepository implements TemplateRuntimeRepository 
     }
     if (!response.ok) {
       const message = ensureObject(payload).message ? String(ensureObject(payload).message) : `HTTP ${response.status}`;
-      throw new DocApiError(message, response.status, payload);
+      throw new TemplateApiError(message, response.status, payload);
     }
     return payload;
   }

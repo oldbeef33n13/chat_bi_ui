@@ -1,0 +1,31 @@
+{
+  "id": "story_summary_ppt_007",
+  "scene": "story_summary",
+  "title": "故障复盘汇报页摘要",
+  "description": "PPT 汇报场景，强调结论、证据和行动建议。",
+  "tags": ["ppt", "postmortem", "business"],
+  "input": {
+    "docType": "ppt",
+    "title": "核心业务故障复盘汇报",
+    "focus": "领导汇报",
+    "insights": [
+      "故障窗口集中在 3 月 4 日 09:20 至 09:47",
+      "短信网关依赖链路抖动导致请求超时显著增加",
+      "回切完成后 15 分钟内成功率恢复到 99.9%"
+    ]
+  },
+  "expect": {
+    "mustHaveFields": ["headline", "conclusion", "evidence", "advice"],
+    "mustMentionAny": ["故障", "超时", "恢复"],
+    "allowFallback": true
+  },
+  "score": {
+    "weights": {
+      "structure": 0.2,
+      "semantic": 0.6,
+      "expression": 0.2
+    },
+    "minimumPassScore": 0.8
+  },
+  "notes": "故障复盘汇报摘要。"
+}

@@ -1,0 +1,54 @@
+{
+  "id": "composed_conversation_003",
+  "scene": "composed",
+  "flowType": "conversation",
+  "title": "数据问答后切换到图表修改",
+  "description": "用户先问接口字段，再围绕同一图表发起修改。",
+  "tags": ["conversation", "multi-turn", "dashboard", "data"],
+  "input": {
+    "threadSeed": {
+      "threadId": "thread_conversation_003",
+      "docId": "tpl_dashboard_003",
+      "docType": "dashboard",
+      "activePageId": "page_1",
+      "selectedObjectIds": ["chart_2"],
+      "lastResolvedObjectId": "chart_2"
+    },
+    "objectRegistry": {
+      "docId": "tpl_dashboard_003",
+      "docType": "dashboard",
+      "objects": [
+        {
+          "objectId": "chart_2",
+          "kind": "chart",
+          "title": "容量利用率 TopN",
+          "sectionId": null,
+          "pageId": "page_1",
+          "chartType": "bar",
+          "fieldKeywords": ["容量", "利用率", "链路"],
+          "sourceRefs": ["ops_capacity_topn"],
+          "displayText": "首页 容量利用率 TopN"
+        }
+      ]
+    },
+    "turns": [
+      { "userText": "这个接口有哪些字段" },
+      { "userText": "那把它改成横向柱图" }
+    ]
+  },
+  "expect": {
+    "turns": [
+      { "intent": "ask_data", "scene": "data_guide", "resolvedObjectIds": ["chart_2"] },
+      { "intent": "ask_edit", "scene": "command_plan", "resolvedObjectIds": ["chart_2"] }
+    ]
+  },
+  "score": {
+    "weights": {
+      "router": 0.35,
+      "memory": 0.35,
+      "scene_switch": 0.3
+    },
+    "minimumPassScore": 0.85
+  },
+  "notes": "用于后续 conversation + source grounding runner。"
+}

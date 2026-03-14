@@ -1,4 +1,4 @@
-import { DocApiError } from "./doc-repository";
+import { TemplateApiError } from "./template-repository";
 import type {
   ScheduleArtifact,
   ScheduleJobMeta,
@@ -130,7 +130,7 @@ export class HttpScheduleRepository implements ScheduleRepository {
     }
     if (!response.ok) {
       const message = ensureObject(payload).message ? String(ensureObject(payload).message) : `HTTP ${response.status}`;
-      throw new DocApiError(message, response.status, payload);
+      throw new TemplateApiError(message, response.status, payload);
     }
     return payload;
   }

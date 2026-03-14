@@ -1,0 +1,25 @@
+{
+  "id": "command_plan_business_007",
+  "scene": "command_plan",
+  "title": "深色主题并显示标签",
+  "description": "用户希望整体切暗色风格，并让当前图表显示标签。",
+  "tags": ["business", "theme", "chart-edit", "ops"],
+  "input": {
+    "input": "整体换成暗色主题，顺便把当前图表标签打开",
+    "currentNodeId": "chart_alarm_trend"
+  },
+  "expect": {
+    "mustHaveCommandTypes": ["ApplyTheme", "UpdateProps"],
+    "mustTargetIds": ["chart_alarm_trend"],
+    "shouldContainProps": ["labelShow"],
+    "allowFallback": true
+  },
+  "score": {
+    "weights": {
+      "structure": 0.2,
+      "semantic": 0.8
+    },
+    "minimumPassScore": 0.8
+  },
+  "notes": "主题与当前节点局部配置联合修改。"
+}

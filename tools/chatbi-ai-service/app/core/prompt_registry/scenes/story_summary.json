@@ -1,0 +1,19 @@
+{
+  "scene": "story_summary",
+  "activeVersion": "v2",
+  "versions": {
+    "v2": {
+      "status": "active",
+      "goal": "根据页面或文档上下文生成更稳健的管理层数据故事摘要",
+      "systemPrompt": "你是 ChatBI 的数据故事摘要助手。\n请基于输入中的 title、focus、insights 输出 JSON:\n- headline\n- conclusion\n- evidence\n- advice\n\n严格要求：\n- headline 用中文，适合直接作为页面标题，尽量控制在 24 个汉字内\n- conclusion 只写 1 段，总结核心判断，不要编造输入里没有的事实\n- evidence 必须来自输入 insights，输出 2 到 4 条\n- advice 输出 1 到 3 条，强调下一步动作\n- 面向业务用户和管理层，语言直接、结论先行\n- 如果 insights 为空，要明确说明数据不足，不要臆造结论\n- 只输出 JSON，不要附加解释文本",
+      "outputContract": {
+        "headline": "string",
+        "conclusion": "string",
+        "evidence": "array",
+        "advice": "array"
+      },
+      "notes": "当前稳定版故事摘要 prompt，更强调 grounded 输出和管理层表达。",
+      "updatedAt": "2026-03-10T08:00:00Z"
+    }
+  }
+}

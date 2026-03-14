@@ -1,0 +1,87 @@
+{
+  "id": "composed_analysis_pipeline_001",
+  "scene": "composed",
+  "flowType": "analysis_pipeline",
+  "title": "单源大数据分析闭环",
+  "description": "分析华东区域近7天告警波动原因，要求从问题、计划、执行到总结形成完整闭环。",
+  "tags": ["analysis", "single-source", "ops", "report"],
+  "input": {
+    "userQuestion": "帮我分析华东区域近7天告警为什么波动这么大",
+    "routerContext": {
+      "threadId": "thread_analysis_001",
+      "docId": "tpl_report_001",
+      "docType": "report",
+      "activeSectionId": "section_2",
+      "selectedObjectIds": ["chart_1"]
+    },
+    "plannerInput": {
+      "candidateSources": [
+        {
+          "sourceId": "ops_alarm_trend",
+          "name": "告警趋势",
+          "schema": [
+            { "name": "stat_date", "label": "统计日期", "type": "time" },
+            { "name": "region", "label": "区域", "type": "string" },
+            { "name": "alarm_count", "label": "告警数", "type": "number" }
+          ],
+          "profile": {
+            "rowCount": 10000,
+            "timeField": "stat_date",
+            "dimensionFields": ["region"],
+            "metricFields": ["alarm_count"]
+          },
+          "rows": [
+            { "stat_date": "2026-03-01", "region": "华东", "alarm_count": 120 },
+            { "stat_date": "2026-03-02", "region": "华东", "alarm_count": 98 },
+            { "stat_date": "2026-03-03", "region": "华东", "alarm_count": 145 },
+            { "stat_date": "2026-03-04", "region": "华东", "alarm_count": 210 },
+            { "stat_date": "2026-03-05", "region": "华东", "alarm_count": 188 },
+            { "stat_date": "2026-03-06", "region": "华东", "alarm_count": 132 },
+            { "stat_date": "2026-03-07", "region": "华东", "alarm_count": 118 },
+            { "stat_date": "2026-03-01", "region": "华南", "alarm_count": 76 },
+            { "stat_date": "2026-03-02", "region": "华南", "alarm_count": 82 }
+          ],
+          "sampleRows": [
+            { "stat_date": "2026-03-01", "region": "华东", "alarm_count": 120 },
+            { "stat_date": "2026-03-02", "region": "华东", "alarm_count": 98 }
+          ]
+        }
+      ]
+    },
+    "executorFixtures": {
+      "sourceIds": ["ops_alarm_trend"],
+      "expectedInputRows": 10000
+    }
+  },
+  "expect": {
+    "router": {
+      "intent": "ask_analysis",
+      "scene": "analysis_planner"
+    },
+    "plan": {
+      "analysisMode": "single_source",
+      "mustUseSources": ["ops_alarm_trend"],
+      "mustContainOps": ["filter_rows", "group_aggregate", "sort_rows"],
+      "mustNotContainOps": ["join_sources"]
+    },
+    "execution": {
+      "status": "succeeded",
+      "mustHaveTables": ["summary_table"],
+      "mustExposeStats": ["inputRows", "outputRows", "latencyMs"]
+    },
+    "summary": {
+      "mustHaveFields": ["headline", "conclusion", "evidence", "advice"],
+      "mustMentionAny": ["华东", "告警", "波动", "峰值"]
+    }
+  },
+  "score": {
+    "weights": {
+      "router": 0.15,
+      "planning": 0.35,
+      "execution": 0.3,
+      "summary": 0.2
+    },
+    "minimumPassScore": 0.8
+  },
+  "notes": "第一批最重要的组合闭环用例。"
+}

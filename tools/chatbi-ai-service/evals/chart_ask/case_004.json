@@ -1,0 +1,32 @@
+{
+  "id": "chart_ask_edge_004",
+  "scene": "chart_ask",
+  "title": "无数据时的保守回复",
+  "description": "rows 为空时应给保守结论，不应崩溃。",
+  "tags": ["edge", "no-data"],
+  "input": {
+    "prompt": "这个图说明了什么",
+    "nodeId": "chart_empty",
+    "spec": {
+      "chartType": "line",
+      "bindings": [
+        { "role": "x", "field": "stat_date" },
+        { "role": "y", "field": "alarm_count", "agg": "sum" }
+      ]
+    },
+    "rows": []
+  },
+  "expect": {
+    "mustMentionAny": ["没有可分析的数据", "检查数据源"],
+    "mustHaveSuggestions": true,
+    "allowFallback": true
+  },
+  "score": {
+    "weights": {
+      "structure": 0.4,
+      "semantic": 0.6
+    },
+    "minimumPassScore": 0.75
+  },
+  "notes": "边界场景。"
+}

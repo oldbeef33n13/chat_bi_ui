@@ -1,0 +1,33 @@
+{
+  "id": "data_guide_basic_003",
+  "scene": "data_guide",
+  "title": "服务依赖流向接口",
+  "description": "关系流向类接口。",
+  "tags": ["basic", "relation", "sankey"],
+  "input": {
+    "name": "ops_service_dependency_flow",
+    "description": "服务间调用依赖关系。",
+    "params": [],
+    "fields": [
+      { "name": "source_service", "label": "源服务", "type": "string" },
+      { "name": "target_service", "label": "目标服务", "type": "string" },
+      { "name": "flow_count", "label": "流量次数", "type": "number" }
+    ],
+    "sampleRows": [
+      { "source_service": "API网关", "target_service": "告警服务", "flow_count": 120 }
+    ]
+  },
+  "expect": {
+    "mustHaveRecommendedCharts": ["sankey"],
+    "mustHaveFieldRoles": ["source", "target", "metric"],
+    "allowFallback": true
+  },
+  "score": {
+    "weights": {
+      "structure": 0.2,
+      "semantic": 0.8
+    },
+    "minimumPassScore": 0.85
+  },
+  "notes": "关系流向说明。"
+}

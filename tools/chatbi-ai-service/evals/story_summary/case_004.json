@@ -1,0 +1,25 @@
+{
+  "id": "story_summary_edge_004",
+  "scene": "story_summary",
+  "title": "无洞察输入的保守兜底",
+  "description": "没有 insights 时也应返回完整结构。",
+  "tags": ["edge", "fallback"],
+  "input": {
+    "docType": "report",
+    "title": "空白报告",
+    "focus": "摘要",
+    "insights": []
+  },
+  "expect": {
+    "mustHaveFields": ["headline", "conclusion", "evidence", "advice"],
+    "allowFallback": true
+  },
+  "score": {
+    "weights": {
+      "structure": 0.5,
+      "semantic": 0.5
+    },
+    "minimumPassScore": 0.7
+  },
+  "notes": "验证无洞察时的兜底摘要。"
+}

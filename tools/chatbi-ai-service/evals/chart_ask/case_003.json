@@ -1,0 +1,36 @@
+{
+  "id": "chart_ask_basic_003",
+  "scene": "chart_ask",
+  "title": "询问趋势变化",
+  "description": "用户询问整体趋势是否上升。",
+  "tags": ["basic", "trend"],
+  "input": {
+    "prompt": "最近的趋势是上升还是下降",
+    "nodeId": "chart_capacity_trend",
+    "spec": {
+      "chartType": "line",
+      "bindings": [
+        { "role": "x", "field": "stat_date" },
+        { "role": "y", "field": "utilization_pct", "agg": "avg" }
+      ]
+    },
+    "rows": [
+      { "stat_date": "2026-03-01", "utilization_pct": 62 },
+      { "stat_date": "2026-03-02", "utilization_pct": 68 },
+      { "stat_date": "2026-03-03", "utilization_pct": 74 }
+    ]
+  },
+  "expect": {
+    "mustMentionAny": ["上升", "趋势"],
+    "mustHaveSuggestions": true,
+    "allowFallback": true
+  },
+  "score": {
+    "weights": {
+      "structure": 0.2,
+      "semantic": 0.8
+    },
+    "minimumPassScore": 0.78
+  },
+  "notes": "趋势判断。"
+}

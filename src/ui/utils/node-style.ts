@@ -298,7 +298,7 @@ export const resolveNodeDisplayTitle = (node: VNode): string => {
 export const resolveTitleTextStyle = (defaults: VStyle | undefined, override: VStyle | undefined, extra?: CSSProperties): CSSProperties =>
   resolveTextContentStyle(mergeTextStyles(defaults, override), extra);
 
-export const isRemoteDataNode = (doc: VDoc, node: VNode): boolean => {
+export const isRemoteDataNode = (doc: Pick<VDoc, "dataSources">, node: VNode): boolean => {
   if (node.data?.endpointId) {
     return true;
   }

@@ -16,6 +16,11 @@ export default defineConfig(({ mode }) => {
         "/files": {
           target: env.VITE_API_TARGET || "http://localhost:18080",
           changeOrigin: true
+        },
+        "/ai-api": {
+          target: env.VITE_AI_TARGET || "http://localhost:18180",
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/ai-api/, "")
         }
       }
     },

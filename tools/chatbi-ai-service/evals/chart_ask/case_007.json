@@ -1,0 +1,37 @@
+{
+  "id": "chart_ask_anomaly_007",
+  "scene": "chart_ask",
+  "title": "询问是否存在明显下滑",
+  "description": "趋势图场景下识别明显下降区间。",
+  "tags": ["complex", "anomaly", "trend", "ops"],
+  "input": {
+    "prompt": "有没有明显下滑",
+    "nodeId": "chart_capacity_trend",
+    "spec": {
+      "chartType": "line",
+      "bindings": [
+        { "role": "x", "field": "stat_date" },
+        { "role": "y", "field": "utilization_pct", "agg": "avg" }
+      ]
+    },
+    "rows": [
+      { "stat_date": "2026-03-01", "utilization_pct": 78 },
+      { "stat_date": "2026-03-02", "utilization_pct": 82 },
+      { "stat_date": "2026-03-03", "utilization_pct": 61 },
+      { "stat_date": "2026-03-04", "utilization_pct": 59 }
+    ]
+  },
+  "expect": {
+    "mustMentionAny": ["下降", "下滑", "2026-03-03"],
+    "mustHaveSuggestions": true,
+    "allowFallback": true
+  },
+  "score": {
+    "weights": {
+      "structure": 0.2,
+      "semantic": 0.8
+    },
+    "minimumPassScore": 0.8
+  },
+  "notes": "趋势异常分析问答。"
+}

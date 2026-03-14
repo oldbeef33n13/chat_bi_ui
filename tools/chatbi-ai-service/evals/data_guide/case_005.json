@@ -1,0 +1,31 @@
+{
+  "id": "data_guide_edge_005",
+  "scene": "data_guide",
+  "title": "字段较少的保守说明",
+  "description": "字段较少时仍应生成结构化说明。",
+  "tags": ["edge", "minimal"],
+  "input": {
+    "name": "ops_ticket_summary",
+    "description": "工单汇总接口。",
+    "params": [],
+    "fields": [
+      { "name": "ticket_count", "label": "工单数", "type": "number" }
+    ],
+    "sampleRows": [
+      { "ticket_count": 18 }
+    ]
+  },
+  "expect": {
+    "mustHaveRecommendedCharts": [],
+    "mustHaveFieldRoles": ["metric"],
+    "allowFallback": true
+  },
+  "score": {
+    "weights": {
+      "structure": 0.4,
+      "semantic": 0.6
+    },
+    "minimumPassScore": 0.7
+  },
+  "notes": "极简字段场景。"
+}
