@@ -18,6 +18,7 @@ tools/chatbi-ai-service/.env.local
 tools/chatbi-ai-service/*.egg-info/
 
 # Local editor and runtime noise
+.vscode/
 *.log
 *.tmp
 *.temp
