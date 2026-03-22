@@ -1,15 +1,32 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReportProps, VDoc, VNode } from "../../../core/doc/types";
 import { nodeTitle } from "../../../core/doc/tree";
 import { useDataEngine } from "../../hooks/use-data-engine";
 import { useNodeDataPrefetch } from "../../hooks/use-node-data-prefetch";
 import { resolveReportPrefetchNodes } from "../../utils/data-fetch-strategy";
 import { buildReportGridRows } from "../../utils/report-layout";
+import { computeVirtualWindow } from "../../utils/report-virtual";
 import { flattenReportSections, getTopReportSections } from "../../utils/report-sections";
 import type { PresentationRuntimeSettings } from "../../utils/presentation-settings";
 import { renderRuntimeNodeHeader, resolveNodeSurfaceStyle, resolveTitleTextStyle, RuntimeNodeContent } from "./shared";
 import { NodeTextBlock } from "../NodeTextBlock";
 import type { RuntimeSelectionTarget } from "./runtime-selection";
+
+const RUNTIME_REPORT_PAGE_GAP_PX = 10;
+
+type RuntimeReportEntry =
+  | { key: string; kind: "cover"; pageNumber: number; height: number }
+  | { key: string; kind: "toc"; pageNumber: number; height: number }
+  | {
+      key: string;
+      kind: "section";
+      section: VNode;
+      sectionTitle: string;
+      rows: ReturnType<typeof buildReportGridRows>;
+      pageNumber: number;
+      height: number;
+    }
+  | { key: string; kind: "summary"; pageNumber: number; height: number };
 
 export function ReportRuntimeView({
   doc,
@@ -27,38 +44,100 @@ export function ReportRuntimeView({
   const rootProps = normalizeReportProps(doc);
   const sections = getTopReportSections(doc.root);
   const flatSections = flattenReportSections(sections);
-  const { engine, dataVersion } = useDataEngine(doc.dataSources ?? [], doc.queries ?? [], { debounceMs: 120 });
-  const prefetchNodes = useMemo(() => resolveReportPrefetchNodes(flatSections, flatSections[0] ? [flatSections[0].section.id] : [], 1), [flatSections]);
+  const { engine, dataVersion } = useDataEngine(doc.dataSources ?? [], doc.queries ?? []);
   const outlineHostRef = useRef<HTMLDivElement>(null);
-  const sectionRefMap = useRef<Record<string, HTMLDivElement | null>>({});
+  const viewportRef = useRef<HTMLDivElement>(null);
   const [outlineOpen, setOutlineOpen] = useState(false);
   const [outlineQuery, setOutlineQuery] = useState("");
   const [recentSectionIds, setRecentSectionIds] = useState<string[]>([]);
-  const pages = useMemo(() => {
-    const list: Array<
-      | { key: string; kind: "cover"; pageNumber: number }
-      | { key: string; kind: "toc"; pageNumber: number }
-      | { key: string; kind: "section"; section: VNode; sectionIndex: number; pageNumber: number }
-      | { key: string; kind: "summary"; pageNumber: number }
-    > = [];
+  const [measuredHeights, setMeasuredHeights] = useState<Record<string, number>>({});
+  const [scrollTop, setScrollTop] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(720);
+  const entries = useMemo<RuntimeReportEntry[]>(() => {
+    const list: RuntimeReportEntry[] = [];
     let pageNumber = 1;
     if (rootProps.coverEnabled) {
-      list.push({ key: "cover", kind: "cover", pageNumber });
+      list.push({
+        key: "cover",
+        kind: "cover",
+        pageNumber,
+        height: measuredHeights.cover ?? 340 + RUNTIME_REPORT_PAGE_GAP_PX
+      });
       pageNumber += 1;
     }
     if (rootProps.tocShow) {
-      list.push({ key: "toc", kind: "toc", pageNumber });
+      list.push({
+        key: "toc",
+        kind: "toc",
+        pageNumber,
+        height: measuredHeights.toc ?? 260 + RUNTIME_REPORT_PAGE_GAP_PX
+      });
       pageNumber += 1;
     }
     flatSections.forEach((item, index) => {
-      list.push({ key: item.section.id, kind: "section", section: item.section, sectionIndex: index, pageNumber });
+      const sectionTitle = `${item.orderLabel}. ${item.title}`;
+      const rows = buildReportGridRows(item.blocks);
+      const fallbackCanvasHeight = Math.max(320, rows.reduce((sum, row) => sum + row.maxHeight + rootProps.blockGapPx, 0) + 56);
+      list.push({
+        key: item.section.id,
+        kind: "section",
+        section: item.section,
+        sectionTitle,
+        rows,
+        pageNumber,
+        height: measuredHeights[item.section.id] ?? 108 + rootProps.sectionGapPx + fallbackCanvasHeight + rows.length * 24 + RUNTIME_REPORT_PAGE_GAP_PX
+      });
       pageNumber += 1;
     });
     if (rootProps.summaryEnabled) {
-      list.push({ key: "summary", kind: "summary", pageNumber });
+      list.push({
+        key: "summary",
+        kind: "summary",
+        pageNumber,
+        height: measuredHeights.summary ?? 260 + RUNTIME_REPORT_PAGE_GAP_PX
+      });
     }
     return list;
-  }, [flatSections, rootProps.coverEnabled, rootProps.summaryEnabled, rootProps.tocShow]);
+  }, [flatSections, measuredHeights, rootProps.blockGapPx, rootProps.coverEnabled, rootProps.sectionGapPx, rootProps.summaryEnabled, rootProps.tocShow]);
+
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) {
+      return;
+    }
+    const update = (): void => setViewportHeight(Math.max(320, viewport.clientHeight || 720));
+    update();
+    if (typeof ResizeObserver === "undefined") {
+      return;
+    }
+    const observer = new ResizeObserver(update);
+    observer.observe(viewport);
+    return () => observer.disconnect();
+  }, []);
+
+  const { totalHeight, visible } = useMemo(() => computeVirtualWindow(entries, scrollTop, viewportHeight, 480), [entries, scrollTop, viewportHeight]);
+  const visibleSectionIds = useMemo(
+    () =>
+      visible.flatMap((entry) =>
+        entry.item.kind === "section" ? [entry.item.section.id] : []
+      ),
+    [visible]
+  );
+  const prefetchNodes = useMemo(
+    () => resolveReportPrefetchNodes(flatSections, visibleSectionIds.length > 0 ? visibleSectionIds : flatSections[0] ? [flatSections[0].section.id] : [], 1),
+    [flatSections, visibleSectionIds]
+  );
+  const sectionOffsetMap = useMemo(() => {
+    const map = new Map<string, number>();
+    let runningTop = 0;
+    entries.forEach((entry) => {
+      if (entry.kind === "section") {
+        map.set(entry.section.id, runningTop);
+      }
+      runningTop += entry.height;
+    });
+    return map;
+  }, [entries]);
 
   useNodeDataPrefetch(doc, prefetchNodes, engine, dataVersion, "report runtime");
 
@@ -84,6 +163,19 @@ export function ReportRuntimeView({
     setRecentSectionIds([]);
   }, [doc.docId]);
 
+  const handleMeasuredHeight = useCallback((entryKey: string, height: number): void => {
+    setMeasuredHeights((current) => {
+      const nextValue = Math.round(height);
+      if (nextValue <= 0) {
+        return current;
+      }
+      if (current[entryKey] !== undefined && Math.abs(current[entryKey]! - nextValue) < 2) {
+        return current;
+      }
+      return { ...current, [entryKey]: nextValue };
+    });
+  }, []);
+
   const normalizedQuery = outlineQuery.trim().toLowerCase();
   const filteredSections =
     normalizedQuery.length === 0
@@ -92,7 +184,17 @@ export function ReportRuntimeView({
   const recentSections = recentSectionIds.map((id) => flatSections.find((item) => item.section.id === id)).filter((item): item is (typeof flatSections)[number] => !!item);
 
   const jumpToSection = (sectionId: string): void => {
-    sectionRefMap.current[sectionId]?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+    const targetTop = sectionOffsetMap.get(sectionId);
+    const viewport = viewportRef.current;
+    if (targetTop !== undefined && viewport) {
+      const nextTop = Math.max(0, targetTop - 6);
+      if (typeof viewport.scrollTo === "function") {
+        viewport.scrollTo({ top: nextTop, behavior: "smooth" });
+      } else {
+        viewport.scrollTop = nextTop;
+        viewport.dispatchEvent(new Event("scroll", { bubbles: true }));
+      }
+    }
     setRecentSectionIds((prev) => [sectionId, ...prev.filter((id) => id !== sectionId)].slice(0, 6));
     const currentSection = flatSections.find((item) => item.section.id === sectionId);
     const targetNode = currentSection?.blocks[0];
@@ -107,13 +209,7 @@ export function ReportRuntimeView({
     setOutlineOpen(false);
   };
 
-  const renderPage = (
-    page:
-      | { key: string; kind: "cover"; pageNumber: number }
-      | { key: string; kind: "toc"; pageNumber: number }
-      | { key: string; kind: "section"; section: VNode; sectionIndex: number; pageNumber: number }
-      | { key: string; kind: "summary"; pageNumber: number }
-  ): JSX.Element => {
+  const renderPage = (page: RuntimeReportEntry): JSX.Element => {
     const renderFrame = (body: JSX.Element): JSX.Element => (
       <div className="report-page-frame">
         {rootProps.headerShow ? (
@@ -158,17 +254,14 @@ export function ReportRuntimeView({
       );
     }
     if (page.kind === "section") {
-      const { section, sectionIndex } = page;
-      const flat = flatSections.find((item) => item.section.id === section.id);
-      const sectionTitle = flat ? `${flat.orderLabel}. ${flat.title}` : String((section.props as Record<string, unknown>)?.title ?? `章节 ${sectionIndex + 1}`);
-      const sectionBlocks = flat ? flat.blocks : (section.children ?? []).filter((item) => item.kind !== "section");
+      const { rows, sectionTitle } = page;
       return renderFrame(
         <div className="section">
           <div className="section-title" style={{ ...resolveTitleTextStyle({ fontSize: 24, bold: true }, rootProps.sectionTitleStyle), marginBottom: Math.max(0, Number(rootProps.sectionGapPx ?? 12)) }}>
             {sectionTitle}
           </div>
-          {buildReportGridRows(sectionBlocks).map((row) => (
-            <div key={`${section.id}_${row.key}`} className="report-row-grid" style={{ marginBottom: Math.max(0, Number(rootProps.blockGapPx ?? 8)) }}>
+          {rows.map((row) => (
+            <div key={`${page.section.id}_${row.key}`} className="report-row-grid" style={{ marginBottom: Math.max(0, Number(rootProps.blockGapPx ?? 8)) }}>
               {row.items.map((item) => (
                 <div key={item.node.id} className="report-row-cell" style={{ gridColumn: `${item.gx + 1} / span ${item.gw}` }}>
                   <div
@@ -210,12 +303,16 @@ export function ReportRuntimeView({
     );
   };
 
-  if (pages.length === 0) {
+  if (entries.length === 0) {
     return <div className="muted">暂无报告内容</div>;
   }
 
   return (
-    <div ref={outlineHostRef} className={`col runtime-report runtime-outline-host ${immersive ? "runtime-report-immersive" : ""} ${immersive && presentationSettings?.paddingMode === "edge" ? "runtime-pad-edge" : ""}`}>
+    <div
+      ref={outlineHostRef}
+      className={`col runtime-report runtime-outline-host ${immersive ? "runtime-report-immersive" : ""} ${immersive && presentationSettings?.paddingMode === "edge" ? "runtime-pad-edge" : ""}`}
+      style={{ height: "100%", minHeight: 0 }}
+    >
       <div className="runtime-outline-toolbar row">
         <span className="chip">报告运行态</span>
         <span className="chip">{`章节 ${flatSections.length}`}</span>
@@ -249,18 +346,60 @@ export function ReportRuntimeView({
           </div>
         </div>
       ) : null}
-      {pages.map((page) => (
-        <div
-          key={page.key}
-          ref={(element) => {
-            if (page.kind === "section") {
-              sectionRefMap.current[page.section.id] = element;
-            }
-          }}
-        >
-          {renderPage(page)}
+      <div
+        ref={viewportRef}
+        className="runtime-report-viewport"
+        onScroll={(event) => {
+          setScrollTop(event.currentTarget.scrollTop);
+        }}
+      >
+        <div className="runtime-report-virtual-stage" style={{ height: totalHeight }}>
+          {visible.map((page) => (
+            <div key={page.item.key} className="runtime-report-virtual-item" style={{ top: page.top }}>
+              <MeasuredRuntimeReportPage entryKey={page.item.key} onMeasure={handleMeasuredHeight} style={{ paddingBottom: RUNTIME_REPORT_PAGE_GAP_PX }}>
+                {renderPage(page.item)}
+              </MeasuredRuntimeReportPage>
+            </div>
+          ))}
         </div>
-      ))}
+      </div>
+    </div>
+  );
+}
+
+function MeasuredRuntimeReportPage({
+  entryKey,
+  onMeasure,
+  style,
+  children
+}: {
+  entryKey: string;
+  onMeasure: (entryKey: string, height: number) => void;
+  style?: React.CSSProperties;
+  children: JSX.Element;
+}): JSX.Element {
+  const hostRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) {
+      return;
+    }
+    const measure = (): void => {
+      onMeasure(entryKey, host.getBoundingClientRect().height);
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") {
+      return;
+    }
+    const observer = new ResizeObserver(measure);
+    observer.observe(host);
+    return () => observer.disconnect();
+  }, [entryKey, onMeasure]);
+
+  return (
+    <div ref={hostRef} style={style}>
+      {children}
     </div>
   );
 }

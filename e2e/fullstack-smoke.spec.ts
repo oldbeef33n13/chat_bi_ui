@@ -7,7 +7,7 @@ test.describe.serial("full stack smoke", () => {
     });
   });
 
-  test("loads backend templates, manages schedules, exports a report, and saves ppt draft", async ({ page }) => {
+  test("loads backend templates, manages schedules, exports a report, and opens ppt edit mode", async ({ page }) => {
     await page.goto("/#/docs");
 
     const dashboardCard = page.locator("article.doc-card").filter({ hasText: "网络运维总览" });
@@ -43,8 +43,9 @@ test.describe.serial("full stack smoke", () => {
     await page.getByRole("button", { name: "返回列表" }).click();
 
     await pptCard.getByRole("button", { name: "进入编辑" }).click();
-    await expect(page.getByRole("button", { name: "保存草稿" })).toBeVisible();
-    await page.getByRole("button", { name: "保存草稿" }).click();
-    await expect(page.getByText("已保存")).toBeVisible();
+    await expect(page.getByRole("button", { name: "发布", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "返回运行态" })).toBeVisible();
+    await expect(page.getByText("与发布版本一致")).toBeVisible();
+    await expect(page.locator("[data-testid^='ppt-slide-canvas-']")).toBeVisible();
   });
 });

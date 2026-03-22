@@ -334,6 +334,35 @@ describe("PptEditor direct manipulation", () => {
     });
   });
 
+  it("renders shared ppt master chrome layout on the editor slide", async () => {
+    const latestDoc = createPptDoc();
+    latestDoc.root.props = {
+      ...(latestDoc.root.props ?? {}),
+      masterShowHeader: true,
+      masterHeaderText: "共享页眉",
+      masterShowFooter: true,
+      masterFooterText: "共享页脚",
+      masterPaddingXPx: 40,
+      masterHeaderTopPx: 18,
+      masterFooterBottomPx: 16
+    };
+
+    render(
+      <EditorProvider initialDoc={latestDoc}>
+        <PptEditor doc={latestDoc} />
+      </EditorProvider>
+    );
+
+    const header = screen.getByText("共享页眉");
+    const footer = screen.getByText("共享页脚");
+    const headerHost = header.closest(".runtime-ppt-master-header") as HTMLDivElement | null;
+    const footerHost = footer.closest(".runtime-ppt-master-footer") as HTMLDivElement | null;
+
+    expect(headerHost?.style.left).toBe("40px");
+    expect(headerHost?.style.top).toBe("18px");
+    expect(footerHost?.style.bottom).toBe("16px");
+  });
+
   it("inserts a ppt element from the side insert panel", async () => {
     let latestDoc = createPptDoc();
 

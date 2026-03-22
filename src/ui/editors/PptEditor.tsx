@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
-import type { ChartSpec, DeckProps, ImageProps, TableSpec, VDoc, VNode } from "../../core/doc/types";
+import type { ChartSpec, ImageProps, TableSpec, VDoc, VNode } from "../../core/doc/types";
 import { DataEngine } from "../../runtime/data/data-engine";
 import { EChartView } from "../../runtime/chart/EChartView";
 import { TableView } from "../../runtime/table/TableView";
@@ -8,6 +8,13 @@ import { FloatingLayer } from "../components/FloatingLayer";
 import { EditorInsertPanel, type EditorInsertPanelItem } from "../components/EditorInsertPanel";
 import { NodeDataState } from "../components/NodeDataState";
 import { NodeTextBlock } from "../components/NodeTextBlock";
+import {
+  normalizePptDeckProps,
+  PptSlideFrame,
+  resolvePptSlideNodeLayout,
+  resolvePptSlideNodeStyle,
+  resolvePptSlideTitle
+} from "../components/ppt/shared";
 import {
   buildPptArtifactDropNode,
   clearCopilotArtifactDrag,
@@ -42,7 +49,6 @@ import { resolveImageAsset, resolveImageNodeTitle } from "../utils/dashboard-sur
 import {
   isRemoteDataNode,
   resolveNodeDisplayTitle,
-  resolveNodeSurfaceStyle,
   resolveNodeTitleStyle,
   resolveTitleTextStyle,
   shouldRenderOuterNodeTitle
@@ -138,19 +144,9 @@ export function PptEditor({ doc, showNavigator = true }: PptEditorProps): JSX.El
   const [groupDragPreview, setGroupDragPreview] = useState<SlideGroupDragPreview | null>(null);
   const [insertSearch, setInsertSearch] = useState("");
   const [insertPreview, setInsertPreview] = useState<{ itemId: string; label: string; rect: { x: number; y: number; w: number; h: number } } | null>(null);
-  const snapEnabled = (doc.root.props as Record<string, unknown>)?.editorSnapEnabled === undefined ? true : Boolean((doc.root.props as Record<string, unknown>)?.editorSnapEnabled);
-  const rootProps = (doc.root.props ?? {}) as DeckProps & Record<string, unknown>;
-  const masterShowHeader = rootProps.masterShowHeader === undefined ? true : Boolean(rootProps.masterShowHeader);
-  const masterHeaderText = String(rootProps.masterHeaderText ?? doc.title ?? "");
-  const masterShowFooter = rootProps.masterShowFooter === undefined ? true : Boolean(rootProps.masterShowFooter);
-  const masterFooterText = String(rootProps.masterFooterText ?? "Visual Document OS");
-  const masterShowSlideNumber = rootProps.masterShowSlideNumber === undefined ? true : Boolean(rootProps.masterShowSlideNumber);
-  const masterAccentColor = String(rootProps.masterAccentColor ?? "#1d4ed8");
-  const masterPaddingXPx = Math.max(0, Number(rootProps.masterPaddingXPx ?? 24) || 24);
-  const masterHeaderTopPx = Math.max(0, Number(rootProps.masterHeaderTopPx ?? 12) || 12);
-  const masterHeaderHeightPx = Math.max(12, Number(rootProps.masterHeaderHeightPx ?? 26) || 26);
-  const masterFooterBottomPx = Math.max(0, Number(rootProps.masterFooterBottomPx ?? 10) || 10);
-  const masterFooterHeightPx = Math.max(12, Number(rootProps.masterFooterHeightPx ?? 22) || 22);
+  const deck = useMemo(() => normalizePptDeckProps(doc), [doc]);
+  const rootProps = deck.rootProps;
+  const snapEnabled = rootProps.editorSnapEnabled === undefined ? true : Boolean(rootProps.editorSnapEnabled);
   const [layoutHint, setLayoutHint] = useState("");
   const [artifactDropTarget, setArtifactDropTarget] = useState<PptArtifactDropTarget | null>(null);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -605,7 +601,7 @@ export function PptEditor({ doc, showNavigator = true }: PptEditorProps): JSX.El
                     }}
                   >
                     <div>#{index + 1}</div>
-                    <div className="muted">{String((slide.props as Record<string, unknown>)?.title ?? slide.id)}</div>
+                    <div className="muted">{resolvePptSlideTitle(slide)}</div>
                   </div>
                   <div
                     className={`ppt-nav-drop-anchor ${activeArtifactDrop?.position === "after" ? "active" : ""}`}
@@ -687,15 +683,18 @@ export function PptEditor({ doc, showNavigator = true }: PptEditorProps): JSX.El
           </FloatingLayer>
         ) : null}
         <div className="row ppt-editor-meta" style={{ marginBottom: 8, flexWrap: "wrap" }}>
-          {activeSlide ? <span className="chip">{String((activeSlide.props as Record<string, unknown>)?.title ?? activeSlide.id)}</span> : null}
+          {activeSlide ? <span className="chip">{resolvePptSlideTitle(activeSlide)}</span> : null}
           <span className="chip">选中: {activeSelectedIds.length}</span>
           <span className="chip">{snapEnabled ? "吸附开" : "吸附关"}</span>
           {ui.pptInsertPanelOpen ? <span className="chip">插入面板已展开</span> : null}
           {layoutHint ? <span className="chip">{layoutHint}</span> : null}
         </div>
         {activeSlide ? (
-          <div
-            className={`slide ${spotlightSlideId === activeSlide.id ? `is-copilot-spotlight ${spotlightPulseClass ?? ""}` : ""}`}
+          <PptSlideFrame
+            deck={deck}
+            slide={activeSlide}
+            slideIndex={Math.max(0, slides.findIndex((item) => item.id === activeSlide.id))}
+            className={spotlightSlideId === activeSlide.id ? `is-copilot-spotlight ${spotlightPulseClass ?? ""}` : ""}
             data-testid={`ppt-slide-canvas-${activeSlide.id}`}
             onDragOver={(event) => {
               const item = decodePptInsertItem(event.dataTransfer);
@@ -778,18 +777,6 @@ export function PptEditor({ doc, showNavigator = true }: PptEditorProps): JSX.El
               applySlideSelection(ids, marquee.additive);
             }}
           >
-            {masterShowHeader ? (
-              <div style={{ position: "absolute", left: masterPaddingXPx, right: masterPaddingXPx, top: masterHeaderTopPx, minHeight: masterHeaderHeightPx, borderBottom: `1px solid ${masterAccentColor}`, display: "flex", justifyContent: "space-between", paddingBottom: 4, zIndex: 2, pointerEvents: "none" }}>
-                <span style={resolveTitleTextStyle({ fontSize: 13, fg: "#64748b" }, rootProps.headerStyle)}>{masterHeaderText || String((activeSlide.props as Record<string, unknown>)?.title ?? "")}</span>
-                <span style={resolveTitleTextStyle({ fontSize: 13, fg: "#64748b" }, rootProps.headerStyle)}>{String((activeSlide.props as Record<string, unknown>)?.title ?? "")}</span>
-              </div>
-            ) : null}
-            {masterShowFooter ? (
-              <div style={{ position: "absolute", left: masterPaddingXPx, right: masterPaddingXPx, bottom: masterFooterBottomPx, minHeight: masterFooterHeightPx, borderTop: `1px solid ${masterAccentColor}`, display: "flex", justifyContent: "space-between", paddingTop: 4, zIndex: 2, pointerEvents: "none" }}>
-                <span style={resolveTitleTextStyle({ fontSize: 12, fg: "#64748b" }, rootProps.footerStyle)}>{masterFooterText}</span>
-                {masterShowSlideNumber ? <span style={resolveTitleTextStyle({ fontSize: 12, fg: "#64748b" }, rootProps.footerStyle)}>{`#${slides.findIndex((item) => item.id === activeSlide.id) + 1}`}</span> : null}
-              </div>
-            ) : null}
             {insertPreview ? (
               <div
                 className="dashboard-insert-preview"
@@ -876,7 +863,7 @@ export function PptEditor({ doc, showNavigator = true }: PptEditorProps): JSX.El
                 snapEnabled={snapEnabled}
               />
             ))}
-          </div>
+          </PptSlideFrame>
         ) : (
           <div className="muted">暂无幻灯片</div>
         )}
@@ -930,14 +917,14 @@ function SlideNode({
   snapEnabled: boolean;
 }): JSX.Element {
   const { rows, loading, error } = useNodeRows(dataDoc, node, engine, dataVersion);
-  const layout = node.layout ?? { mode: "absolute", x: 80, y: 80, w: 200, h: 120, z: 1 };
+  const layout = resolvePptSlideNodeLayout(node, { x: 80, y: 80, w: 200, h: 120, z: 1 });
   const showOuterTitle = shouldRenderOuterNodeTitle(node);
   const nodeTitle = node.kind === "image" ? resolveImageNodeTitle(assetDoc, node) : resolveNodeDisplayTitle(node);
   const [rect, setRect] = useState({
-    x: Number(layout.x ?? 80),
-    y: Number(layout.y ?? 80),
-    w: Number(layout.w ?? 200),
-    h: Number(layout.h ?? 120)
+    x: layout.x,
+    y: layout.y,
+    w: layout.w,
+    h: layout.h
   });
   const [start, setStart] = useState<{ x: number; y: number; rect: typeof rect } | null>(null);
   const [mode, setMode] = useState<"move" | "resize" | null>(null);
@@ -952,10 +939,10 @@ function SlideNode({
 
   useEffect(() => {
     setRect({
-      x: Number(layout.x ?? 80),
-      y: Number(layout.y ?? 80),
-      w: Number(layout.w ?? 200),
-      h: Number(layout.h ?? 120)
+      x: layout.x,
+      y: layout.y,
+      w: layout.w,
+      h: layout.h
     });
   }, [layout.h, layout.w, layout.x, layout.y]);
 
@@ -1140,16 +1127,18 @@ function SlideNode({
     <div
       className={`slide-node ${selected ? "active" : ""} ${node.layout?.lock ? "is-locked" : ""}`}
       data-testid={`ppt-node-${node.id}`}
-      style={{
-        ...resolveNodeSurfaceStyle(node.style, {
-          left: rect.x,
-          top: rect.y,
-          width: rect.w,
-          height: rect.h,
+      style={resolvePptSlideNodeStyle(
+        node,
+        {
+          x: rect.x,
+          y: rect.y,
+          w: rect.w,
+          h: rect.h,
           zIndex: editorZIndex,
           transform: groupPreviewOffset ? `translate(${groupPreviewOffset.x}px, ${groupPreviewOffset.y}px)` : undefined
-        })
-      }}
+        },
+        { x: 80, y: 80, w: 200, h: 120, z: 1 }
+      )}
       onMouseDown={onPointerDownMove}
       onDoubleClick={() => onBringFront()}
       onContextMenu={(event) => {

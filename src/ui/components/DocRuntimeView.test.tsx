@@ -1,3 +1,4 @@
+import { StrictMode } from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDashboardDoc, createPptDoc, createReportDoc } from "../../core/doc/defaults";
@@ -222,14 +223,24 @@ describe("DocRuntimeView global props", () => {
       masterShowHeader: true,
       masterHeaderText: "PPT 页眉测试",
       masterShowFooter: true,
-      masterFooterText: "PPT 页脚测试"
+      masterFooterText: "PPT 页脚测试",
+      masterPaddingXPx: 40,
+      masterHeaderTopPx: 18,
+      masterFooterBottomPx: 16
     };
 
     render(<DocRuntimeView doc={doc} />);
 
     await waitFor(() => {
-      expect(screen.queryByText("PPT 页眉测试")).not.toBeNull();
-      expect(screen.queryByText("PPT 页脚测试")).not.toBeNull();
+      const header = screen.getByText("PPT 页眉测试");
+      const footer = screen.getByText("PPT 页脚测试");
+      expect(header).not.toBeNull();
+      expect(footer).not.toBeNull();
+      const headerHost = header.closest(".runtime-ppt-master-header") as HTMLDivElement | null;
+      const footerHost = footer.closest(".runtime-ppt-master-footer") as HTMLDivElement | null;
+      expect(headerHost?.style.left).toBe("40px");
+      expect(headerHost?.style.top).toBe("18px");
+      expect(footerHost?.style.bottom).toBe("16px");
     });
   });
 
@@ -290,6 +301,8 @@ describe("DocRuntimeView global props", () => {
     expect(screen.queryByRole("button", { name: "图表智能追问" })).toBeNull();
     const nodes = Array.from(document.querySelectorAll(".runtime-slide-node")) as HTMLDivElement[];
     expect(nodes).toHaveLength(2);
+    expect(nodes[0]?.style.position).toBe("absolute");
+    expect(nodes[1]?.style.position).toBe("absolute");
     expect(nodes[0]?.style.top).toBe("96px");
     expect(nodes[1]?.style.top).toBe("96px");
   });
@@ -384,6 +397,89 @@ describe("DocRuntimeView global props", () => {
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalled();
       expect(screen.queryAllByTestId("echart-mock").length).toBeGreaterThan(0);
+    });
+  });
+
+  it("still loads visible runtime endpoint nodes under StrictMode", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("ops_alarm_trend")) {
+        return createJsonResponse({
+          id: "ops_alarm_trend",
+          rows: [
+            { ts: "2026-03-01", critical: 12 },
+            { ts: "2026-03-02", critical: 18 }
+          ]
+        });
+      }
+      if (url.includes("ops_capacity_topn")) {
+        return createJsonResponse({
+          id: "ops_capacity_topn",
+          rows: [{ linkName: "NORTH-CORE-01", utilizationPct: 93.5 }]
+        });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const doc = createPptDoc();
+    const slides = (doc.root.children ?? []).filter((item) => item.kind === "slide");
+    const firstSlide = slides[0];
+    if (!firstSlide) {
+      throw new Error("missing first slide");
+    }
+    const secondSlide: NonNullable<typeof firstSlide> = {
+      id: "slide_runtime_later",
+      kind: "slide" as const,
+      props: { title: "后续页" },
+      layout: { mode: "absolute" as const, x: 0, y: 0, w: 960, h: 540 },
+      children: []
+    };
+    doc.root.children = [firstSlide, secondSlide];
+    firstSlide.children = [
+      {
+        id: "chart_runtime_visible_slide",
+        kind: "chart",
+        props: {
+          titleText: "当前页趋势",
+          chartType: "line",
+          bindings: [
+            { role: "x", field: "ts" },
+            { role: "y", field: "critical", agg: "sum" }
+          ]
+        },
+        data: { endpointId: "ops_alarm_trend" },
+        layout: { mode: "absolute", x: 40, y: 96, w: 400, h: 220, z: 1 }
+      }
+    ];
+    secondSlide.children = [
+      {
+        id: "chart_runtime_later_slide",
+        kind: "chart",
+        props: {
+          titleText: "后页容量",
+          chartType: "bar",
+          bindings: [
+            { role: "x", field: "linkName" },
+            { role: "y", field: "utilizationPct", agg: "avg" }
+          ]
+        },
+        data: { endpointId: "ops_capacity_topn" },
+        layout: { mode: "absolute", x: 480, y: 96, w: 400, h: 220, z: 1 }
+      }
+    ];
+
+    render(
+      <StrictMode>
+        <DocRuntimeView doc={doc} />
+      </StrictMode>
+    );
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(([input]) => String(input).includes("/api/v1/data-endpoints/ops_alarm_trend/test"))
+      ).toBe(true);
+      expect(screen.queryAllByTestId("echart-mock")).toHaveLength(1);
     });
   });
 
@@ -506,6 +602,46 @@ describe("DocRuntimeView global props", () => {
     fireEvent.change(screen.getByPlaceholderText("搜索章节"), { target: { value: "不存在章节" } });
     await waitFor(() => {
       expect(screen.queryByText("未命中章节")).not.toBeNull();
+    });
+  });
+
+  it("renders a later report section after outline jump under virtualization", async () => {
+    const doc = createReportDoc();
+    doc.root.props = {
+      ...(doc.root.props ?? {}),
+      coverEnabled: false,
+      tocShow: false,
+      summaryEnabled: false,
+      headerShow: false,
+      footerShow: false
+    };
+    doc.root.children = Array.from({ length: 12 }, (_, index) => ({
+      id: `section_runtime_virtual_${index + 1}`,
+      kind: "section",
+      props: { title: `章节${index + 1}` },
+      children: [
+        {
+          id: `text_runtime_virtual_${index + 1}`,
+          kind: "text",
+          props: { text: `内容-章节${index + 1}`, format: "plain" }
+        }
+      ]
+    }));
+
+    render(
+      <div style={{ height: 560 }}>
+        <DocRuntimeView doc={doc} />
+      </div>
+    );
+
+    expect(screen.queryByText("内容-章节10")).toBeNull();
+    expect(screen.queryByText("内容-章节1")).not.toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /目录/ }));
+    fireEvent.click(screen.getByRole("button", { name: "10. 章节10" }));
+
+    await waitFor(() => {
+      expect(screen.queryByText("内容-章节10")).not.toBeNull();
     });
   });
 

@@ -61,11 +61,11 @@ export class DataEngine {
     this.syncSources(sources, queries);
   }
 
-  /** 同步数据源定义：定义变化时清理缓存与在途请求。 */
-  syncSources(sources: DataSourceDef[] = [], queries: QueryDef[] = []): void {
+  /** 同步数据源定义：定义变化时清理缓存与在途请求。返回值表示定义是否实质变化。 */
+  syncSources(sources: DataSourceDef[] = [], queries: QueryDef[] = []): boolean {
     const nextSignature = this.serializeDefinitions(sources, queries);
     if (nextSignature === this.defsSignature) {
-      return;
+      return false;
     }
     this.defsSignature = nextSignature;
     this.cancel();
@@ -76,6 +76,7 @@ export class DataEngine {
     this.queries.clear();
     sources.forEach((item) => this.sources.set(item.id, item));
     queries.forEach((item) => this.queries.set(item.queryId, item));
+    return true;
   }
 
   /** 取消指定请求或全部在途请求。 */

@@ -26,9 +26,11 @@ export const useDataEngine = (
     if (currentDefs?.sources === sources && currentDefs.queries === queries) {
       return;
     }
+    const changed = engineRef.current?.syncSources(sources, queries) ?? false;
     defsRef.current = { sources, queries };
-    engineRef.current?.syncSources(sources, queries);
-    setDataVersion((value) => value + 1);
+    if (changed) {
+      setDataVersion((value) => value + 1);
+    }
   }, [queries, sources]);
 
   useEffect(

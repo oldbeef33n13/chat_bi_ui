@@ -33,7 +33,7 @@ export function DashboardRuntimeView({
   const children = root.children ?? [];
   const wrapRef = useRef<HTMLDivElement>(null);
   const [viewportSize, setViewportSize] = useState({ width: 1280, height: 720 });
-  const { engine, dataVersion } = useDataEngine(doc.dataSources ?? [], doc.queries ?? [], { debounceMs: 120 });
+  const { engine, dataVersion } = useDataEngine(doc.dataSources ?? [], doc.queries ?? []);
   const prefetchNodes = useMemo(() => resolveDashboardPrefetchNodes(doc), [doc]);
   const metrics = resolveDashboardSurfaceMetrics({
     doc,

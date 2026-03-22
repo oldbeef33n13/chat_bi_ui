@@ -30,7 +30,7 @@ describe("DataEngine syncSources", () => {
     const first = await engine.execute({ sourceId: "ds_equivalent", queryId: "q_equivalent" });
     expect(Array.isArray(first)).toBe(true);
 
-    engine.syncSources(clone(sources), clone(queries));
+    expect(engine.syncSources(clone(sources), clone(queries))).toBe(false);
     const second = await engine.execute({ sourceId: "ds_equivalent", queryId: "q_equivalent" });
     expect(second).toBe(first);
   });
@@ -59,7 +59,7 @@ describe("DataEngine syncSources", () => {
 
     const engine = new DataEngine(sourceV1, queries);
     const first = await engine.execute({ sourceId: "ds_changed", queryId: "q_changed" });
-    engine.syncSources(sourceV2, queries);
+    expect(engine.syncSources(sourceV2, queries)).toBe(true);
     const second = await engine.execute({ sourceId: "ds_changed", queryId: "q_changed" });
 
     expect(Array.isArray(first)).toBe(true);

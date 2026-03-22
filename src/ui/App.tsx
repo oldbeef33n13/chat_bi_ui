@@ -1,19 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ensureSampleChartRuntimeData } from "../core/doc/defaults";
 import type { TemplateVariableDef, VDoc } from "../core/doc/types";
 import { preloadEditorChunk } from "./components/CanvasPanel";
 import { DataEndpointManagerPanel } from "./components/DataEndpointManagerPanel";
 import { TemplateSchedulePanel } from "./components/TemplateSchedulePanel";
 import { HttpTemplateRuntimeRepository } from "./api/http-template-runtime-repository";
-import type { TemplateArtifact, TemplateRun } from "./api/template-runtime-repository";
-import { templateOutputByDocType } from "./api/template-runtime-repository";
-import { TemplateApiError, type EditorDocType, type TemplateContent, type TemplateMeta, type TemplateSeed } from "./api/template-repository";
+import { TemplateApiError, type EditorDocType, type TemplateMeta, type TemplateSeed } from "./api/template-repository";
 import { CreateTemplatePanel } from "./app/CreateTemplatePanel";
 import { DetailPage } from "./app/DetailPage";
 import { EditWorkspace } from "./app/EditWorkspace";
 import { LibraryPage } from "./app/LibraryPage";
 import { PresentationPage } from "./app/PresentationShell";
 import { BLANK_TEMPLATE_OPTIONS, formatUiTime, type RouteState } from "./app/shared";
+import { useTemplateDetailController } from "./hooks/use-template-detail-controller";
 import { useTemplateLibrary } from "./hooks/use-template-library";
 import { CopilotEditorBridge } from "./copilot/CopilotEditorBridge";
 import { CopilotShell } from "./copilot/CopilotShell";
@@ -21,7 +19,6 @@ import { CopilotProvider, useCopilot, useMaybeCopilot, type CopilotRouteScene } 
 import { EditorProvider } from "./state/editor-context";
 import { setEditorTelemetryContext } from "./telemetry/editor-telemetry";
 import { setAiTelemetryContext } from "./telemetry/ai-telemetry";
-import { buildTemplateVariableDefaults, coerceTemplateVariableValue } from "./utils/template-variables";
 
 interface EditSession {
   docId: string;
@@ -33,11 +30,6 @@ interface EditSession {
   instanceKey: number;
 }
 
-interface TemplateDetailState {
-  meta: TemplateMeta;
-  content: TemplateContent;
-}
-
 interface SchedulePanelTemplateContext {
   id: string;
   name: string;
@@ -46,21 +38,9 @@ interface SchedulePanelTemplateContext {
   defaultVariables?: Record<string, unknown>;
 }
 
-const sameTemplateRunState = (left: TemplateRun | null, right: TemplateRun | null): boolean => {
-  if (left === right) {
-    return true;
-  }
-  if (!left || !right) {
-    return false;
-  }
-  return left.id === right.id && left.status === right.status && left.errorMessage === right.errorMessage && left.artifacts.length === right.artifacts.length;
-};
-
 const cloneDoc = (doc: VDoc): VDoc => structuredClone(doc);
-const sleep = (ms: number): Promise<void> => new Promise((resolve) => window.setTimeout(resolve, ms));
 const SESSION_DRAFT_PREFIX = "chatbi.template.sessionDraft";
 const EDIT_DRAFT_PERSIST_DEBOUNCE_MS = 180;
-const EMPTY_VALUES: Record<string, unknown> = Object.freeze({});
 
 const buildSessionDraftKey = (docId: string, baseRevision: number): string => `${SESSION_DRAFT_PREFIX}:${docId}:${baseRevision}`;
 
@@ -131,16 +111,6 @@ const clearAllSessionDrafts = (docId: string): void => {
       window.sessionStorage.removeItem(key);
     }
   }
-};
-
-const pickPreferredArtifact = (docType: EditorDocType, artifacts: TemplateArtifact[]): TemplateArtifact | undefined => {
-  if (docType === "report") {
-    return artifacts.find((item) => item.artifactType === "report_docx") ?? artifacts[0];
-  }
-  if (docType === "ppt") {
-    return artifacts.find((item) => item.artifactType === "ppt_pptx") ?? artifacts[0];
-  }
-  return artifacts.find((item) => item.artifactType === "dashboard_snapshot_json") ?? artifacts[0];
 };
 
 const formatCopilotVariableSummary = (values: Record<string, unknown>): string[] =>
@@ -282,18 +252,6 @@ function AppContent(): JSX.Element {
   const [dataEndpointPanelOpen, setDataEndpointPanelOpen] = useState(false);
   const [schedulePanelTemplate, setSchedulePanelTemplate] = useState<SchedulePanelTemplateContext | null>(null);
   const [editSession, setEditSession] = useState<EditSession | null>(null);
-  const [detail, setDetail] = useState<TemplateDetailState | null>(null);
-  const [detailLoading, setDetailLoading] = useState(false);
-  const [detailError, setDetailError] = useState<string>();
-  const [actionErrorState, setActionErrorState] = useState<string>();
-  const [runtimeHintState, setRuntimeHintState] = useState<string>();
-  const [detailVariablePanelOpen, setDetailVariablePanelOpen] = useState(false);
-  const [detailVariableValues, setDetailVariableValues] = useState<Record<string, unknown>>(EMPTY_VALUES);
-  const [previewSnapshotDoc, setPreviewSnapshotDoc] = useState<VDoc | null>(null);
-  const [previewResolvedVariables, setPreviewResolvedVariables] = useState<Record<string, unknown>>(EMPTY_VALUES);
-  const [previewLoading, setPreviewLoading] = useState(false);
-  const [exportLoading, setExportLoading] = useState(false);
-  const [lastExportRunState, setLastExportRunState] = useState<TemplateRun | null>(null);
   const [seedTemplates, setSeedTemplates] = useState<TemplateSeed[]>([]);
   const [seedTemplatesLoading, setSeedTemplatesLoading] = useState(false);
   const [seedTemplatesError, setSeedTemplatesError] = useState<string>();
@@ -304,13 +262,36 @@ function AppContent(): JSX.Element {
   const editSessionRef = useRef<EditSession | null>(null);
   const editDraftPersistTimerRef = useRef<number | null>(null);
   const editDraftPersistIdleRef = useRef<number | null>(null);
-  const previewRequestSeqRef = useRef(0);
-  const exportRequestSeqRef = useRef(0);
-  const actionErrorRef = useRef<string | undefined>(undefined);
-  const runtimeHintRef = useRef<string | undefined>(undefined);
-  const lastExportRunRef = useRef<TemplateRun | null>(null);
+  const {
+    detail,
+    detailLoading,
+    detailError,
+    currentRecord,
+    actionError,
+    runtimeHint,
+    detailVariablePanelOpen,
+    detailVariableValues,
+    previewSnapshotDoc,
+    previewResolvedVariables,
+    previewLoading,
+    exportLoading,
+    lastExportRun,
+    setDetail,
+    setActionError,
+    setRuntimeHint,
+    setDetailVariablePanelOpen,
+    loadDetail,
+    updateDetailVariableValue,
+    runTemplatePreview,
+    clearTemplatePreview,
+    runTemplateExport
+  } = useTemplateDetailController({
+    route,
+    docs,
+    repo,
+    runtimeRepo
+  });
 
-  const currentRecord = route.page === "detail" ? detail?.meta ?? docs.find((item) => item.id === route.docId) : undefined;
   const currentDetailDoc = useMemo(() => {
     if (!detail) {
       return undefined;
@@ -332,24 +313,6 @@ function AppContent(): JSX.Element {
     return currentRecord?.name ?? "Visual Document OS";
   }, [activeDetailDoc?.title, currentRecord?.name, editSession?.liveTitle, route]);
   const isEditDirty = editSession?.dirty ?? false;
-  const actionError = actionErrorState;
-  const runtimeHint = runtimeHintState;
-  const lastExportRun = lastExportRunState;
-
-  const setActionError = useCallback((next?: string): void => {
-    actionErrorRef.current = next;
-    setActionErrorState((current) => (current === next ? current : next));
-  }, []);
-
-  const setRuntimeHint = useCallback((next?: string): void => {
-    runtimeHintRef.current = next;
-    setRuntimeHintState((current) => (current === next ? current : next));
-  }, []);
-
-  const setLastExportRun = useCallback((next: TemplateRun | null): void => {
-    lastExportRunRef.current = next;
-    setLastExportRunState((current) => (sameTemplateRunState(current, next) ? current : next));
-  }, []);
 
   const flushEditSessionDraft = useCallback((): void => {
     const session = editSessionRef.current;
@@ -396,29 +359,6 @@ function AppContent(): JSX.Element {
     [flushEditSessionDraft]
   );
 
-  const loadDetail = useCallback(
-    async (docId: string): Promise<void> => {
-      setDetailLoading(true);
-      setDetailError(undefined);
-      try {
-        const [meta, content] = await Promise.all([repo.getTemplateMeta(docId), repo.getTemplateContent(docId)]);
-        setDetail({
-          meta,
-          content: {
-            ...content,
-            doc: ensureSampleChartRuntimeData(content.doc)
-          }
-        });
-      } catch (error) {
-        setDetail(null);
-        setDetailError(toErrorText(error));
-      } finally {
-        setDetailLoading(false);
-      }
-    },
-    [repo]
-  );
-
   const loadSeedTemplates = useCallback(async (): Promise<void> => {
     setSeedTemplatesLoading(true);
     setSeedTemplatesError(undefined);
@@ -448,17 +388,6 @@ function AppContent(): JSX.Element {
   }, [route]);
 
   useEffect(() => {
-    previewRequestSeqRef.current += 1;
-    exportRequestSeqRef.current += 1;
-    setActionError(undefined);
-    setRuntimeHint(undefined);
-    setDetailVariablePanelOpen(false);
-    setPreviewSnapshotDoc(null);
-    setPreviewResolvedVariables(EMPTY_VALUES);
-    setLastExportRun(null);
-  }, [route.page === "detail" ? route.docId : "", route.page, route.page === "detail" ? route.mode : ""]);
-
-  useEffect(() => {
     if (route.page !== "library") {
       setDataEndpointPanelOpen(false);
       setCreateTemplatePanelOpen(false);
@@ -471,16 +400,6 @@ function AppContent(): JSX.Element {
     }
     void loadSeedTemplates();
   }, [loadSeedTemplates, route.page]);
-
-  useEffect(() => {
-    if (!currentDetailDoc || route.page !== "detail" || route.mode === "edit") {
-      return;
-    }
-    setDetailVariableValues(buildTemplateVariableDefaults(currentDetailDoc.templateVariables));
-    setPreviewSnapshotDoc(null);
-    setPreviewResolvedVariables(EMPTY_VALUES);
-    setLastExportRun(null);
-  }, [currentDetailDoc, route.page, route.page === "detail" ? route.mode : "view"]);
 
   useEffect(() => {
     editSessionRef.current = editSession;
@@ -544,25 +463,6 @@ function AppContent(): JSX.Element {
       })
     );
   }, [currentDetailDoc, currentRecord, detailVariableValues, editSession?.liveTitle, route, updateRouteScene]);
-
-  useEffect(() => {
-    if (route.page !== "detail") {
-      setDetail(null);
-      setDetailError(undefined);
-      setDetailLoading(false);
-      return;
-    }
-    let active = true;
-    void (async () => {
-      await loadDetail(route.docId);
-      if (!active) {
-        return;
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, [loadDetail, route]);
 
   useEffect(() => {
     if (route.page !== "detail") {
@@ -751,105 +651,12 @@ function AppContent(): JSX.Element {
     setRuntimeHint("已恢复到发布版本");
   };
 
-  const updateDetailVariableValue = useCallback((key: string, value: unknown, variable?: TemplateVariableDef): void => {
-    setDetailVariableValues((prev) => ({
-      ...prev,
-      [key]: variable ? coerceTemplateVariableValue(variable, value) : value
-    }));
-  }, []);
-
   const openScheduleForTemplate = useCallback(
     (template: { id: string; name: string; docType: EditorDocType; templateVariables?: TemplateVariableDef[]; defaultVariables?: Record<string, unknown> }) => {
       setSchedulePanelTemplate(template);
     },
     []
   );
-
-  const runTemplatePreview = useCallback(async (): Promise<void> => {
-    if (!currentRecord || route.page !== "detail" || route.mode === "edit") {
-      return;
-    }
-    const requestSeq = ++previewRequestSeqRef.current;
-    setPreviewLoading(true);
-    setActionError(undefined);
-    setRuntimeHint(undefined);
-    try {
-      const result = await runtimeRepo.previewTemplate(currentRecord.id, detailVariableValues);
-      if (requestSeq !== previewRequestSeqRef.current) {
-        return;
-      }
-      setPreviewSnapshotDoc(result.snapshot);
-      setPreviewResolvedVariables(result.resolvedVariables);
-      setRuntimeHint("已生成动态预览");
-    } catch (error) {
-      if (requestSeq !== previewRequestSeqRef.current) {
-        return;
-      }
-      setActionError(resolveActionError("动态预览", error));
-    } finally {
-      if (requestSeq === previewRequestSeqRef.current) {
-        setPreviewLoading(false);
-      }
-    }
-  }, [currentRecord, detailVariableValues, route, runtimeRepo]);
-
-  const clearTemplatePreview = useCallback((): void => {
-    setPreviewSnapshotDoc(null);
-    setPreviewResolvedVariables(EMPTY_VALUES);
-    setRuntimeHint("已还原模板视图");
-  }, []);
-
-  const runTemplateExport = useCallback(async (): Promise<void> => {
-    if (!currentRecord || route.page !== "detail" || route.mode === "edit") {
-      return;
-    }
-    const requestSeq = ++exportRequestSeqRef.current;
-    setExportLoading(true);
-    setActionError(undefined);
-    setRuntimeHint(undefined);
-    setLastExportRun(null);
-    try {
-      const accepted = await runtimeRepo.exportTemplate(currentRecord.id, {
-        outputType: templateOutputByDocType[currentRecord.docType],
-        variables: detailVariableValues
-      });
-      let latestRun: TemplateRun | null = null;
-      for (let attempt = 0; attempt < 30; attempt += 1) {
-        if (requestSeq !== exportRequestSeqRef.current) {
-          return;
-        }
-        latestRun = await runtimeRepo.getRun(accepted.runId);
-        if (latestRun.status === "succeeded" || latestRun.status === "failed") {
-          break;
-        }
-        await sleep(250);
-      }
-      if (!latestRun) {
-        throw new Error("导出任务未返回执行结果");
-      }
-      if (requestSeq !== exportRequestSeqRef.current) {
-        return;
-      }
-      setLastExportRun(latestRun);
-      if (latestRun.status === "failed") {
-        throw new Error(latestRun.errorMessage ?? "导出失败");
-      }
-      const artifact = pickPreferredArtifact(currentRecord.docType, latestRun.artifacts);
-      if (artifact) {
-        window.open(artifact.downloadUrl, "_blank", "noopener,noreferrer");
-      }
-      setRuntimeHint(`导出完成 · ${latestRun.id}`);
-    } catch (error) {
-      if (requestSeq !== exportRequestSeqRef.current) {
-        return;
-      }
-      setActionError(resolveActionError("导出下载", error));
-    } finally {
-      if (requestSeq === exportRequestSeqRef.current) {
-        setExportLoading(false);
-      }
-    }
-  }, [currentRecord, detailVariableValues, route, runtimeRepo]);
 
   if (route.page === "library") {
     return (

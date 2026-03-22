@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { DeckProps, VDoc, VNode } from "../../../core/doc/types";
+import type { VDoc, VNode } from "../../../core/doc/types";
 import { nodeTitle } from "../../../core/doc/tree";
 import { useDataEngine } from "../../hooks/use-data-engine";
 import { useNodeDataPrefetch } from "../../hooks/use-node-data-prefetch";
 import { resolvePptPrefetchNodes } from "../../utils/data-fetch-strategy";
 import type { PresentationRuntimeSettings } from "../../utils/presentation-settings";
-import { RuntimeNodeContent, resolveNodeSurfaceStyle, resolveTitleTextStyle } from "./shared";
+import { RuntimeNodeContent } from "./shared";
 import { NodeTextBlock } from "../NodeTextBlock";
+import { normalizePptDeckProps, PptSlideFrame, resolvePptSlideLabel, resolvePptSlideNodeStyle, resolvePptSlideTitle } from "../ppt/shared";
 import type { RuntimeSelectionTarget } from "./runtime-selection";
 
 export function PptRuntimeView({
@@ -23,18 +24,7 @@ export function PptRuntimeView({
   onSelectTarget?: (target: RuntimeSelectionTarget) => void;
 }): JSX.Element {
   const slides = (doc.root.children ?? []).filter((node) => node.kind === "slide");
-  const rootProps = (doc.root.props ?? {}) as DeckProps & Record<string, unknown>;
-  const masterShowHeader = rootProps.masterShowHeader !== false;
-  const masterHeaderText = String(rootProps.masterHeaderText ?? doc.title ?? "");
-  const masterShowFooter = rootProps.masterShowFooter !== false;
-  const masterFooterText = String(rootProps.masterFooterText ?? "Visual Document OS");
-  const masterShowSlideNumber = rootProps.masterShowSlideNumber !== false;
-  const masterAccentColor = String(rootProps.masterAccentColor ?? "#1d4ed8");
-  const masterPaddingXPx = Math.max(0, Number(rootProps.masterPaddingXPx ?? 24) || 24);
-  const masterHeaderTopPx = Math.max(0, Number(rootProps.masterHeaderTopPx ?? 12) || 12);
-  const masterHeaderHeightPx = Math.max(12, Number(rootProps.masterHeaderHeightPx ?? 26) || 26);
-  const masterFooterBottomPx = Math.max(0, Number(rootProps.masterFooterBottomPx ?? 10) || 10);
-  const masterFooterHeightPx = Math.max(12, Number(rootProps.masterFooterHeightPx ?? 22) || 22);
+  const deck = useMemo(() => normalizePptDeckProps(doc), [doc]);
   const [activeIndex, setActiveIndex] = useState(0);
   const [outlineOpen, setOutlineOpen] = useState(false);
   const [outlineQuery, setOutlineQuery] = useState("");
@@ -43,7 +33,7 @@ export function PptRuntimeView({
   const stageRef = useRef<HTMLDivElement>(null);
   const [stageSize, setStageSize] = useState({ width: 1280, height: 720 });
   const activeSlide = slides[activeIndex];
-  const { engine, dataVersion } = useDataEngine(doc.dataSources ?? [], doc.queries ?? [], { debounceMs: 120 });
+  const { engine, dataVersion } = useDataEngine(doc.dataSources ?? [], doc.queries ?? []);
   const prefetchNodes = useMemo(
     () => resolvePptPrefetchNodes(doc, activeSlide?.id ?? slides[0]?.id, 1),
     [activeSlide?.id, doc, slides]
@@ -147,7 +137,7 @@ export function PptRuntimeView({
   const filteredSlides =
     normalizedQuery.length === 0
       ? slides
-      : slides.filter((slide, index) => `#${index + 1} ${String((slide.props as Record<string, unknown>)?.title ?? slide.id)}`.toLowerCase().includes(normalizedQuery));
+      : slides.filter((slide, index) => `#${index + 1} ${resolvePptSlideTitle(slide)}`.toLowerCase().includes(normalizedQuery));
   const recentSlides = recentSlideIds.map((id) => slides.find((slide) => slide.id === id)).filter((item): item is VNode => !!item);
 
   const jumpToSlide = (index: number): void => {
@@ -175,7 +165,7 @@ export function PptRuntimeView({
       nodeId: nextNode.id,
       objectKind: nextNode.kind,
       objectLabel: nodeTitle(nextNode),
-      slideLabel: `第 ${activeIndex + 1} 页 · ${String((activeSlide.props as Record<string, unknown>)?.title ?? activeSlide.id)}`
+      slideLabel: resolvePptSlideLabel(activeSlide, activeIndex)
     });
   }, [activeIndex, activeSlide, onSelectTarget, selectedNodeId]);
 
@@ -192,10 +182,10 @@ export function PptRuntimeView({
               <button
                 key={`recent_${slide.id}`}
                 className={`runtime-outline-item ${index === activeIndex ? "active" : ""}`}
-                title={`#${index + 1} ${String((slide.props as Record<string, unknown>)?.title ?? slide.id)}`}
+                title={`#${index + 1} ${resolvePptSlideTitle(slide)}`}
                 onClick={() => jumpToSlide(index)}
               >
-                <span>{`#${index + 1} ${String((slide.props as Record<string, unknown>)?.title ?? slide.id)}`}</span>
+                <span>{`#${index + 1} ${resolvePptSlideTitle(slide)}`}</span>
               </button>
             );
           })}
@@ -211,10 +201,10 @@ export function PptRuntimeView({
             <button
               key={slide.id}
               className={`runtime-outline-item ${index === activeIndex ? "active" : ""}`}
-              title={`#${index + 1} ${String((slide.props as Record<string, unknown>)?.title ?? slide.id)}`}
+              title={`#${index + 1} ${resolvePptSlideTitle(slide)}`}
               onClick={() => jumpToSlide(index)}
             >
-              <span>{`#${index + 1} ${String((slide.props as Record<string, unknown>)?.title ?? slide.id)}`}</span>
+              <span>{`#${index + 1} ${resolvePptSlideTitle(slide)}`}</span>
             </button>
           );
         })}
@@ -222,39 +212,24 @@ export function PptRuntimeView({
     </div>
   );
 
-  const renderSlide = (slide: VNode): JSX.Element => (
-    <div className={`slide runtime-slide ${immersive ? "runtime-slide-immersive" : ""}`}>
-      {masterShowHeader ? (
-        <div
-          className="runtime-ppt-master-header"
-          style={{ borderBottomColor: masterAccentColor, left: masterPaddingXPx, right: masterPaddingXPx, top: masterHeaderTopPx, minHeight: masterHeaderHeightPx }}
-        >
-          <span style={resolveTitleTextStyle({ fontSize: 13, fg: "#64748b" }, rootProps.headerStyle)}>{masterHeaderText || String((slide.props as Record<string, unknown>)?.title ?? "")}</span>
-          <span style={resolveTitleTextStyle({ fontSize: 13, fg: "#64748b" }, rootProps.headerStyle)}>{String((slide.props as Record<string, unknown>)?.title ?? "")}</span>
-        </div>
-      ) : null}
-      {(slide.children ?? []).map((node) => {
-        const layout = node.layout ?? { mode: "absolute", x: 80, y: 80, w: 220, h: 140, z: 1 };
-        return (
+  const renderSlide = (slide: VNode): JSX.Element => {
+    const slideIndex = Math.max(0, slides.findIndex((item) => item.id === slide.id));
+    return (
+      <PptSlideFrame slide={slide} slideIndex={slideIndex} deck={deck} className={`runtime-slide ${immersive ? "runtime-slide-immersive" : ""}`}>
+        {(slide.children ?? []).map((node) => (
           <div
             key={node.id}
             className={`slide-node runtime-slide-node runtime-selectable ${selectedNodeId === node.id ? "is-runtime-selected" : ""} ${
               node.kind !== "text" ? "runtime-node-surface" : ""
             }`}
             data-testid={`runtime-ppt-node-${node.id}`}
-            style={resolveNodeSurfaceStyle(node.style, {
-              left: Number(layout.x ?? 80),
-              top: Number(layout.y ?? 80),
-              width: Number(layout.w ?? 220),
-              height: Number(layout.h ?? 140),
-              zIndex: Number(layout.z ?? 1)
-            })}
+            style={resolvePptSlideNodeStyle(node)}
             onClick={() =>
               onSelectTarget?.({
                 nodeId: node.id,
                 objectKind: node.kind,
                 objectLabel: nodeTitle(node),
-                slideLabel: `第 ${slides.findIndex((item) => item.id === slide.id) + 1} 页 · ${String((slide.props as Record<string, unknown>)?.title ?? slide.id)}`
+                slideLabel: resolvePptSlideLabel(slide, slideIndex)
               })
             }
           >
@@ -266,19 +241,10 @@ export function PptRuntimeView({
               )}
             </div>
           </div>
-        );
-      })}
-      {masterShowFooter ? (
-        <div
-          className="runtime-ppt-master-footer"
-          style={{ borderTopColor: masterAccentColor, left: masterPaddingXPx, right: masterPaddingXPx, bottom: masterFooterBottomPx, minHeight: masterFooterHeightPx }}
-        >
-          <span style={resolveTitleTextStyle({ fontSize: 12, fg: "#64748b" }, rootProps.footerStyle)}>{masterFooterText}</span>
-          {masterShowSlideNumber ? <span style={resolveTitleTextStyle({ fontSize: 12, fg: "#64748b" }, rootProps.footerStyle)}>{`#${slides.findIndex((item) => item.id === slide.id) + 1}`}</span> : null}
-        </div>
-      ) : null}
-    </div>
-  );
+        ))}
+      </PptSlideFrame>
+    );
+  };
 
   if (immersive) {
     return (
@@ -345,7 +311,7 @@ export function PptRuntimeView({
           {slides.map((slide, index) => (
             <div key={slide.id} className={`tree-item ${activeIndex === index ? "active" : ""}`} onClick={() => jumpToSlide(index)}>
               <div>#{index + 1}</div>
-              <div className="muted">{String((slide.props as Record<string, unknown>)?.title ?? slide.id)}</div>
+              <div className="muted">{resolvePptSlideTitle(slide)}</div>
             </div>
           ))}
         </div>
