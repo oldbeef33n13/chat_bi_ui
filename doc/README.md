@@ -38,6 +38,9 @@
 - [DSL-DOC说明文档](./DSL-DOC说明文档.md)
 - [DSL-PPT说明文档](./DSL-PPT说明文档.md)
 - [DSL-图表与表格说明](./DSL-图表与表格说明.md)
+- [Visual-DSL-v2-评审稿（详细版）](./Visual-DSL-v2-评审稿（详细版）.md)
+- [Visual-DSL-v2-评审稿（老DSL改造视角）](./Visual-DSL-v2-评审稿（老DSL改造视角）.md)
+- [Visual-DSL-v2-规范说明（详细版）](./Visual-DSL-v2-规范说明（详细版）.md)
 - [chatbi-app-server设计方案](./chatbi-app-server设计方案.md)
 
 ## 开发、测试与评测
